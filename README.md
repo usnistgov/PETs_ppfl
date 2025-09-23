@@ -1,152 +1,65 @@
-# NIST Open-Source Software Repository Template
+# PPFL-Framework
+Privacy-preserving federated learning framework built in conjunction with @usnistgov
 
-Use of GitHub by NIST employees for government work is subject to
-the [Rules of Behavior for GitHub][gh-rob]. This is the
-recommended template for NIST employees, since it contains
-required files with approved text. For details, please consult
-the Office of Data & Informatics' [Quickstart Guide to GitHub at
-NIST][gh-odi].
+This framework currently works with Python v3.10. Installing v1.13 of PyTorch fails for v3.11+. Versions of Python below 3.10 may work but have not been tested.
 
-Please click on the green **Use this template** button above to
-create a new repository under the [usnistgov][gh-nst]
-organization for your own open-source work. Please do not "fork"
-the repository directly, and do not create the templated
-repository under your individual account.
+## Dependencies
+Required modules are listed in the `requirements.txt` files. It is recommended to install them with pip via `pip install -r requirements.txt` while using [pyenv](https://github.com/pyenv/pyenv) or another environment manager.
 
-The key files contained in this repository -- which will also
-appear in templated copies -- are listed below, with some things
-to know about each.
+## Data Processing
+The file `get_data_subset.py` in the `data_processing/genetic_plant_data` directory can be used to obtain subsets of the original soybean genome datasets. The file can be run with CLI arguments that are described with the help flag, e.g. `python data_processing/genetic_plant_data/get_data_subset.py -h` from the project root directory.
 
----
+### Example
+Assuming you have one of the original datasets, `FlC_Merged_filtered.csv_train_test.csv`, and have stored it in `genetic_plant_data/original_datasets/` directory, you can obtain the first 1000 rows of that dataset via running this command from the root directory:
+```bash
+python data_processing/genetic_plant_data/get_data_subset.py --source-directory='genetic_plant_data/original_datasets/' --source-file='FlC_Merged_filtered.csv_train_test.csv' --num-rows=1000
+```
 
-## README
+By default, this will create a new file in the `genetic_plant_data` directory named `subset_data.csv`.
 
-Each repository will contain a plain-text [README file][wk-rdm],
-preferably formatted using [GitHub-flavored Markdown][gh-mdn] and
-named `README.md` (this file) or `README`.
+(See the "Datasets" subsection in the "References" section below to obtain the original datasets)
 
-Per the [GitHub ROB][gh-rob] and [NIST Suborder 1801.02][nist-s-1801-02],
-your README should contain:
+The file `merge_csv_files.py` in the `data_processing/genetic_plant_data` directory can be used to combine the various genomic files stored as local CSVs. The file can be run with CLI arguments that are described with the help flag, e.g. `python data_processing/genetic_plant_data/merge_csv_files.py -h` from the project root directory.
 
-1. Software or Data description
-   - Statements of purpose and maturity
-   - Description of the repository contents
-   - Technical installation instructions, including operating
-     system or software dependencies
-1. Contact information
-   - PI name, NIST OU, Division, and Group names
-   - Contact email address at NIST
-   - Details of mailing lists, chatrooms, and discussion forums,
-     where applicable
-1. Related Material
-   - URL for associated project on the NIST website or other Department
-     of Commerce page, if available
-   - References to user guides if stored outside of GitHub
-1. Directions on appropriate citation with example text
-1. References to any included non-public domain software modules,
-   and additional license language if needed, *e.g.* [BSD][li-bsd],
-   [GPL][li-gpl], or [MIT][li-mit]
+The `genome_files_load_and_pickle.py` in the `data_processing/genetic_plant_data` directory can be used to read in genetic CSV files and create pickled output files used by the Flower framework. The file can be run with CLI arguments that are described with the help flag, e.g. `python data_processing/genetic_plant_data/genome_files_load_and_pickle.py -h` from the project root directory.
 
-The more detailed your README, the more likely our colleagues
-around the world are to find it through a Web search. For general
-advice on writing a helpful README, please review
-[*Making Readmes Readable*][18f-guide] from 18F and Cornell's
-[*Guide to Writing README-style Metadata*][cornell-meta].
+## XGBoost
+The XGBoost model in this repository is based on the original XGBoost library: https://xgboost.readthedocs.io/en/stable/
 
-## LICENSE
+The hyperparameters are generated from a Bayesian Hyperparameter search using scikit-optimize, as utilized in the soybean prediction paper (see [References](#references) section below): https://scikit-optimize.github.io/stable/modules/generated/skopt.BayesSearchCV.html
 
-Each repository will contain a plain-text file named `LICENSE.md`
-or `LICENSE` that is phrased in compliance with the Public Access
-to NIST Research [*Copyright, Fair Use, and Licensing Statement
-for SRD, Data, and Software*][nist-open], which provides
-up-to-date official language for each category in a blue box.
+### Centralized
+To run the centralized XGBoost example, run `python xgboost/centralized_train.py`. Note that this will create a pickled file of the optimized hyperparameter search values to be referenced (if present) by the federated server and client.
 
-- The version of [LICENSE.md](LICENSE.md) included in this
-  repository is approved for use.
-- Updated language on the [Licensing Statement][nist-open] page
-  supersedes the copy in this repository. You may transcribe the
-  language from the appropriate "blue box" on that page into your
-  README.
+### Federated
+To run the basic FL example using XGBoost, from the project root directory, run `python xgboost/server.py` to start the server, then `python xgboost/client.py` to run the client and execute model training. As noted above, training hyperparameters are referenced, if available, from a pickle file that stored values from a prior centralized training run. Otherwise the parameters are referenced from the `BST_PARAMS` object in `xgboost/utils.py`.
 
-If your repository includes any software or data that is licensed
-by a third party, create a separate file for third-party licenses
-(`THIRD_PARTY_LICENSES.md` is recommended) and include copyright
-and licensing statements in compliance with the conditions of
-those licenses.
+Hyperparameters such as number of clients can be passed as CLI arguments when running the above commands. Add an `-h` to the command (e.g., `python xgboost/server.py -h`) to see the available variables and their defaults.
 
-## CODEOWNERS
+Both server and clients of federated xgboost can also be run using the `bash xgboost/run.sh` script. For running the federated xgboost with custom data-partitions use `bash xgboost/run_custom_paritions.sh`. For this it is required to edit the `xgboost/run_custom_paritions.sh` script to provide the correct path to the custom data-partitions file on your system.
 
-This template repository includes a file named
-[CODEOWNERS](CODEOWNERS), which visitors can view to discover
-which GitHub users are "in charge" of the repository. More
-crucially, GitHub uses it to assign reviewers on pull requests.
-GitHub documents the file (and how to write one) [here][gh-cdo].
+## Convolutional Neural Network (CNN)
+The CNN model in this repository is [PyTorch](https://pytorch.org/)-based. The architecture parameters (e.g., layer types and sizes) of the centralized model are based on the CNN in the original soybean prediction paper (see [References](#references) section below). Note that the notebooks for the soybean paper use Tensorflow rather than PyTorch, but the architecture is the same.
 
-***Please update that file*** to point to your own account or
-team, so that the [Open-Source Team][gh-ost] doesn't get spammed
-with spurious review requests. *Thanks!*
+### Centralized
+To run the centralized CNN example, run `python cnn/centralized_train.py` from the project root directory. Hyperparameters such as the number of training epochs can be passed as arguments. Run `python cnn/centralized_train.py -h` to see the available hyperparameter arguments.
 
-## CODEMETA
+### Federated
+To run the federated CNN, from the project root directory, run `python cnn/server.py` to start the server, then `python cnn/client.py` to run the client and execute model training.
 
-Project metadata is captured in `CODEMETA.yaml`, used by the NIST
-Software Portal to sort your work under the appropriate thematic
-homepage. ***Please update this file*** with the appropriate
-"theme" and "category" for your code/data/software. The Tier 1
-themes are:
+Hyperparameters such as number of clients can be passed as CLI arguments when running the above commands. Add an `-h` to the command (e.g., `python cnn/server.py -h`) to see the available variables and their defaults.
 
-- [Advanced communications](https://www.nist.gov/advanced-communications)
-- [Bioscience](https://www.nist.gov/bioscience)
-- [Buildings and Construction](https://www.nist.gov/buildings-construction)
-- [Chemistry](https://www.nist.gov/chemistry)
-- [Electronics](https://www.nist.gov/electronics)
-- [Energy](https://www.nist.gov/energy)
-- [Environment](https://www.nist.gov/environment)
-- [Fire](https://www.nist.gov/fire)
-- [Forensic Science](https://www.nist.gov/forensic-science)
-- [Health](https://www.nist.gov/health)
-- [Information Technology](https://www.nist.gov/information-technology)
-- [Infrastructure](https://www.nist.gov/infrastructure)
-- [Manufacturing](https://www.nist.gov/manufacturing)
-- [Materials](https://www.nist.gov/materials)
-- [Mathematics and Statistics](https://www.nist.gov/mathematics-statistics)
-- [Metrology](https://www.nist.gov/metrology)
-- [Nanotechnology](https://www.nist.gov/nanotechnology)
-- [Neutron research](https://www.nist.gov/neutron-research)
-- [Performance excellence](https://www.nist.gov/performance-excellence)
-- [Physics](https://www.nist.gov/physics)
-- [Public safety](https://www.nist.gov/public-safety)
-- [Resilience](https://www.nist.gov/resilience)
-- [Standards](https://www.nist.gov/standards)
-- [Transportation](https://www.nist.gov/transportation)
+## References
 
----
+### Soybean Trait Prediction Research
 
-[usnistgov/opensource-repo][gh-osr] is developed and maintained
-by the [opensource-team][gh-ost], principally:
+Published Paper: [Machine learning models outperform deep learning models, provide interpretation and facilitate feature selection for soybean trait prediction](https://bmcplantbiol.biomedcentral.com/articles/10.1186/s12870-022-03559-z)
 
-- Gretchen Greene, @GRG2
-- Yannick Congo, @faical-yannick-congo
-- Trevor Keller, @tkphd
+Jupyter Notebooks for soybean paper (Github): [Soybean_Trait_Prediction](https://github.com/mitchgill16/Soybean_Trait_Prediction)
 
-Please reach out with questions and comments.
+#### Datasets
 
-<!-- References -->
+Datasets host site: https://data.pawsey.org.au/projects/
 
-[18f-guide]: https://github.com/18F/open-source-guide/blob/18f-pages/pages/making-readmes-readable.md
-[cornell-meta]: https://data.research.cornell.edu/content/readme
-[gh-cdo]: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
-[gh-mdn]: https://github.github.com/gfm/
-[gh-nst]: https://github.com/usnistgov
-[gh-odi]: https://odiwiki.nist.gov/ODI/GitHub.html
-[gh-osr]: https://github.com/usnistgov/opensource-repo/
-[gh-ost]: https://github.com/orgs/usnistgov/teams/opensource-team
-[gh-rob]: https://odiwiki.nist.gov/pub/ODI/GitHub/GHROB.pdf
-[gh-tpl]: https://github.com/usnistgov/carpentries-development/discussions/3
-[li-bsd]: https://opensource.org/licenses/bsd-license
-[li-gpl]: https://opensource.org/licenses/gpl-license
-[li-mit]: https://opensource.org/licenses/mit-license
-[nist-code]: https://code.nist.gov
-[nist-disclaimer]: https://www.nist.gov/open/license
-[nist-s-1801-02]: https://inet.nist.gov/adlp/directives/review-data-intended-publication
-[nist-open]: https://www.nist.gov/open/license#software
-[wk-rdm]: https://en.wikipedia.org/wiki/README
+Unfortunately you can't share a link that goes directly to the folders containing the dataset CSV files, so you'll have to navigate though the UI's folder structure to `/NGS Analysis Results/shortTerm/mgill/DL/holdout_and_equivalent_merged_1pcnt_removed`.
+In that folder you'll see the holdout and train_test datasets named with the feature as a prefix, e.g. "FlC_" = flower color.
