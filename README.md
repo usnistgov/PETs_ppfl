@@ -1,5 +1,5 @@
 # PPFL-Framework
-Privacy-preserving federated learning framework built in conjunction with @usnistgov
+Privacy-preserving federated learning framework built in conjunction with @XDgov. This project is a clone of a now-archived repository at [https://github.com/XDgov/ppfl-framework](https://github.com/XDgov/ppfl-framework).
 
 This framework currently works with Python v3.10. Installing v1.13 of PyTorch fails for v3.11+. Versions of Python below 3.10 may work but have not been tested.
 
