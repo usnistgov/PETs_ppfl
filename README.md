@@ -1,5 +1,70 @@
+## Running instructions:
+
+### How to run:
+1. Download the data from the google drive (`PETs Testbed/PPFL/Genomics Data/Paper_Datasets/Seed_oil/seed_oil_binned5`)
+2. Move the raw `.dat` files to the `data/Oil_binned5` directory. The files included will be:
+   1. Oil_QTL_ho_pheno.dat
+   2. Oil_QTL_ho_vcf.dat
+   3. Oil_QTL_ohe_map.dat
+   4. Oil_QTL_ohe.dat
+   5. Oil_QTL_pheno_bins.dat
+   6. Oil_QTL_tt_pheno.dat
+   7. Oil_QTL_tt_vcf.dat
+3. Download/validate python 3.10 installation (other installations result in errors with the `torch` library). Previous installations should not be affected.
+   1. Run the command `python -V` to check the installation version
+   2. If the wrong version of python (or no pythoninstallation) is installed, download the Python Install Manager found [here](https://www.python.org/downloads/) or [from the Microsoft store](https://apps.microsoft.com/detail/9NQ7512CXL7T?hl=en-us&gl=US&ocid=pdpshare)
+   3. Run the install manager and follow the steps to install the correct `py` version. When this is installed, restart your terminal and run the command `py install 3.10`.
+   4. Restart the terminal again, and run the command `python3.10.exe -V` to confirm a successful installation.
+5. `cd` into the directory where the downloaded project is. You should see folder for `data`, `dpcnn_opacus`, etc. Create a virtual environment with the command `python3.10.exe -m venv .venv`.
+6. Confirm that the `.venv` directory is created by running `ls` or `dir`.
+7. Activate the virtual environment.
+   1. On linux: `source ./.venv/bin/activate`
+   2. On powershell `./.venv/Scripts/activate.ps1`
+8. Install packages with the commands `python.exe -m pip install --upgrade pip` then `pip install -r requirements.txt` while in the home directory
+   1. Note that if there are errors with the `torch` package, you may need to uninstall the packages and reinstall, using `pip uninstall -y -r .\requirements.txt`
+9. Change directory to the `dpcnn_opacus` directory (note that this is necessary due to relative pathing)
+10. Run the command: `python run.py` for a simple run with a single client, or `python run.py --min-fit-clients 2 --min-evaluate-clients 2 --min-available-clients 2` for 2 clients
+
+### Regression testing
+For the regression testing, I am using a python library call pytest. This helps to automate the testing process. There are various test cases described in the regression_test.py script (which are also described in the regression testing excel sheet). In this regression testing, it is only checking to see if the parameter inputs are valid. There are no running end-to-end tests (even though some tests are denoted as end-to-end). This is something that can be improved while Rebecca is out :). This testing takes roughly 7 minutes as is on the openstack VM. 
+
+To run the regression testing, ensure you are in the dpcnn_opacus folder (with the regression_test.py file) and if using a venv it is active. Also ensure you have pytest installed in your environment (it is now listed in the requirements.txt). Then, run `python3.10 -m pytest -q`. This will loop through every single testcase with a progress tracker at the bottom. Any failed tests will be printed out at the end. 
+
+To manually go through each test case using pytest, first gather a list of all possible test (I recommend recording it in a .txt file for easy lookup) by running `python3.10 -m pytest --collect-only -q > test_list.txt`. Then, identify the test you want to run (let's call it `regression_test.py::foo_test[test_id]`). To run that individual test, run `python3.10 -m pytest regression_test.py::foo_test[test_id]`. For exmaple, to run test 12a, ` python3.10 -m pytest regression_test.py::test_run_py_regressions[t12a]`.
+
+To manually go through each test case without using pytest, you will need to identify the test in the excel sheet. Either update the config.json file to match what is needed, or manually create a new configuration file with the listed values (note that the base condfiguration file may differ than the original values of config.json). Once that configuration file is done, follow the run command on the excel sheet (note that if you are editing the config.json file you do _not_ need to specify the path for the configuration file with the --config).
+
+## Rebecca's Updates
+### Adding the Initial Codebase
+This is a copy of our current code base.
+
+### Adding Redteaming Analysis Code
+Added Amy Hilla's red teaming analysis code, as well as other misc folders she sent Rebecca.
+
+### Red Teaming Analysis
+The red teaming analysis has been added, but it is important to note that the submission files of each contestent have been omitted. Those files can be found in the google drive folder. 
+
+For each of the problems, the file structure of the submissions should be as follows:
+
+{problem1_submissions_and_answers, DogData_submissions_answers_scores}
+|
+|---answers
+|
+|---submissions (YOU ADD THIS FOLDER)
+        |
+        |---problem{1,2}
+               |
+               |---{team_1}
+               |      |
+               |      |---submission_{n}
+               |               |
+               |               |---{cnn, dpcnnx}_submission_file.csv
+               |---{team_2}
+                      |
+                      |---submission_{n}
+                    
 # PPFL-Framework
-Privacy-preserving federated learning framework built in conjunction with @XDgov. This project is a clone of a now-archived repository at [https://github.com/XDgov/ppfl-framework](https://github.com/XDgov/ppfl-framework).
+Privacy-preserving federated learning framework built in conjunction with @usnistgov
 
 This framework currently works with Python v3.10. Installing v1.13 of PyTorch fails for v3.11+. Versions of Python below 3.10 may work but have not been tested.
 
