@@ -6,20 +6,6 @@
     "type": "object",
     "properties":
     {
-        "num_gpus":
-            {
-                "description": "The number of gpus available",
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 8
-            },
-        "num_cpus":
-            {
-                "description":  "The number of cpus available",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 64
-            },
         "num_rounds":
             {
                 "description": "The number of rounds of federated learning",

@@ -371,9 +371,6 @@ def override_cli(defaults: Dict[str, Any]):
     #Checks if this should only validate parameters or if it should run the testbed
     parser.add_argument("--check_only", default=False, type=strtobool)
 
-    parser.add_argument("--num_gpus", type=int)
-    parser.add_argument("--num_cpus", type=int)
-
     parser.add_argument("--num_rounds", type=int)
     parser.add_argument("--min_fit_clients", type=int)
     parser.add_argument("--min_available_clients", type=int)

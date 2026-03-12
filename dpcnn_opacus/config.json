@@ -1,7 +1,4 @@
 {
-    "num_gpus":0,
-    "num_cpus":8,
-    
     "num_rounds":3,
     "min_fit_clients":3,
     "min_available_clients":3,
