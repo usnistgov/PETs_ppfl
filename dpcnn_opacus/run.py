@@ -75,9 +75,25 @@ if data_partitions_file and Path(data_partitions_file).exists():
     )
     num_partitions = len(data_partition_ids)
 
+    '''
+    ORIGINAL CODE:
+
 min_fit_clients = num_partitions
 min_evaluate_clients = num_partitions
 min_available_clients = num_partitions
+
+    RECOMMENDED CODE:
+    '''
+
+    min_fit_clients = num_partitions
+    min_evaluate_clients = num_partitions
+    min_available_clients = num_partitions
+
+    '''
+    INTENDED ACTION: Modify
+
+    JUSTIFICAITON: Original code was outside intended if statement
+    '''
 
 
 client_params = {
