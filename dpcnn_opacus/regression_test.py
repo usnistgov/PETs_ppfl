@@ -15,6 +15,8 @@ import pytest
 RUN_PY = Path(os.environ.get("RUN_PY", Path(__file__).resolve().parents[1] / "run.py")).resolve()
 
 BASE_CONFIG: Dict[str, Any] = {
+    "num_cpus": 2,
+    "num_gpus": 0,
     "num_rounds": 1,
     "min_fit_clients": 1,
     "min_available_clients": 1,
@@ -290,6 +292,9 @@ CASES: List[ParamSpec] = [
 
     pytest.param(Case("31a. optimizer accepts allowed value", _base_with(optimizer="adamax")), id="t31a"),
     pytest.param(Case("31b. optimizer rejects bad enum", _base_with(optimizer="adam"), allowed_exit_codes={1, 2}), id="t31b"),
+
+    pytest.param(Case("51a. num_cpus invalid at 0", _base_with(num_cpus=0), allowed_exit_codes={1, 2}), id="t51a"),
+    pytest.param(Case("51b. num_gpus valid at 1", _base_with(num_gpus=1)), id="t51b"),
 
     pytest.param(
         Case(

@@ -139,10 +139,10 @@ if DEVICE.type != 'cpu':
 RECOMMENDED CODE:
 '''
 
-backend_config = {"client_resources": {"num_cpus": 12, "num_gpus": 0}}
-
 if DEVICE.type != 'cpu':
-    backend_config = {"client_resources": {"num_cpus": 8, "num_gpus": 1}}
+    backend_config = {"client_resources": {"num_cpus": args.num_cpus, "num_gpus": args.num_gpus}}
+else:
+    backend_config = {"client_resources": {"num_cpus": args.num_cpus, "num_gpus": 0}} 
 
 '''
 INTENDED ACTION: Modify
