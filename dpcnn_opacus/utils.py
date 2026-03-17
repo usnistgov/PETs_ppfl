@@ -467,6 +467,17 @@ def json_args_parser(schema_path="configuration-schema.json"):
         validate_dir_path(parser.output_dir)
         print("Output directory successfully validated")
 
+        if not (parser.min_available_clients == parser.min_evaluate_clients and 
+                parser.min_fit_clients == parser.min_evaluate_clients):
+            print(f"min_available_clients, min_evaluate_clients, and min_fit_clients must all be equal to run the testbed. Equalizing values")
+            min_val = min(parser.min_available_clients, parser.min_evaluate_clients, parser.min_fit_clients)
+            parser.min_available_clients=min_val
+            parser.min_evaluate_clients=min_val
+            parser.min_fit_clients=min_val
+
+        if parser.min_fit_clients > parser.num_partitions:
+            raise ValueError("min_available_clients, min_evaluate_clients, and min_fit_clients must all have the same value that is less than or equal to num_partitions.")
+
         ## Handles a current issue with opacus_secure_mode
         if parser.opacus_secure_mode:
             print("Warning: \"opacus_secure_mode\" not behaving as expected. Reverting back to opacus_secure_mode=false.")
@@ -490,7 +501,7 @@ def json_args_parser(schema_path="configuration-schema.json"):
         print(e)
         print(1)
     except ValueError as e:
-        print(f"Parameter value error occured. Please check the following issue and try again\n{e}")
+        print(f"Parameter value error occured. Please check the following issue and try again.\n{e}")
         exit(1)
     except argparse.ArgumentError as e:
         print(f"Configuration parameters failed validation. Please check the following issue and try again.\n{e}")
