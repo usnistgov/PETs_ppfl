@@ -15,6 +15,8 @@ import pytest
 RUN_PY = Path(os.environ.get("RUN_PY", Path(__file__).resolve().parents[1] / "run.py")).resolve()
 
 BASE_CONFIG: Dict[str, Any] = {
+    "num_cpus": 2,
+    "num_gpus": 0,
     "num_rounds": 1,
     "min_fit_clients": 1,
     "min_available_clients": 1,
@@ -296,6 +298,8 @@ CASES: List[ParamSpec] = [
     pytest.param(Case("52c. reject too high num clients", _base_with(min_evaluate_clients=2, min_fit_clients=2)), id="t52c"),
     pytest.param(Case("52d. lower one value and reject too high num clients", _base_with(min_available_clients=2, min_evaluate_clients=3, min_fit_clients=2, num_partitions=1), allowed_exit_codes={1, 2}), id="t52d"),
     pytest.param(Case("52e. lower two values and reject too high num clients", _base_with(min_available_clients=2, min_evaluate_clients=3, min_fit_clients=3, num_partitions=1), allowed_exit_codes={1, 2}), id="t52e"),
+    pytest.param(Case("51a. num_cpus invalid at 0", _base_with(num_cpus=0), allowed_exit_codes={1, 2}), id="t51a"),
+    pytest.param(Case("51b. num_gpus valid at 1", _base_with(num_gpus=1)), id="t51b"),
 
     pytest.param(
         Case(
