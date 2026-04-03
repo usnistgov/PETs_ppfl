@@ -12,7 +12,7 @@ from flwr.common import Context
 
 from client import FlowerClient
 from server import create_strategy
-from utils import flower_args_parser, json_args_parser, get_device
+from utils import json_args_parser, get_device
 
 
 # Parse arguments for flower server and client

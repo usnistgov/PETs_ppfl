@@ -5,6 +5,7 @@ import numpy as np
 from collections import Counter
 import torch
 import json
+from copy import deepcopy
 from jsonschema import validate, ValidationError
 import argparse
 from pathlib import Path
@@ -24,9 +25,7 @@ def get_device():
         return torch.device("cpu")
 
 
-def print_binned_counts(
-    dataset: np.ndarray, indices: List[int] | np.ndarray, num_bins: int = 10
-):
+def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, num_bins: int = 10):
     """
     Count the occurrences of binned labels for a given indices in the dataset
     and print the counts with the bin ranges
@@ -172,162 +171,12 @@ def centralized_args_parser():
     args = parser.parse_args()
     return args
 
-
-def flower_args_parser():
-    """
-    Parse arguments to define hyperparameter settings for centralized training.
-    """
-    parser = argparse.ArgumentParser()
-
-    # server arguments
-    parser.add_argument(
-        "--num-rounds",
-        default=3,
-        type=int,
-        help="Number of training rounds (default = 3).",
-    )
-    parser.add_argument(
-        "--min-fit-clients",
-        default=1,
-        type=int,
-        help="Minimum number of fit clients (default = 1).",
-    )
-    parser.add_argument(
-        "--min-evaluate-clients",
-        default=1,
-        type=int,
-        help="Minimum number of evaluation clients (default = 1).",
-    )
-    parser.add_argument(
-        "--min-available-clients",
-        default=1,
-        type=int,
-        help="Minimum number of available clients (default = 1).",
-    )
-    parser.add_argument(
-        "--num-partitions",
-        default=1,
-        type=int,
-        help="Number of partitions (default = 1)."
-        "This is used when the data-partitions file is not provided.",
-    )
-    # client arguments
-    parser.add_argument(
-        "--partitioner-type",
-        default="uniform",
-        type=str,
-        choices=["uniform", "linear", "square", "exponential"],
-        help="Partitioner types (default = 'uniform').",
-    )
-    parser.add_argument(
-        "--epochs",
-        default=20,
-        type=int,
-        help="Number of training epochs (default = 20).",
-    )
-    parser.add_argument(
-        "--batch-divisor",
-        default=5,
-        type=int,
-        help="Divisor to determine batch size (default = 5).",
-    )
-    parser.add_argument(
-        "--seed",
-        default=42,
-        type=int,
-        help="Seed used for train/test splitting (default = 42).",
-    )
-    parser.add_argument(
-        "--test-fraction",
-        default=0.2,
-        type=float,
-        help="Test fraction for train/test splitting (default = 0.2).",
-    )
-    parser.add_argument(
-        "--learning-rate",
-        default=0.003,
-        type=float,
-        help="Learning rate (default = 0.003).",
-    )
-    parser.add_argument(
-        "--weight-decay",
-        default=0.0001,
-        type=float,
-        help="Weight decay constant (default = 0.0001).",
-    )
-    parser.add_argument(
-        "--accuracy-tolerance",
-        default=0.1,
-        type=float,
-        help="Error tolerance to declare prediction as correct "
-        "(default = 0.1). This is used for computing the "
-        "accuracy of the model.",
-    )
-    parser.add_argument(
-        "--optimizer",
-        default="sgd",
-        type=str,
-        choices=["sgd", "adamax"],
-        help="Optimizer to use sgd or adamax (default = sgd).",
-    )
-    parser.add_argument(
-        "--opacus-secure-mode",
-        default=False,
-        type=bool,
-        help="Use Opacus secure mode. It is set to false by default for "
-        "faster experimentation (default = False).",
-    )
-    parser.add_argument(
-        "--epsilon",
-        default=1.0,
-        type=float,
-        help="Privacy parameter: epsilon (default = 1.0).",
-    )
-    parser.add_argument(
-        "--delta",
-        default=1e-5,
-        type=float,
-        help="Privacy parameter: delta (default = 1e-5).",
-    )
-    parser.add_argument(
-        "--max-grad-norm",
-        default=1.0,
-        type=float,
-        help="Privacy parameter: max grad norm (default = 1.0)."
-        "This clips the gradients to be under this value before "
-        "applying noise.",
-    )
-    parser.add_argument(
-        "--data-partitions-file",
-        default=None,
-        type=str,
-        help=f"Path to the data partitions file (default = {None}).\n"
-        "If not used, then the data is split into n_models equal parts."
-        "If data-partitions file is provided, "
-        "then the number of models (n_models) "
-        "to train is equal to the number of "
-        "data partitions available in the file. In the data partitions, "
-        "each key is a client id and value for each key is a list of "
-        "dataset indices to be used for that client.",
-    )
-    parser.add_argument(
-        "--output-dir",
-        default=None,
-        type=str,
-        help="Output directory to save the trained models and metadata."
-        "This should be a relative path from the parent directory of "
-        "the centralized_train.py script.",
-    )
-    args = parser.parse_args()
-    return args
-
 ###
 # _validate_paths(paths, check_func, kind)
 #   input: paths (string or iterable of strings), check_func (function like os.path.exists or os.path.isdir), kind (description for error message ("file", "directory", etc.))
 #   output: none
 #   purpose:  Internal helper to validate one or many paths.
 ###
-
 def _validate_paths(paths, check_func, kind: str) -> None:
 
     # Normalize to a list of paths
@@ -401,6 +250,9 @@ def override_cli(defaults: Dict[str, Any]):
     if "--config" in unknown:
         remove_index = unknown.index("--config")
         unknown.pop(remove_index); unknown.pop(remove_index) #removes key and value pair
+    if "--schema" in unknown:
+        remove_index = unknown.index("--schema")
+        unknown.pop(remove_index); unknown.pop(remove_index) #removes key and value pair
     
     if len(unknown) > 0:
         raise UnknownParameterError(unknown)
@@ -410,9 +262,62 @@ def override_cli(defaults: Dict[str, Any]):
             defaults[key] = value
 
     # For pretty prints
-    defaults["opacus_secure_mode"]=bool(defaults["opacus_secure_mode"])
+    defaults["dp"]["opacus_secure_mode"]=bool(defaults["dp"]["opacus_secure_mode"])
     defaults["check_only"]=bool(defaults["check_only"])
     return defaults
+
+def _is_object_schema(sch: dict) -> bool:
+    return isinstance(sch, dict) and (sch.get("type") == "object" or "properties" in sch)
+
+def _has_any_default(sch: dict) -> bool:
+    if not isinstance(sch, dict):
+        return False
+    if "default" in sch:
+        return True
+    if _is_object_schema(sch):
+        for subschema in sch.get("properties", {}).values():
+            if _has_any_default(subschema):
+                return True
+    for k in ("allOf", "oneOf", "anyOf"):
+        for subschema in sch.get(k, []) if isinstance(sch.get(k), list) else []:
+            if _has_any_default(subschema):
+                return True
+    return False
+
+def _select_oneof_branch(oneof_list, instance):
+    mt = instance.get("model_type")
+    for opt in oneof_list:
+        const = opt.get("properties", {}).get("model_type", {}).get("const")
+        if const == mt:
+            return opt
+    return None
+
+def apply_defaults(schema: dict, instance):
+    # Layer: allOf
+    for sub in schema.get("allOf", []):
+        apply_defaults(sub, instance)
+
+    # Choose: oneOf (by model_type discriminator)
+    if "oneOf" in schema:
+        chosen = _select_oneof_branch(schema["oneOf"], instance)
+        if chosen is not None:
+            apply_defaults(chosen, instance)
+
+    # Apply defaults for object properties (even if "type":"object" is omitted)
+    if _is_object_schema(schema) and isinstance(instance, dict):
+        for prop, prop_schema in schema.get("properties", {}).items():
+            if prop not in instance:
+                if isinstance(prop_schema, dict) and "default" in prop_schema:
+                    instance[prop] = deepcopy(prop_schema["default"])
+                elif _is_object_schema(prop_schema) and _has_any_default(prop_schema):
+                    instance[prop] = {}
+                else:
+                    continue
+
+            if isinstance(instance.get(prop), dict):
+                apply_defaults(prop_schema, instance[prop])
+
+    return instance
 
 ###
 #   validate_config_file(config_path, schema_path)
@@ -429,7 +334,7 @@ def validate_config_file(config_path: str, schema_path:str):
         schema = json.load(s)
 
     try:
-        validate(instance=config, schema=schema) #checks for missing fields
+        config = apply_defaults(instance=config, schema=schema) #checks for missing fields
 
         defaults = override_cli(config) #override config file with command line inputs
 
@@ -443,45 +348,47 @@ def validate_config_file(config_path: str, schema_path:str):
 
 ###
 #   json_args_parser(config_path, schema_path)
-#   input: Two strings: one representing the configuration path and one representing the json schema path
+#   input: Two strings: one representing the configuration path and one representing the json schema path through the command line
 #   output: An argparse parser
 #   purpose: Load and validate all parameters from the configuration file. Also validate that passed paths exist.
 ###
-def json_args_parser(schema_path="configuration-schema.json"):
+def json_args_parser():
     try:
         print()
         #parses the configuration path separately from everything else so that can be loaded first
         config_args = argparse.ArgumentParser(exit_on_error=False)
         config_args.add_argument("--config", default="config.json", type=str)
+        config_args.add_argument("--schema", default="configuration-schema.json", type=str)
         args, _ = config_args.parse_known_args()
 
-        defaults = validate_config_file(args.config, schema_path)
+        defaults = validate_config_file(args.config, args.schema)
 
         parser = argparse.Namespace(**defaults)
         print("Configuration file validated against JSON schema")
 
-        if not parser.data_partitions_file == "":
-            validate_file_path(parser.data_partitions_file)
+        if not parser.model_params["data_partitions_file"] == "":
+            validate_file_path(parser.model_params["data_partitions_file"])
             print("Data partitions file successfully validated")
         
         validate_dir_path(parser.output_dir)
         print("Output directory successfully validated")
 
-        if not (parser.min_available_clients == parser.min_evaluate_clients and 
-                parser.min_fit_clients == parser.min_evaluate_clients):
+        if parser.federated["enabled"] and (not 
+            (parser.federated["min_available_clients"] == parser.federated["min_evaluate_clients"] and 
+            parser.federated["min_fit_clients"] == parser.federated["min_evaluate_clients"])):
             print(f"min_available_clients, min_evaluate_clients, and min_fit_clients must all be equal to run the testbed. Equalizing values")
-            min_val = min(parser.min_available_clients, parser.min_evaluate_clients, parser.min_fit_clients)
-            parser.min_available_clients=min_val
-            parser.min_evaluate_clients=min_val
-            parser.min_fit_clients=min_val
+            min_val = min(parser.federated["min_available_clients"], parser.federated["min_evaluate_clients"], parser.federated["min_fit_clients"])
+            parser.federated["min_available_clients"]=min_val
+            parser.federated["min_evaluate_clients"]=min_val
+            parser.federated["min_fit_clients"]=min_val
 
-        if parser.min_fit_clients > parser.num_partitions:
+        if parser.federated["min_fit_clients"] > parser.model_params["num_partitions"]:
             raise ValueError("min_available_clients, min_evaluate_clients, and min_fit_clients must all have the same value that is less than or equal to num_partitions.")
 
         ## Handles a current issue with opacus_secure_mode
-        if parser.opacus_secure_mode:
+        if parser.dp["opacus_secure_mode"]:
             print("Warning: \"opacus_secure_mode\" not behaving as expected. Reverting back to opacus_secure_mode=false.")
-            parser.opacus_secure_mode=False
+            parser.dp["opacus_secure_mode"]=False
             #Needs the torchcsprng package, but there are issues installing that for python3.10.
             #To do: investigate further
         print()
