@@ -155,8 +155,8 @@ def train_cnn(
         print(
             f"Model {model_id} | "
             f"Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}, "
-            f"Train Acc: {train_accuracy:.2f}%, "
-            f"Test Acc: {epoch_test_acc:.2f}%, "
+            f"Train Acc: {train_accuracy:.2f}, "
+            f"Test Acc: {epoch_test_acc:.2f}, "
             f"Train MSE: {mse:.4f}, Test MSE: {epoch_test_mse:.4f}, "
             f"MAE: {mae:.4f}, RMSE: {rmse:.4f}, "
             f"ε: {epsilon_spent:.2f}"
@@ -291,7 +291,7 @@ def eval_cnn(
 
     print(f"\nModel {model_id} | Final Results:")
     print(
-        f"Model {model_id} | Train: Accuracy: {train_accuracy:.2f}%, "
+        f"Model {model_id} | Train: Accuracy: {train_accuracy:.2f}, "
         f"Loss: {train_loss:.4f}, MAE: {train_mae:.4f}, "
         f"MSE: {train_mse:.4f}, RMSE: {train_rmse:.4f}"
     )
@@ -306,7 +306,7 @@ def eval_cnn(
     )
 
     print(
-        f"Model {model_id} | Test: Accuracy: {test_accuracy:.2f}%, "
+        f"Model {model_id} | Test: Accuracy: {test_accuracy:.2f}, "
         f"Loss: {test_loss:.4f}, MAE: {test_mae:.4f}, "
         f"MSE: {test_mse:.4f}, RMSE: {test_rmse:.4f}"
     )
