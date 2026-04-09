@@ -3,6 +3,7 @@ import os
 # Stop de-duplicating logs in Ray
 os.environ["RAY_DEDUP_LOGS"] = "0"
 import re
+from typing import Dict
 from pathlib import Path
 import numpy as np
 from flwr.simulation import run_simulation
@@ -12,7 +13,7 @@ from flwr.common import Context
 
 from client import FlowerClient
 from server import create_strategy
-from utils import json_args_parser, get_device
+from utils import get_device, ConfigPipeline
 
 
 # Parse arguments for flower server and client
@@ -23,15 +24,21 @@ ORIGINAL CODE:
 
 RECOMMENDED CODE:
 '''
+pipeline = ConfigPipeline()
+args = pipeline.parse()
 
-args = json_args_parser()
 if args.check_only:
     print("Parameter values:")
-    for elem in vars(args):
-        print(f"\t{elem}={getattr(args, elem)}")
+    for name, value in vars(args).items():
+        if(type(value)==dict):
+            print(f"{name}=" + "{")
+            for elem in value:
+                print(f"  {elem}={value[elem]}")
+            print("}")
+        else:
+            print(f"{name}={value}")
     print("Parameters validated. Ending script")
     exit()
-
 '''
 INTENDED ACTION: Modify
 

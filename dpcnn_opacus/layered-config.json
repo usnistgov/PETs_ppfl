@@ -1,3 +1,4 @@
 {
-  "model_type": "cnn"
+  "model_type": "dpcnn",
+  "dp_enabled":true
 }

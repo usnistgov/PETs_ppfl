@@ -6,17 +6,16 @@ from collections import Counter
 import torch
 import json
 from copy import deepcopy
-from jsonschema import validate, ValidationError
-import argparse
-from pathlib import Path
-import os
 from distutils.util import strtobool
+from pathlib import Path
+from typing import Any, Dict, Tuple, List, Set
+import os
 
-class UnknownParameterError(ValueError):
-    """Exception raised for unknown parameters."""
-    def __init__(self, parameters, message="Unknown parameter name(s). Please check the spelling of the inputs above and try again."):
-        self.parameters = parameters
-        super().__init__(message)
+from jsonschema import validate, ValidationError
+
+TOP_KEYS = {"model_type", "num_cpus", "num_gpus", "output_dir"}
+FED_KEYS = {"num_rounds", "min_fit_clients", "min_available_clients", "min_evaluate_clients", "n_models", "federated_enabled"}
+DP_KEYS = {"opacus_secure_mode", "epsilon", "delta", "max_grad_norm", "dp_enabled"}
 
 def get_device():
     if torch.cuda.is_available():
@@ -171,100 +170,6 @@ def centralized_args_parser():
     args = parser.parse_args()
     return args
 
-###
-# _validate_paths(paths, check_func, kind)
-#   input: paths (string or iterable of strings), check_func (function like os.path.exists or os.path.isdir), kind (description for error message ("file", "directory", etc.))
-#   output: none
-#   purpose:  Internal helper to validate one or many paths.
-###
-def _validate_paths(paths, check_func, kind: str) -> None:
-
-    # Normalize to a list of paths
-    if not isinstance(paths, list):
-        paths = [paths]
-
-    failed = [p for p in paths if not check_func(p)]
-
-    if failed:
-        plural = "path" if len(failed) == 1 else "paths"
-        raise FileNotFoundError(f"Could not find {kind} {plural} {failed}. Please check it and try again.")
-
-###
-#   validate_file_path(test_path)
-#   input: A string representing a file path
-#   output: none
-#   purpose: to test if a single file path exists. If it does, no noticable action occurs. If it does not, an error is raised.
-###
-def validate_file_path(test_path: str) -> None:
-    _validate_paths(test_path, os.path.exists, "file")
-
-###
-#   validate_dir_path(test_path)
-#   input: A string representing a directory path
-#   output: none
-#   purpose: to test if a directory exists. If it does, no noticable action occurs. If it does not, an error is raised.
-###
-def validate_dir_path(test_path: str) -> None:
-    _validate_paths(test_path, os.path.isdir, "directory")
-
-###
-#   override_cli(defaults)
-#   input: a dictionary with string keys representing the values loaded in from the configuration json files
-#   output: a dictionary with string keys that contain the configuration json file defaults, updated based on command line input
-#   purpose: to allow the command line arguments to supersede the configuration json file
-###
-def override_cli(defaults: Dict[str, Any]):
-
-    parser = argparse.ArgumentParser(exit_on_error=False)
-
-    #Checks if this should only validate parameters or if it should run the testbed
-    parser.add_argument("--check_only", default=False, type=strtobool)
-
-    parser.add_argument("--num_rounds", type=int)
-    parser.add_argument("--min_fit_clients", type=int)
-    parser.add_argument("--min_available_clients", type=int)
-    parser.add_argument("--min_evaluate_clients", type=int)
-    parser.add_argument("--num_partitions", type=int)
-    
-    parser.add_argument("--data_partitions_file", type=str)
-    parser.add_argument("--partitioner_type", type=str)
-    parser.add_argument("--partition_id", type=int)
-    parser.add_argument("--client_id", type=int)
-    parser.add_argument("--seed", type=int)
-    parser.add_argument("--epochs", type=int)
-    parser.add_argument("--batch_divisor", type=int)
-    parser.add_argument("--n_models", type=int)
-    parser.add_argument("--test_fraction", type=float)
-    parser.add_argument("--learning_rate", type=float)
-    parser.add_argument("--weight_decay", type=float)
-    parser.add_argument("--accuracy_tolerance", type=float)
-    parser.add_argument("--optimizer", type=str)
-    parser.add_argument("--epsilon", type=float)
-    parser.add_argument("--delta", type=float)
-    parser.add_argument("--max_grad_norm", type=float)
-    parser.add_argument("--opacus_secure_mode", type=strtobool)
-    parser.add_argument("--output_dir", type=str)
-
-    args, unknown = parser.parse_known_args()
-
-    if "--config" in unknown:
-        remove_index = unknown.index("--config")
-        unknown.pop(remove_index); unknown.pop(remove_index) #removes key and value pair
-    if "--schema" in unknown:
-        remove_index = unknown.index("--schema")
-        unknown.pop(remove_index); unknown.pop(remove_index) #removes key and value pair
-    
-    if len(unknown) > 0:
-        raise UnknownParameterError(unknown)
-
-    for key, value in vars(args).items():
-        if value is not None:
-            defaults[key] = value
-
-    # For pretty prints
-    defaults["dp"]["opacus_secure_mode"]=bool(defaults["dp"]["opacus_secure_mode"])
-    defaults["check_only"]=bool(defaults["check_only"])
-    return defaults
 
 def _is_object_schema(sch: dict) -> bool:
     return isinstance(sch, dict) and (sch.get("type") == "object" or "properties" in sch)
@@ -319,104 +224,306 @@ def apply_defaults(schema: dict, instance):
 
     return instance
 
+
+def _to_layered_config(flat_cfg: Dict[str, Any]) -> Dict[str, Any]:
+    cfg: Dict[str, Any] = {}
+
+    # Top-level
+    for k in TOP_KEYS:
+        if k in flat_cfg:
+            cfg[k] = flat_cfg[k]
+
+    # Ensure required model_type exists if caller forgot
+    cfg.setdefault("model_type", "dpcnn")
+
+    # Federated group
+    fed: Dict[str, Any] = {"federated_enabled": False}
+    for k in FED_KEYS:
+        if k in flat_cfg:
+            fed[k] = flat_cfg[k]
+    if len(fed) > 1 or "federated_enabled" in flat_cfg:
+        cfg["federated"] = fed
+    else:
+        # Keep federated present for tests that validate its parameters
+        cfg["federated"] = fed
+
+    # DP group
+    dp: Dict[str, Any] = {"dp_enabled": False}
+    for k in DP_KEYS:
+        if k in flat_cfg:
+            dp[k] = flat_cfg[k]
+    if len(dp) > 1 or "dp_enabled" in flat_cfg:
+        cfg["dp"] = dp
+    else:
+        # Keep dp present for tests that validate its parameters
+        cfg["dp"] = dp
+
+    # Model params group
+    mp: Dict[str, Any] = {}
+    for k, v in flat_cfg.items():
+        if k in TOP_KEYS or k in FED_KEYS or k in DP_KEYS:
+            continue
+        mp[k] = v
+    cfg["model_params"] = mp
+
+    return cfg
 ###
-#   validate_config_file(config_path, schema_path)
-#   input: Two strings: one representing the configuration path and one representing the json schema path
-#   output: A dictionary representing the input json file
-#   purpose: Validate and load then configuration file and its schema. Then, apply the schema to the configuration file to validate parameter bounds
+# _validate_paths(paths, check_func, kind)
+#   input: paths (string or iterable of strings), check_func (function like os.path.exists or os.path.isdir), kind (description for error message ("file", "directory", etc.))
+#   output: none
+#   purpose:  Internal helper to validate one or many paths.
 ###
-def validate_config_file(config_path: str, schema_path:str):
-    validate_file_path([config_path, schema_path])
+def _validate_paths(paths, check_func, kind: str) -> None:
 
-    with Path(config_path).open("r", encoding="utf-8") as f:
-        config = json.load(f)
-    with Path(schema_path).open("r", encoding="utf-8") as s:
-        schema = json.load(s)
+    # Normalize to a list of paths
+    if not isinstance(paths, list):
+        paths = [paths]
 
-    try:
-        config = apply_defaults(instance=config, schema=schema) #checks for missing fields
+    failed = [p for p in paths if not check_func(p)]
 
-        defaults = override_cli(config) #override config file with command line inputs
-
-        validate(instance=defaults, schema=schema) #validate with the schema only after the command line arguments are loaded in
-
-    except ValidationError as err:  #adds in the offending parameter name
-        param = ".".join(map(str, err.absolute_path)) or "<root>"
-        raise ValueError(f"Invalid parameter '{param}': {err.message}") from err
-
-    return defaults
+    if failed:
+        plural = "path" if len(failed) == 1 else "paths"
+        raise FileNotFoundError(f"Could not find {kind} {plural} {failed}. Please check it and try again.")
 
 ###
-#   json_args_parser(config_path, schema_path)
-#   input: Two strings: one representing the configuration path and one representing the json schema path through the command line
-#   output: An argparse parser
-#   purpose: Load and validate all parameters from the configuration file. Also validate that passed paths exist.
+#   validate_file_path(test_path)
+#   input: A string representing a file path
+#   output: none
+#   purpose: to test if a single file path exists. If it does, no noticable action occurs. If it does not, an error is raised.
 ###
-def json_args_parser():
-    try:
-        print()
-        #parses the configuration path separately from everything else so that can be loaded first
-        config_args = argparse.ArgumentParser(exit_on_error=False)
-        config_args.add_argument("--config", default="config.json", type=str)
-        config_args.add_argument("--schema", default="configuration-schema.json", type=str)
-        args, _ = config_args.parse_known_args()
+def validate_file_path(test_path: str) -> None:
+    _validate_paths(test_path, os.path.exists, "file")
 
-        defaults = validate_config_file(args.config, args.schema)
+###
+#   validate_dir_path(test_path)
+#   input: A string representing a directory path
+#   output: none
+#   purpose: to test if a directory exists. If it does, no noticable action occurs. If it does not, an error is raised.
+###
+def validate_dir_path(test_path: str) -> None:
+    _validate_paths(test_path, os.path.isdir, "directory")
 
-        parser = argparse.Namespace(**defaults)
-        print("Configuration file validated against JSON schema")
+def _set_nested(cfg: Dict[str, Any], path: Tuple[str, ...], value: Any) -> None:
+    cur = cfg
+    for k in path[:-1]:
+        if k not in cur or not isinstance(cur[k], dict):
+            cur[k] = {}
+        cur = cur[k]
+    cur[path[-1]] = value
 
-        if not parser.model_params["data_partitions_file"] == "":
-            validate_file_path(parser.model_params["data_partitions_file"])
-            print("Data partitions file successfully validated")
-        
-        validate_dir_path(parser.output_dir)
-        print("Output directory successfully validated")
+def _iter_applicable_schemas(schema: Dict[str, Any], instance: Any) -> List[Dict[str, Any]]:
+    # Base schema applies
+    schemas = [schema]
 
-        if parser.federated["enabled"] and (not 
-            (parser.federated["min_available_clients"] == parser.federated["min_evaluate_clients"] and 
-            parser.federated["min_fit_clients"] == parser.federated["min_evaluate_clients"])):
-            print(f"min_available_clients, min_evaluate_clients, and min_fit_clients must all be equal to run the testbed. Equalizing values")
-            min_val = min(parser.federated["min_available_clients"], parser.federated["min_evaluate_clients"], parser.federated["min_fit_clients"])
-            parser.federated["min_available_clients"]=min_val
-            parser.federated["min_evaluate_clients"]=min_val
-            parser.federated["min_fit_clients"]=min_val
+    # allOf: all apply
+    for sub in schema.get("allOf", []) or []:
+        schemas.extend(_iter_applicable_schemas(sub, instance))
 
-        if parser.federated["min_fit_clients"] > parser.model_params["num_partitions"]:
-            raise ValueError("min_available_clients, min_evaluate_clients, and min_fit_clients must all have the same value that is less than or equal to num_partitions.")
+    # oneOf: only chosen applies (using your discriminator helper)
+    if "oneOf" in schema:
+        chosen = _select_oneof_branch(schema["oneOf"], instance)
+        if chosen is not None:
+            schemas.extend(_iter_applicable_schemas(chosen, instance))
 
-        ## Handles a current issue with opacus_secure_mode
-        if parser.dp["opacus_secure_mode"]:
-            print("Warning: \"opacus_secure_mode\" not behaving as expected. Reverting back to opacus_secure_mode=false.")
-            parser.dp["opacus_secure_mode"]=False
-            #Needs the torchcsprng package, but there are issues installing that for python3.10.
-            #To do: investigate further
-        print()
+    return schemas
 
-    except ValidationError as e:
-        print(f"Configuration parameters failed validation. This could be due to a missing parameter or out-of-bounds value.")
-        print(e.message)
-        exit(1)
-    except UnknownParameterError as e:
-        print(f"An unknown parameter was encountered in the command line. Please check the spelling and try again for:")
-        for elem in e.parameters:
-            if "--" in elem:
-                print(f"{elem}\t", end="")
-        print()
-        exit(1)
-    except FileNotFoundError as e:
-        print(e)
-        print(1)
-    except ValueError as e:
-        print(f"Parameter value error occured. Please check the following issue and try again.\n{e}")
-        exit(1)
-    except argparse.ArgumentError as e:
-        print(f"Configuration parameters failed validation. Please check the following issue and try again.\n{e}")
-        exit(1)
-    except SystemExit as e:
-        print(f"An error occured, likely related to command line inputs. Please check the spelling of the inputs above and try again.")
-        exit(1)
-    except OSError as e:
-        print(f"Ran in to an unexpected error. Please try again.\n{e.message}")
-        exit(1)
-    return parser
+def _allowed_keys_at_level(applicable: List[Dict[str, Any]]) -> Set[str]:
+    allowed: Set[str] = set()
+    for sch in applicable:
+        props = sch.get("properties")
+        if isinstance(props, dict):
+            allowed.update(props.keys())
+    return allowed
+
+def find_unknown_fields(schema: Dict[str, Any], instance: Any, path: str = "") -> List[str]:
+    """
+    Returns dot-paths for keys present in instance that are not present in the
+    relevant schema portions (allOf layers + chosen oneOf branch).
+    """
+    if not isinstance(instance, dict):
+        return []
+
+    applicable = _iter_applicable_schemas(schema, instance)
+    allowed_here = _allowed_keys_at_level(applicable)
+    allowed_here.update(["check_only"])
+
+    bad: List[str] = []
+    for k, v in instance.items():
+        p = f"{path}.{k}" if path else k
+        if k not in allowed_here:
+            bad.append(p)
+            continue
+
+        # Recurse if value is an object and schema for that key looks object-ish in any applicable layer
+        if isinstance(v, dict):
+            # merge the property schemas for k from all applicable layers using allOf
+            prop_schemas = []
+            for sch in applicable:
+                props = sch.get("properties")
+                if isinstance(props, dict) and k in props:
+                    prop_schemas.append(props[k])
+            if prop_schemas:
+                bad.extend(find_unknown_fields({"allOf": prop_schemas}, v, p))
+
+    return bad
+
+class UnknownParameterError(ValueError):
+    """Exception raised for unknown parameters."""
+    def __init__(self, parameters, message="Unknown parameter name(s). Please check the spelling of the inputs above and try again."):
+        self.parameters = parameters
+        super().__init__(message)
+
+class ConfigPipeline:
+    def __init__(self) -> None:
+        self.parser = argparse.ArgumentParser(exit_on_error=False)
+
+        # "meta" args
+        self.parser.add_argument("--config", default="config.json", type=str)
+        self.parser.add_argument("--schema", default="configuration-schema.json", type=str)
+        self.parser.add_argument("--check_only", default=False, type=strtobool)
+
+        # top-level overrides
+        self.parser.add_argument("--model_type", type=str)
+        self.parser.add_argument("--num_cpus", type=int)
+        self.parser.add_argument("--num_gpus", type=int)
+        self.parser.add_argument("--output_dir", type=str)
+
+        # federated overrides
+        self.parser.add_argument("--federated_enabled", type=strtobool)
+        self.parser.add_argument("--num_rounds", type=int)
+        self.parser.add_argument("--min_fit_clients", type=int)
+        self.parser.add_argument("--min_available_clients", type=int)
+        self.parser.add_argument("--min_evaluate_clients", type=int)
+        self.parser.add_argument("--n_models", type=int)
+
+        # dp overrides
+        self.parser.add_argument("--dp_enabled", type=strtobool)
+        self.parser.add_argument("--opacus_secure_mode", type=strtobool)
+        self.parser.add_argument("--epsilon", type=float)
+        self.parser.add_argument("--delta", type=float)
+        self.parser.add_argument("--max_grad_norm", type=float)
+
+        # model_params overrides (flat CLI, nested in config)
+        self.parser.add_argument("--data_partitions_file", type=str)
+        self.parser.add_argument("--partitioner_type", type=str)
+        self.parser.add_argument("--num_partitions", type=int)
+        self.parser.add_argument("--partition_id", type=int)
+        self.parser.add_argument("--client_id", type=int)
+        self.parser.add_argument("--seed", type=int)
+        self.parser.add_argument("--epochs", type=int)
+        self.parser.add_argument("--batch_divisor", type=int)
+        self.parser.add_argument("--test_fraction", type=float)   # NOTE: maps to model_params.test_frac
+        self.parser.add_argument("--learning_rate", type=float)
+        self.parser.add_argument("--weight_decay", type=float)
+        self.parser.add_argument("--optimizer", type=str)
+        self.parser.add_argument("--accuracy_tolerance", type=float)
+        self.parser.add_argument("--train_method", type=str)
+        self.parser.add_argument("--centralised_eval", type=strtobool)
+        self.parser.add_argument("--scaled_lr", type=strtobool)
+
+    def _load_json(self, path: str) -> Dict[str, Any]:
+        with Path(path).open("r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def _apply_cli_overrides(self, cfg: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
+        d = vars(args)
+
+        # top-level
+        for k in ("model_type", "num_cpus", "num_gpus", "output_dir"):
+            if d.get(k) is not None:
+                cfg[k] = d[k]
+
+        # federated
+        for k in ("federated_enabled", "num_rounds", "min_fit_clients", "min_available_clients", "min_evaluate_clients", "n_models"):
+            if d.get(k) is not None:
+                _set_nested(cfg, ("federated", k), d[k])
+
+        # dp
+        for k in ("dp_enabled", "opacus_secure_mode", "epsilon", "delta", "max_grad_norm"):
+            if d.get(k) is not None:
+                _set_nested(cfg, ("dp", k), d[k])
+
+        # model_params
+        model_params_keys = (
+            "data_partitions_file",
+            "partitioner_type",
+            "num_partitions",
+            "partition_id",
+            "client_id",
+            "seed",
+            "epochs",
+            "batch_divisor",
+            "learning_rate",
+            "weight_decay",
+            "optimizer",
+            "accuracy_tolerance",
+            "train_method",
+            "centralised_eval",
+            "scaled_lr"
+            # add more here as CLI grows
+        )
+
+        for k in model_params_keys:
+            if d.get(k) is not None:
+                _set_nested(cfg, ("model_params", k), d[k])
+
+        # carry check_only (not part of schema, but you use it)
+        cfg["check_only"] = bool(d.get("check_only", False))
+        return cfg
+
+    def parse(self) -> argparse.Namespace:
+        try:
+            args, unknown = self.parser.parse_known_args()
+            if unknown:
+                raise UnknownParameterError(unknown, message="Unknown parameter name(s) in CLI. Please check the spelling of the inputs above and try again.")
+
+            # validate paths exist
+            validate_file_path([args.config, args.schema])
+
+            schema = self._load_json(args.schema)
+            raw_cfg = self._load_json(args.config)
+
+            # layer + apply schema defaults
+            cfg = _to_layered_config(raw_cfg)
+            cfg = apply_defaults(schema=schema, instance=cfg)
+
+            # override with CLI
+            cfg = self._apply_cli_overrides(cfg, args)
+
+            bad = find_unknown_fields(schema, cfg)
+            if bad:
+                raise UnknownParameterError(bad, message="Unknown parameter name(s) in config. Please check the spelling of the inputs above and try again.")
+
+            # validate final config
+            validate(instance=cfg, schema=schema)
+
+            # path checks / postprocessing (same logic you already had)
+            if cfg.get("model_params", {}).get("data_partitions_file", "") not in ("", None):
+                validate_file_path(cfg["model_params"]["data_partitions_file"])
+            validate_dir_path(cfg["output_dir"])
+
+            # your equalization logic
+            if cfg.get("federated", {}).get("federated_enabled", False):
+                fed = cfg["federated"]
+                if not (fed["min_available_clients"] == fed["min_evaluate_clients"] == fed["min_fit_clients"]):
+                    min_val = min(fed["min_available_clients"], fed["min_evaluate_clients"], fed["min_fit_clients"])
+                    fed["min_available_clients"] = min_val
+                    fed["min_evaluate_clients"] = min_val
+                    fed["min_fit_clients"] = min_val
+
+                if fed["min_fit_clients"] > cfg["model_params"]["num_partitions"]:
+                    raise ValueError("min_*_clients must be <= num_partitions.")
+
+            if cfg.get("dp", {}).get("dp_enabled", False) and cfg["dp"].get("opacus_secure_mode", False):
+                cfg["dp"]["opacus_secure_mode"] = False
+        except UnknownParameterError as e:
+            print(e)
+            for elem in e.parameters:
+                if "--" in elem:
+                    print(f"{elem[2:]}\t", end="")
+                else:
+                    print(f"{elem}\t", end="")
+            print()
+            exit(1)
+
+        return argparse.Namespace(**cfg)

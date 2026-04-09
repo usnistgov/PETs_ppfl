@@ -19,7 +19,7 @@
     "federated": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean", "default": true },
+        "federated_enabled": { "type": "boolean", "default": true },
         "num_rounds": { "description": "Number of federated learning rounds", "type": "integer", "minimum": 1, "maximum": 100, "default": 3},
         "min_fit_clients": { "description": "Min clients that must contribute to training", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
         "n_models": { "description": "The number of models to train. This can be useful if simulating federated learning locally.", "type": "integer", "minimum": 1, "maximum": 100 },
@@ -31,7 +31,7 @@
     "dp": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean", "default": true },
+        "dp_enabled": { "type": "boolean", "default": false },
         "opacus_secure_mode": { "description": "Enable differential privacy", "type": "boolean", "default": false},
         "epsilon": { "description": "DP epsilon", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 50, "default": 1},
         "delta": { "description": "DP delta", "type": "number", "minimum": 0, "maximum": 1, "default": 1e-5},
@@ -82,7 +82,7 @@
                 {
                   "data_partitions_file": { "description": "Path to a file that contains the data partitions", "type": "string", "default": ""},
                   "partitioner_type": { "description": "Partitioner type (optional)", "type": "string", "enum": ["uniform", "linear", "square", "exponential"], "default": "uniform"},
-                  "num_partitions": { "description": "Number of data partitions", "type": "integer", "minimum": 1, "maximum": 100, "default": 1},
+                  "num_partitions": { "description": "Number of data partitions", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
                   "partition_id": { "description": "Partition ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100 , "default": 0},
                   
                   "client_id": { "description": "Client ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
@@ -110,7 +110,7 @@
                 {
                   "data_partitions_file": { "description": "Path to a file that contains the data partitions", "type": "string", "default": ""},
                   "partitioner_type": { "description": "Partitioner type (optional)", "type": "string", "enum": ["uniform", "linear", "square", "exponential"], "default": "uniform"},
-                  "num_partitions": { "description": "Number of data partitions", "type": "integer", "minimum": 1, "maximum": 100, "default": 1},
+                  "num_partitions": { "description": "Number of data partitions", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
                   "partition_id": { "description": "Partition ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100 , "default": 0},
                   
                   "client_id": { "description": "Client ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
