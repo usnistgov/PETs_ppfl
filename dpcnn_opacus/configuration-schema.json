@@ -42,7 +42,7 @@
         "min_evaluate_clients":{
                 "description": "The minimum number of clients that must participate in a federated evaluation round for the round to be successful",
                 "type": "integer",
-                "minimum": 1,
+                "minimum": 0,
                 "maximum": 100
             },
         "data_partitions_file":{

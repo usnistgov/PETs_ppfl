@@ -94,7 +94,7 @@
                   "learning_rate": { "description": "Learning rate", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.003},
                   "weight_decay": { "description": "Weight decay", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 0.1, "default": 0.0001},
                   "optimizer": { "description": "Optimizer name", "type": "string", "enum": ["sgd", "adamax"], "default": "sgd"},
-                  "accuracy_tolerance": { "description": "Error tolerance to declare prediction correct", "type": "number", "minimum": 0, "maximum": 1 }
+                  "accuracy_tolerance": { "description": "Error tolerance to declare prediction correct", "type": "number", "minimum": 0, "maximum": 1, "default":0.1}
                 }
               }
             }

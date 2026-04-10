@@ -47,30 +47,30 @@ JUSTIFICAITON: Testing new parameterization methods
 
 print(f"flower args: {args}")
 # server arguments
-num_rounds = args.num_rounds
-min_fit_clients = args.min_fit_clients
-min_evaluate_clients = args.min_evaluate_clients
-min_available_clients = args.min_available_clients
+num_rounds = args.federated["num_rounds"]
+min_fit_clients = args.federated["min_fit_clients"]
+min_evaluate_clients = args.federated["min_evaluate_clients"]
+min_available_clients = args.federated["min_available_clients"]
 
 # client arguments
-partitioner_type = args.partitioner_type
-num_partitions = args.num_partitions
-batch_divisor = args.batch_divisor
-learning_rate = args.learning_rate
-weight_decay = args.weight_decay
-seed = args.seed
-test_fraction = args.test_frac
-epochs = args.epochs
-accuracy_tolerance = args.accuracy_tolerance
-data_partitions_file = args.data_partitions_file
+partitioner_type = args.model_params["partitioner_type"]
+num_partitions = args.model_params["num_partitions"]
+batch_divisor = args.model_params["batch_divisor"]
+learning_rate = args.model_params["learning_rate"]
+weight_decay = args.model_params["weight_decay"]
+seed = args.model_params["seed"]
+test_fraction = args.model_params["test_frac"]
+epochs = args.model_params["epochs"]
+accuracy_tolerance = args.model_params["accuracy_tolerance"]
+data_partitions_file = args.model_params["data_partitions_file"]
 out_dir = args.output_dir
-optimizer_name = args.optimizer
+optimizer_name = args.model_params["optimizer"]
 
 # Privacy arguments
-epsilon = args.epsilon  # Target privacy budget (epsilon)
-delta = args.delta  # Target delta
-max_grad_norm = args.max_grad_norm  # param to clip the gradients
-opacus_secure_mode = args.opacus_secure_mode  # Use Opacus secure mode
+epsilon = args.dp["epsilon"]  # Target privacy budget (epsilon)
+delta = args.dp["delta"]  # Target delta
+max_grad_norm = args.dp["max_grad_norm"]  # param to clip the gradients
+opacus_secure_mode = args.dp["opacus_secure_mode"]  # Use Opacus secure mode
 
 # Get number of partitions from data_partitions_file
 # if it exists and is not None
