@@ -6,6 +6,7 @@ OIL_QTL_ohe_map.dat
 OIL_QTL_tt_pheno.dat
 OIL_QTL_ho_pheno.dat
 .venv/*
+.venv
 *.dat
 reports/*
 inputs.py
