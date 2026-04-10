@@ -27,7 +27,7 @@ CORRELATION_TO_PARTITIONER = {
 }
 
 
-def load_pickle_data(data_path="../data/Oil_binned5"):
+def load_pickle_data(data_path):
     cur_path = os.path.dirname(__file__)
     file_patterns = ["_ohe.dat", "_tt_vcf.dat", "_tt_pheno.dat", "_ho_vcf.dat", "_ho_pheno.dat"]
 
@@ -67,10 +67,10 @@ def load_pickle_data(data_path="../data/Oil_binned5"):
     return ohe, vcf, pheno
 
 
-def instantiate_partitioner(partitioner_type: str, num_partitions: int):
+def instantiate_partitioner(partitioner_type: str, num_partitions: int, data_dir: str):
     """Initialise partitioner based on selected partitioner type
     and number of partitions"""
-    _, vcf, pheno = load_pickle_data()
+    _, vcf, pheno = load_pickle_data(data_dir)
 
     concat_dataset = np.concatenate((vcf, pheno), axis=1)
     indices = np.arange(len(concat_dataset))
@@ -163,13 +163,14 @@ def load_random_partitions(
     seed: int,
     num_partitions: int,
     partitioner_type: str,
+    data_directory: str,
 ) -> Tuple[DataLoader, DataLoader, List[int], List[int]]:
     """
     Load data using flower dataset partitioner
     """
     # initialize and get data partition
     partitioner = instantiate_partitioner(
-        partitioner_type=partitioner_type, num_partitions=num_partitions
+        partitioner_type=partitioner_type, num_partitions=num_partitions, data_dir=data_directory
     )
     partition = partitioner.load_partition(data_partition_id)
     train_indices, test_indices, num_train, num_test = (

@@ -13,7 +13,7 @@
     "partition_id":0,
     "client_id":0,
     "seed":42,
-    "epochs":2,
+    "epochs":20,
     "batch_divisor":5,
     "n_models":1,
     "test_frac":0.2,
@@ -27,5 +27,5 @@
     "opacus_secure_mode":true,
 
     "output_dir": "../reports",
-    "data_dir":"../data/Oil_binned5"
+    "data_dir":"../genetic_plant_data"
 }
