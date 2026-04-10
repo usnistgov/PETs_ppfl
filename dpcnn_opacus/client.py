@@ -41,10 +41,6 @@ def create_dataloaders(
     combined_dataset = np.concatenate((tt_vcf, tt_pheno), axis=1)
     batch_size = max(1, tt_vcf.shape[0] // batch_divisor)
 
-    print()
-    print(combined_dataset.shape)
-    print()
-
     # Check if data partitions file is provided and exists
     data_partitions = None
     if data_partitions_file and Path(data_partitions_file).exists():
