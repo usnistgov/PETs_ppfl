@@ -139,7 +139,7 @@ def get_parameters(net) -> List[np.ndarray]:
 
 
 def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
-    ohe, vcf, pheno = load_pickle_data()
+    ohe, vcf, pheno = load_pickle_data(strategy_params['data_dir'])
     combined_dataset = np.concatenate((vcf, pheno), axis=1)
     num_data_features = vcf.shape[1]
     test_loader = DataLoader(combined_dataset, batch_size=64, shuffle=False)
