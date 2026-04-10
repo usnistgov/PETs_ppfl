@@ -64,7 +64,8 @@ epochs = args.model_params["epochs"]
 accuracy_tolerance = args.model_params["accuracy_tolerance"]
 data_partitions_file = args.model_params["data_partitions_file"]
 out_dir = args.output_dir
-optimizer_name = args.model_params["optimizer"]
+data_dir = args.data_dir
+optimizer_name = args.optimizer
 
 # Privacy arguments
 epsilon = args.dp["epsilon"]  # Target privacy budget (epsilon)
@@ -116,6 +117,7 @@ client_params = {
     'accuracy_tolerance': accuracy_tolerance,
     'data_partitions_file': data_partitions_file,
     'output_dir': out_dir,
+    'data_dir': data_dir,
     'optimizer_name': optimizer_name,
     'epsilon': epsilon,
     'delta': delta,
@@ -139,6 +141,7 @@ def server_fn(context: Context) -> ServerAppComponents:
             'num_rounds': num_rounds,
             'accuracy_tolerance': accuracy_tolerance,
             'output_dir': out_dir,
+            'data_dir': data_dir
         }
     )
     config = ServerConfig(num_rounds=num_rounds)

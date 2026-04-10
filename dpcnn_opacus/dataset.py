@@ -27,9 +27,9 @@ CORRELATION_TO_PARTITIONER = {
 }
 
 
-def load_pickle_data():
+def load_pickle_data(data_path):
     cur_path = os.path.dirname(__file__)
-
+    file_patterns = ["_ohe.dat", "_tt_vcf.dat", "_tt_pheno.dat", "_ho_vcf.dat", "_ho_pheno.dat"]
 
     """
     ORIGINAL CODE:
@@ -39,51 +39,38 @@ def load_pickle_data():
     RECOMMENDED CODE:
     """
 
-    dir_path = os.path.join(cur_path, "../data/", "Oil_binned5")
+    dir_path = os.path.join(cur_path, data_path)
 
     """
     INTENDED ACTION: Modify
 
     JUSTIFICAITON: Fixing the reference
     """
+    def load_by_pattern(pattern):
+            matches = [f for f in os.listdir(dir_path) if f.endswith(pattern)]
+            if not matches:
+                raise FileNotFoundError(f"No file found in {dir_path} matching {pattern}")
+            if len(matches) > 1:
+                raise ValueError(f"Multiple files found in {dir_path} matching {pattern}: {matches}")
 
+            file_path = os.path.relpath(os.path.join(dir_path, matches[0]))
+            with open(file_path, "rb") as f:
+                return pickle.load(f)
 
+    ohe, tt_vcf, tt_pheno, ho_vcf, ho_pheno = [
+        load_by_pattern(pattern) for pattern in file_patterns
+    ]
 
-    ohe = pickle.load(
-        open(os.path.relpath(os.path.join(dir_path, "Oil_QTL_ohe.dat")), "rb")
-    )
-    tt_vcf = pickle.load(
-        open(
-            os.path.relpath(os.path.join(dir_path, "Oil_QTL_tt_vcf.dat")), "rb"
-        )
-    )
-    tt_pheno = pickle.load(
-        open(
-            os.path.relpath(os.path.join(dir_path, "Oil_QTL_tt_pheno.dat")),
-            "rb",
-        )
-    )
-    ho_vcf = pickle.load(
-        open(
-            os.path.relpath(os.path.join(dir_path, "Oil_QTL_ho_vcf.dat")), "rb"
-        )
-    )
-    ho_pheno = pickle.load(
-        open(
-            os.path.relpath(os.path.join(dir_path, "Oil_QTL_ho_pheno.dat")),
-            "rb",
-        )
-    )
-    # combine traintest and ho data
     vcf = np.concatenate((tt_vcf, ho_vcf), axis=0)
     pheno = np.concatenate((tt_pheno, ho_pheno), axis=0)
+
     return ohe, vcf, pheno
 
 
-def instantiate_partitioner(partitioner_type: str, num_partitions: int):
+def instantiate_partitioner(partitioner_type: str, num_partitions: int, data_dir: str):
     """Initialise partitioner based on selected partitioner type
     and number of partitions"""
-    _, vcf, pheno = load_pickle_data()
+    _, vcf, pheno = load_pickle_data(data_dir)
 
     concat_dataset = np.concatenate((vcf, pheno), axis=1)
     indices = np.arange(len(concat_dataset))
@@ -176,13 +163,14 @@ def load_random_partitions(
     seed: int,
     num_partitions: int,
     partitioner_type: str,
+    data_directory: str,
 ) -> Tuple[DataLoader, DataLoader, List[int], List[int]]:
     """
     Load data using flower dataset partitioner
     """
     # initialize and get data partition
     partitioner = instantiate_partitioner(
-        partitioner_type=partitioner_type, num_partitions=num_partitions
+        partitioner_type=partitioner_type, num_partitions=num_partitions, data_dir=data_directory
     )
     partition = partitioner.load_partition(data_partition_id)
     train_indices, test_indices, num_train, num_test = (

@@ -15,5 +15,6 @@ DataAnalysis
 __pycache__ 
 *.torch
 *.npz
+.venv
 
 DataAnalysis/redteaming_answers_analysis/DogData_submissions_answers_scores/dogdata_problem2/data/allnodes_components2456_top200entropyCols_top4800edges_dog_chr15_intersect_canFam3_bed_with_Groups_v2 (1).csv

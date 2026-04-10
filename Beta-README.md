@@ -109,6 +109,7 @@ Regardless of how the parameter values are inputted, the values will be validate
 | `accuracy_tolerance` | Error tolerance to declare prediction as correct | number | min: 0, max: 1 |
 | `check_only` | A flag to turn on the check only feature, which ensures all parameter values are within the appropriate range and have the correct type. When true, the testbed will not run. The execution will stop after the parameters are validated. | boolean | — |
 | `config` | A way to specify a different configuration file path | string | — |
+| `data_dir` | The path to the inteded data files to run the testbed on | string | — |
 
 ### Paremeter settings
 To run centralized_training in run.py (running with the centralized_train.py file is allowed, but note that the configuration file will not be read for it), you _should_ be able to use the following parameter values. Please note that the output will still look like federated learning training rounds, even though it is only one client, one round, and one data partition:

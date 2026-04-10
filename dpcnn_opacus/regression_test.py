@@ -40,6 +40,7 @@ BASE_CONFIG: Dict[str, Any] = {
     "max_grad_norm": 1.0,
     "accuracy_tolerance": 0.0,
     "output_dir":"../reports",
+    "data_dir":"../data/Oil_binned5",
 }
 
 
@@ -300,6 +301,8 @@ CASES: List[ParamSpec] = [
     pytest.param(Case("52e. lower two values and reject too high num clients", _base_with(min_available_clients=2, min_evaluate_clients=3, min_fit_clients=3, num_partitions=1), allowed_exit_codes={1, 2}), id="t52e"),
     pytest.param(Case("51a. num_cpus invalid at 0", _base_with(num_cpus=0), allowed_exit_codes={1, 2}), id="t51a"),
     pytest.param(Case("51b. num_gpus valid at 1", _base_with(num_gpus=1)), id="t51b"),
+
+    pytest.param(Case("53. bad data directory path", _base_with(data_dir="foo_bar"), allowed_exit_codes={1, 2}), id="t53"),
 
     pytest.param(
         Case(
