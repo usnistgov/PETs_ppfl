@@ -29,13 +29,14 @@ print('USING DEVICE: ', DEVICE)
 def create_dataloaders(
     client_id: int,
     data_partitions_file,
+    data_directory,
     num_partitions,
     partitioner_type,
     test_fraction,
     seed,
     batch_divisor,
 ):
-    ohe, tt_vcf, tt_pheno = load_pickle_data()
+    ohe, tt_vcf, tt_pheno = load_pickle_data(data_directory)
     num_data_features = tt_vcf.shape[1]
     combined_dataset = np.concatenate((tt_vcf, tt_pheno), axis=1)
     batch_size = max(1, tt_vcf.shape[0] // batch_divisor)
@@ -238,6 +239,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.max_grad_norm = params.get('max_grad_norm', 1.0)
         self.opacus_secure_mode = params.get('opacus_secure_mode', False)
         self.output_dir = params.get('output_dir', None)
+        self.data_dir=params.get('data_dir', None)
 
         (
             self.num_data_features,
@@ -249,6 +251,7 @@ class FlowerClient(fl.client.NumPyClient):
         ) = create_dataloaders(
             self.client_id,
             self.data_partitions_file,
+            self.data_dir,
             self.num_partitions,
             self.partitions_type,
             self.test_fraction,

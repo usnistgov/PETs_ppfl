@@ -27,9 +27,9 @@ CORRELATION_TO_PARTITIONER = {
 }
 
 
-def load_pickle_data():
+def load_pickle_data(data_path="../data/Oil_binned5"):
     cur_path = os.path.dirname(__file__)
-
+    file_patterns = ["_ohe.dat", "_tt_vcf.dat", "_tt_pheno.dat", "_ho_vcf.dat", "_ho_pheno.dat"]
 
     """
     ORIGINAL CODE:
@@ -39,44 +39,31 @@ def load_pickle_data():
     RECOMMENDED CODE:
     """
 
-    dir_path = os.path.join(cur_path, "../data/", "Oil_binned5")
+    dir_path = os.path.join(cur_path, data_path)
 
     """
     INTENDED ACTION: Modify
 
     JUSTIFICAITON: Fixing the reference
     """
+    def load_by_pattern(pattern):
+            matches = [f for f in os.listdir(dir_path) if f.endswith(pattern)]
+            if not matches:
+                raise FileNotFoundError(f"No file found in {dir_path} matching {pattern}")
+            if len(matches) > 1:
+                raise ValueError(f"Multiple files found in {dir_path} matching {pattern}: {matches}")
 
+            file_path = os.path.relpath(os.path.join(dir_path, matches[0]))
+            with open(file_path, "rb") as f:
+                return pickle.load(f)
 
+    ohe, tt_vcf, tt_pheno, ho_vcf, ho_pheno = [
+        load_by_pattern(pattern) for pattern in file_patterns
+    ]
 
-    ohe = pickle.load(
-        open(os.path.relpath(os.path.join(dir_path, "Oil_QTL_ohe.dat")), "rb")
-    )
-    tt_vcf = pickle.load(
-        open(
-            os.path.relpath(os.path.join(dir_path, "Oil_QTL_tt_vcf.dat")), "rb"
-        )
-    )
-    tt_pheno = pickle.load(
-        open(
-            os.path.relpath(os.path.join(dir_path, "Oil_QTL_tt_pheno.dat")),
-            "rb",
-        )
-    )
-    ho_vcf = pickle.load(
-        open(
-            os.path.relpath(os.path.join(dir_path, "Oil_QTL_ho_vcf.dat")), "rb"
-        )
-    )
-    ho_pheno = pickle.load(
-        open(
-            os.path.relpath(os.path.join(dir_path, "Oil_QTL_ho_pheno.dat")),
-            "rb",
-        )
-    )
-    # combine traintest and ho data
     vcf = np.concatenate((tt_vcf, ho_vcf), axis=0)
     pheno = np.concatenate((tt_pheno, ho_pheno), axis=0)
+
     return ohe, vcf, pheno
 
 

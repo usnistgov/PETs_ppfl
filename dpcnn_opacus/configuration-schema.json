@@ -149,7 +149,11 @@
         "output_dir":{
             "description": "The output path for the generated reports",
             "type":"string"
+        },
+        "data_dir":{
+            "description": "the directory to the data files",
+            "type":"string"
         }
     },
-    "required": ["num_rounds","min_fit_clients","min_available_clients","min_evaluate_clients","data_partitions_file","partitioner_type","num_partitions","partition_id","client_id","seed","epochs","batch_divisor","n_models","test_frac","learning_rate","weight_decay","optimizer","opacus_secure_mode","epsilon","delta","max_grad_norm","accuracy_tolerance"]
+    "required": ["data_dir","num_rounds","min_fit_clients","min_available_clients","min_evaluate_clients","data_partitions_file","partitioner_type","num_partitions","partition_id","client_id","seed","epochs","batch_divisor","n_models","test_frac","learning_rate","weight_decay","optimizer","opacus_secure_mode","epsilon","delta","max_grad_norm","accuracy_tolerance"]
 }

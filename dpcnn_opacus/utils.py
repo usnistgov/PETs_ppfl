@@ -395,6 +395,7 @@ def override_cli(defaults: Dict[str, Any]):
     parser.add_argument("--max_grad_norm", type=float)
     parser.add_argument("--opacus_secure_mode", type=strtobool)
     parser.add_argument("--output_dir", type=str)
+    parser.add_argument("--data_dir", type=str)
 
     args, unknown = parser.parse_known_args()
 
@@ -464,8 +465,8 @@ def json_args_parser(schema_path="configuration-schema.json"):
             validate_file_path(parser.data_partitions_file)
             print("Data partitions file successfully validated")
         
-        validate_dir_path(parser.output_dir)
-        print("Output directory successfully validated")
+        validate_dir_path([parser.data_dir, parser.output_dir])
+        print("Data input and output directory successfully validated")
 
         if not (parser.min_available_clients == parser.min_evaluate_clients and 
                 parser.min_fit_clients == parser.min_evaluate_clients):
@@ -499,7 +500,7 @@ def json_args_parser(schema_path="configuration-schema.json"):
         exit(1)
     except FileNotFoundError as e:
         print(e)
-        print(1)
+        exit(1)
     except ValueError as e:
         print(f"Parameter value error occured. Please check the following issue and try again.\n{e}")
         exit(1)
