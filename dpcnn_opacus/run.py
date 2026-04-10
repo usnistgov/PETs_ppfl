@@ -65,7 +65,7 @@ accuracy_tolerance = args.model_params["accuracy_tolerance"]
 data_partitions_file = args.model_params["data_partitions_file"]
 out_dir = args.output_dir
 data_dir = args.data_dir
-optimizer_name = args.optimizer
+optimizer_name = args.model_params["optimizer"]
 
 # Privacy arguments
 epsilon = args.dp["epsilon"]  # Target privacy budget (epsilon)

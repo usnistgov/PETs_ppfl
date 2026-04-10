@@ -13,7 +13,7 @@ import os
 
 from jsonschema import validate, ValidationError
 
-TOP_KEYS = {"model_type", "num_cpus", "num_gpus", "output_dir"}
+TOP_KEYS = {"model_type", "num_cpus", "num_gpus", "output_dir", "data_dir"}
 FED_KEYS = {"num_rounds", "min_fit_clients", "min_available_clients", "min_evaluate_clients", "n_models", "federated_enabled"}
 DP_KEYS = {"opacus_secure_mode", "epsilon", "delta", "max_grad_norm", "dp_enabled"}
 
@@ -387,6 +387,7 @@ class ConfigPipeline:
         self.parser.add_argument("--num_cpus", type=int)
         self.parser.add_argument("--num_gpus", type=int)
         self.parser.add_argument("--output_dir", type=str)
+        self.parser.add_argument("--data_dir", type=str)
 
         # federated overrides
         self.parser.add_argument("--federated_enabled", type=strtobool)
