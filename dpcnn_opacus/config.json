@@ -1,6 +1,6 @@
 {
     "num_gpus":0,
-    "num_cpus":16,
+    "num_cpus":4,
     
     "num_rounds":2,
     "min_fit_clients":2,
@@ -13,7 +13,7 @@
     "partition_id":0,
     "client_id":0,
     "seed":42,
-    "epochs":20,
+    "epochs":2,
     "batch_divisor":5,
     "n_models":1,
     "test_frac":0.2,
@@ -27,5 +27,5 @@
     "opacus_secure_mode":true,
 
     "output_dir": "../reports",
-    "data_dir":"../genetic_plant_data"
+    "data_dir":"../data/Oil_binned5"
 }
