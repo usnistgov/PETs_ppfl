@@ -373,9 +373,23 @@ class UnknownParameterError(ValueError):
         self.parameters = parameters
         super().__init__(message)
 
+class ConfigArgs(argparse.Namespace):
+    def print(self):
+        for name, value in vars(self).items():
+            if not isinstance(value, dict):
+                print(f"{name}={value}")
+        print()
+        for name, value in vars(self).items():
+            if isinstance(value, dict):
+                print(f"{name}=" + "{")
+                for elem in value:
+                    print(f"  {elem}={value[elem]}")
+                print("}\n")
+
 class ConfigPipeline:
     def __init__(self) -> None:
         self.parser = argparse.ArgumentParser(exit_on_error=False)
+        self.args = None
 
         # "meta" args
         self.parser.add_argument("--config", default="config.json", type=str)
@@ -527,4 +541,5 @@ class ConfigPipeline:
             print()
             exit(1)
 
-        return argparse.Namespace(**cfg)
+        self.args = ConfigArgs(**cfg)
+        return self.args

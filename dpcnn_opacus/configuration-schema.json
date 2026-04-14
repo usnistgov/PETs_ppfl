@@ -1,159 +1,134 @@
 {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://example-testbed.com/",
-    "title": "Configuration Validation",
-    "description": "Test to make sure testbed parameters fall within approved ranges and types",
-    "type": "object",
-    "properties":
-    {
-        "num_gpus":
-            {
-                "description": "The number of gpus to use during training",
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 100
-            },
-        "num_cpus":
-            {
-                "description": "The number of cpus to use during training",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 100
-            },
-        "num_rounds":
-            {
-                "description": "The number of rounds of federated learning",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 100
-            },
-        "min_fit_clients":{
-                "description": "The minimum number of clients that must contribute to the federated training rounds",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 100
-            },
-        "min_available_clients":{
-                "description": "The minimum number of clients that must be connected to the server for the federated learning to begin",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 100
-            },
-        "min_evaluate_clients":{
-                "description": "The minimum number of clients that must participate in a federated evaluation round for the round to be successful",
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 100
-            },
-        "data_partitions_file":{
-                "description": "A path to a file that contains the data partitions - NEED TO RESTRICT THIS VALUE",
-                "type": "string"
-            },
-        "partitioner_type":{
-                "description": "The type of partitioner to use if a data partition was not provided",
-                "type": "string",
-                "enum": ["uniform", "linear", "square", "exponential"]
-            },
-        "num_partitions": {
-                "description": "The number of data partitions",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 100
-            },
-        "partition_id":{
-                "description": "Partition ID used for the current client",
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 100
-            },
-        "client_id":{
-                "description": "Client ID used for the current client",
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 100
-            },
-        "seed":{
-                "description": "The seed used to randomize training/testing",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 1000
-            },
-        "epochs":{
-                "description": "The number of model training epochs. An epoch is one full pass through a training dataset",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 100
-            },
-        "batch_divisor":{
-                "description": "The divisor to determine the number of batches (num_batches = dataset_size/batch_divisor) -- I can only check this after loading in the dataset, not in the json",
-                "type": "integer",
-                "minimum": 1
-            },
-        "n_models":{
-                "description": "The number of models to train. This can be useful if simulating federated learning locally",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 100
-            },
-        "test_frac":{
-                "description": "The fraction of the data set to set aside for testing",
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "exclusiveMaximum": 1
-            },
-        "learning_rate":{
-                "description": "Sets the model’s learning rate. This defines how much a model changes at each iteration",
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "exclusiveMaximum": 1
-            },
-        "weight_decay":{
-                "description": "Sets the model’s weight decay. This is a regularization method that penalizes high weights",
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "exclusiveMaximum": 0.1
-            },
-        "optimizer":{
-                "description": "The optimizer is responsible for adjusting model parameters based on the value of the loss function",
-                "type": "string",
-                "enum": ["sgd", "adamax"]
-            },
-        "opacus_secure_mode":{
-                "description": "Turns on differential privacy when set to True",
-                "type": "boolean"
-            },
-        "epsilon":{
-                "description": "Determines the amount of privacy added to the data. ",
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "exclusiveMaximum": 50
-            },
-        "delta":{
-                "description": "Measures the chance of a data breach. It defines the probability of the noise not adding sufficient privacy",
-                "type": "number",
-                "minimum": 0,
-                "maximum": 1
-            },
-        "max_grad_norm":{
-                "description": "Clips the gradients to be under this maximum before adding noise",
-                "type": "number",
-                "minimum": 0,
-                "maximum": 100
-            },
-        "accuracy_tolerance":{
-                "description": "Error tolerance to declare prediction as correct",
-                "type": "number",
-                "minimum": 0,
-                "maximum": 1
-            },
-        "output_dir":{
-            "description": "The output path for the generated reports",
-            "type":"string"
-        },
-        "data_dir":{
-            "description": "the directory to the data files",
-            "type":"string"
-        }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example-testbed.com/",
+  "title": "Configuration Validation",
+  "description": "Validate testbed parameters: types, ranges, and conditional requirements.",
+  "type": "object",
+
+  "required": ["model_type"],
+
+  "properties": {
+    "model_type": { "type": "string", "enum": ["xgboost", "dpcnn", "cnn"] },
+
+    "num_cpus": { "description": "Number of CPUs to use during training", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
+    "num_gpus": { "description": "Number of GPUs to use during training", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
+
+    "output_dir": { "description": "Output directory for reports", "type": "string", "default": "../reports"},
+    "data_dir": {"description": "Path to the input data", "type": "string", "default": "../data/Oil_binned5"},
+    "model_params" : {"type": "object", "default": {}},
+
+    "federated": {
+      "type": "object",
+      "properties": {
+        "federated_enabled": { "type": "boolean", "default": true },
+        "num_rounds": { "description": "Number of federated learning rounds", "type": "integer", "minimum": 1, "maximum": 100, "default": 3},
+        "min_fit_clients": { "description": "Min clients that must contribute to training", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
+        "n_models": { "description": "The number of models to train. This can be useful if simulating federated learning locally.", "type": "integer", "minimum": 1, "maximum": 100 },
+        "min_available_clients": { "description": "Min clients connected for FL to begin", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
+        "min_evaluate_clients": { "description": "Min clients for a successful eval round", "type": "integer", "minimum": 1, "maximum": 100, "default": 2}
+      }
     },
-    "required": ["data_dir","num_rounds","min_fit_clients","min_available_clients","min_evaluate_clients","data_partitions_file","partitioner_type","num_partitions","partition_id","client_id","seed","epochs","batch_divisor","n_models","test_frac","learning_rate","weight_decay","optimizer","opacus_secure_mode","epsilon","delta","max_grad_norm","accuracy_tolerance"]
+
+    "dp": {
+      "type": "object",
+      "properties": {
+        "dp_enabled": { "type": "boolean", "default": false },
+        "opacus_secure_mode": { "description": "Enable differential privacy", "type": "boolean", "default": false},
+        "epsilon": { "description": "DP epsilon", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 50, "default": 1},
+        "delta": { "description": "DP delta", "type": "number", "minimum": 0, "maximum": 1, "default": 1e-5},
+        "max_grad_norm": { "description": "DP max grad norm", "type": "number", "minimum": 0, "maximum": 100, "default":1}
+      }
+    }
+  },
+
+
+  "allOf": [
+    {
+      "oneOf": [
+        {
+          "properties":
+            {
+              "model_type": {"const": "cnn"},
+              "model_params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties":
+                {
+                  "data_partitions_file": { "description": "Path to a file that contains the data partitions", "type": "string", "default": ""},
+                  "partitioner_type": { "description": "Partitioner type (optional)", "type": "string", "enum": ["uniform", "linear", "square", "exponential"], "default": "uniform"},
+                  "num_partitions": { "description": "Number of data partitions", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
+                  "partition_id": { "description": "Partition ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100 , "default": 0},
+                  
+                  "client_id": { "description": "Client ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
+                  "seed": { "description": "Seed used to randomize training/testing", "type": "integer", "minimum": 1, "maximum": 1000, "default": 42},
+
+                  "epochs": { "description": "Number of training epochs", "type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                  "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 1, "default": 5},
+                  "test_frac": { "description": "Fraction of dataset set aside for testing", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.2},
+                  "learning_rate": { "description": "Learning rate", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.003},
+                  "weight_decay": { "description": "Weight decay", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 0.1, "default": 0.0001},
+                  "optimizer": { "description": "Optimizer name", "type": "string", "enum": ["sgd", "adamax"], "default": "sgd"}
+                }
+              }
+            }
+        },
+        {
+          "properties":
+            {
+              "model_type": {"const": "dpcnn"},
+              "model_params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties":
+                {
+                  "data_partitions_file": { "description": "Path to a file that contains the data partitions", "type": "string", "default": ""},
+                  "partitioner_type": { "description": "Partitioner type (optional)", "type": "string", "enum": ["uniform", "linear", "square", "exponential"], "default": "uniform"},
+                  "num_partitions": { "description": "Number of data partitions", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
+                  "partition_id": { "description": "Partition ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100 , "default": 0},
+                  
+                  "client_id": { "description": "Client ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
+                  "seed": { "description": "Seed used to randomize training/testing", "type": "integer", "minimum": 1, "maximum": 1000, "default": 42},
+
+                  "epochs": { "description": "Number of training epochs", "type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                  "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 1, "default": 5},
+                  "test_frac": { "description": "Fraction of dataset set aside for testing", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.2},
+                  "learning_rate": { "description": "Learning rate", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.003},
+                  "weight_decay": { "description": "Weight decay", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 0.1, "default": 0.0001},
+                  "optimizer": { "description": "Optimizer name", "type": "string", "enum": ["sgd", "adamax"], "default": "sgd"},
+                  "accuracy_tolerance": { "description": "Error tolerance to declare prediction correct", "type": "number", "minimum": 0, "maximum": 1, "default":0.1}
+                }
+              }
+            }
+        },
+        {
+          "properties":
+            {
+              "model_type": {"const": "xgboost"},
+              "model_params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties":
+                {
+                  "data_partitions_file": { "description": "Path to a file that contains the data partitions", "type": "string", "default": ""},
+                  "partitioner_type": { "description": "Partitioner type (optional)", "type": "string", "enum": ["uniform", "linear", "square", "exponential"], "default": "uniform"},
+                  "num_partitions": { "description": "Number of data partitions", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
+                  "partition_id": { "description": "Partition ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100 , "default": 0},
+                  
+                  "client_id": { "description": "Client ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
+                  "seed": { "description": "Seed used to randomize training/testing", "type": "integer", "minimum": 1, "maximum": 1000, "default": 42},
+
+                  "epochs": { "description": "Number of training epochs", "type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                  "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 1, "default": 5},
+                  "test_frac": { "description": "Fraction of dataset set aside for testing", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.2},
+                  
+                  "train_method": {"description": "The training method selected", "type": "string", "enum": ["bagging", "cyclic"], "default": "bagging"},
+                  "centralised_eval": { "type": "boolean", "default": true},
+                  "scaled_lr": { "type": "boolean", "default": true}
+                }
+              }
+            }
+        }
+      ]
+    }
+  ]
 }

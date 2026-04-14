@@ -28,15 +28,10 @@ pipeline = ConfigPipeline()
 args = pipeline.parse()
 
 if args.check_only:
-    print("Parameter values:")
-    for name, value in vars(args).items():
-        if(type(value)==dict):
-            print(f"{name}=" + "{")
-            for elem in value:
-                print(f"  {elem}={value[elem]}")
-            print("}")
-        else:
-            print(f"{name}={value}")
+    print("Parameter values:\n")
+
+    args.print()
+
     print("Parameters validated. Ending script")
     exit()
 '''
