@@ -10,18 +10,34 @@ from distutils.util import strtobool
 from pathlib import Path
 from typing import Any, Dict, Tuple, List, Set
 import os
+import pickle
 
 from jsonschema import validate, ValidationError
 
-TOP_KEYS = {"model_type", "num_cpus", "num_gpus", "output_dir", "data_dir"}
-FED_KEYS = {"num_rounds", "min_fit_clients", "min_available_clients", "min_evaluate_clients", "n_models", "federated_enabled"}
-DP_KEYS = {"opacus_secure_mode", "epsilon", "delta", "max_grad_norm", "dp_enabled"}
+TOP_KEYS = ("model_type", "num_cpus", "num_gpus", "output_dir", "data_dir")
+FED_KEYS = ("num_rounds", "min_fit_clients", "min_available_clients", "min_evaluate_clients", "n_models", "federated_enabled")
+DP_KEYS = ("opacus_secure_mode", "epsilon", "delta", "max_grad_norm", "dp_enabled")
 
 def get_device():
     if torch.cuda.is_available():
         return torch.device("cuda")
     else:
         return torch.device("cpu")
+
+def validate_data_size(data_path, batch_divisor):
+    pattern = ["_tt_vcf.dat", "_ho_vcf.dat"]
+    for pat in pattern: 
+        matches = [f for f in os.listdir(data_path) if f.endswith(pat)]
+        if not matches:
+            raise FileNotFoundError(f"No file found in {data_path} matching {pat}")
+        if len(matches) > 1:
+            raise ValueError(f"Multiple files found in {data_path} matching {pat}: {matches}")
+
+        file_path = os.path.relpath(os.path.join(data_path, matches[0]))
+        with open(file_path, "rb") as f:
+            num_data_rows = pickle.load(f).shape[0]
+            if batch_divisor > num_data_rows:
+                raise ValueError(f"Batch divisor (batch_divisor={batch_divisor}) is greater than train/test dataset size (num_rows={num_data_rows})")
 
 
 def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, num_bins: int = 10):
@@ -53,123 +69,6 @@ def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, nu
                 f"{bins[bin_idx]:.2f} - {bins[bin_idx + 1]:.2f}: "
                 f"{count} records"
             )
-
-
-def centralized_args_parser():
-    """
-    Parse arguments to define hyperparameter settings for centralized training.
-    """
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--seed",
-        default=42,
-        type=int,
-        help="Seed used for train/test splitting (default = 42).",
-    )
-    parser.add_argument(
-        "--test-fraction",
-        default=0.2,
-        type=float,
-        help="Test fraction for train/test splitting (default = 0.2).",
-    )
-    parser.add_argument(
-        "--epochs",
-        default=20,
-        type=int,
-        help="Number of training epochs (default = 20).",
-    )
-    parser.add_argument(
-        "--learning-rate",
-        default=0.003,
-        type=float,
-        help="Learning rate (default = 0.003).",
-    )
-    parser.add_argument(
-        "--batch-divisor",
-        default=40,
-        type=int,
-        help="Divisor to determine batch size (default = 40).",
-    )
-    parser.add_argument(
-        "--weight-decay",
-        default=0.0001,
-        type=float,
-        help="Weight decay constant (default = 0.0001).",
-    )
-    parser.add_argument(
-        "--accuracy-tolerance",
-        default=0.1,
-        type=float,
-        help="Error tolerance to declare prediction as correct "
-        "(default = 0.1). This is used for computing the "
-        "accuracy of the model.",
-    )
-    parser.add_argument(
-        "--data-partitions-file",
-        default=None,
-        type=str,
-        help=f"Path to the data partitions file (default = {None}).\n"
-        "If not used, then the data is split into n_models equal parts."
-        "If data-partitions file is provided, "
-        "then the number of models (n_models) "
-        "to train is equal to the number of "
-        "data partitions available in the file. In the data partitions, "
-        "each key is a client id and value for each key is a list of "
-        "dataset indices to be used for that client.",
-    )
-    parser.add_argument(
-        "--n-models",
-        default=1,
-        type=int,
-        help="Number of models to train (default = 1). "
-        "Data is split into n_models equal parts."
-        "This is used when the clustered-indices file is not found.",
-    )
-    parser.add_argument(
-        "--optimizer",
-        default="sgd",
-        type=str,
-        choices=["sgd", "adamax"],
-        help="Optimizer to use sgd or adamax (default = sgd).",
-    )
-    parser.add_argument(
-        "--opacus-secure-mode",
-        default=False,
-        type=bool,
-        help="Use Opacus secure mode. It is set to false by default for "
-        "faster experimentation (default = False).",
-    )
-    parser.add_argument(
-        "--epsilon",
-        default=1.0,
-        type=float,
-        help="Privacy parameter: epsilon (default = 1.0).",
-    )
-    parser.add_argument(
-        "--delta",
-        default=1e-5,
-        type=float,
-        help="Privacy parameter: delta (default = 1e-5).",
-    )
-    parser.add_argument(
-        "--max-grad-norm",
-        default=1.0,
-        type=float,
-        help="Privacy parameter: max grad norm (default = 1.0)."
-        "This clips the gradients to be under this value before "
-        "applying noise.",
-    )
-    parser.add_argument(
-        "--output-dir",
-        default=None,
-        type=str,
-        help="Output directory to save the trained models and metadata."
-        "This should be a relative path from the parent directory of "
-        "the centralized_train.py script.",
-    )
-    args = parser.parse_args()
-    return args
-
 
 def _is_object_schema(sch: dict) -> bool:
     return isinstance(sch, dict) and (sch.get("type") == "object" or "properties" in sch)
@@ -224,6 +123,22 @@ def apply_defaults(schema: dict, instance):
 
     return instance
 
+def _sync_enabled_flags(cfg: Dict[str, Any], raw_cfg: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
+    argd = vars(args)
+
+    cfg.setdefault("federated", {})
+    cfg.setdefault("dp", {})
+    cfg.setdefault("model_params", {})
+
+    fed_from_config = any(k in raw_cfg for k in FED_KEYS)
+    fed_from_cli = any(argd.get(k) is not None for k in FED_KEYS)
+    cfg["federated"]["federated_enabled"] = fed_from_config or fed_from_cli
+
+    dp_from_config = any(k in raw_cfg for k in DP_KEYS)
+    dp_from_cli = any(argd.get(k) is not None for k in DP_KEYS)
+    cfg["dp"]["dp_enabled"] = dp_from_config or dp_from_cli
+
+    return cfg
 
 def _to_layered_config(flat_cfg: Dict[str, Any]) -> Dict[str, Any]:
     cfg: Dict[str, Any] = {}
@@ -232,9 +147,6 @@ def _to_layered_config(flat_cfg: Dict[str, Any]) -> Dict[str, Any]:
     for k in TOP_KEYS:
         if k in flat_cfg:
             cfg[k] = flat_cfg[k]
-
-    # Ensure required model_type exists if caller forgot
-    cfg.setdefault("model_type", "dpcnn")
 
     # Federated group
     fed: Dict[str, Any] = {"federated_enabled": False}
@@ -374,16 +286,100 @@ class UnknownParameterError(ValueError):
         super().__init__(message)
 
 class ConfigArgs(argparse.Namespace):
+    TOP_PRINT_ORDER = [
+    "model_type",
+    "num_cpus",
+    "num_gpus",
+    "output_dir",
+    "data_dir",
+    "check_only",
+    ]
+
+    DICT_PRINT_ORDER = [
+        "federated",
+        "dp",
+        "model_params",
+    ]
+
+    NESTED_PRINT_ORDER = {
+        "federated": [
+            "federated_enabled",
+            "num_rounds",
+            "min_fit_clients",
+            "min_available_clients",
+            "min_evaluate_clients",
+            "n_models",
+        ],
+        "dp": [
+            "dp_enabled",
+            "opacus_secure_mode",
+            "epsilon",
+            "delta",
+            "max_grad_norm",
+        ],
+        "model_params": [
+            "data_partitions_file",
+            "partitioner_type",
+            "num_partitions",
+            "partition_id",
+            "client_id",
+            "seed",
+            "epochs",
+            "batch_divisor",
+            "test_fraction",
+            "learning_rate",
+            "weight_decay",
+            "optimizer",
+            "accuracy_tolerance",
+            "train_method",
+            "centralised_eval",
+            "scaled_lr",
+        ],
+    }
+
     def print(self):
-        for name, value in vars(self).items():
-            if not isinstance(value, dict):
-                print(f"{name}={value}")
+        data = vars(self)
+        printed = set()
+
+        # non-dict items first, in fixed order
+        for key in self.TOP_PRINT_ORDER:
+            if key in data and not isinstance(data[key], dict):
+                print(f"{key}={data[key]}")
+                printed.add(key)
+
+        # any other non-dict items not listed above
+        for key, value in data.items():
+            if key not in printed and not isinstance(value, dict):
+                print(f"{key}={value}")
+                printed.add(key)
+
         print()
-        for name, value in vars(self).items():
-            if isinstance(value, dict):
-                print(f"{name}=" + "{")
-                for elem in value:
-                    print(f"  {elem}={value[elem]}")
+
+        # dict items in fixed order
+        for key in self.DICT_PRINT_ORDER:
+            if key in data and isinstance(data[key], dict):
+                print(f"{key}={{")
+                nested = data[key]
+                nested_printed = set()
+
+                for subkey in self.NESTED_PRINT_ORDER.get(key, []):
+                    if subkey in nested:
+                        print(f"  {subkey}={nested[subkey]}")
+                        nested_printed.add(subkey)
+
+                for subkey, subvalue in nested.items():
+                    if subkey not in nested_printed:
+                        print(f"  {subkey}={subvalue}")
+
+                print("}\n")
+                printed.add(key)
+
+        # any other dicts not listed above
+        for key, value in data.items():
+            if key not in printed and isinstance(value, dict):
+                print(f"{key}={{")
+                for subkey, subvalue in value.items():
+                    print(f"  {subkey}={subvalue}")
                 print("}\n")
 
 class ConfigPipeline:
@@ -444,17 +440,17 @@ class ConfigPipeline:
         d = vars(args)
 
         # top-level
-        for k in ("model_type", "num_cpus", "num_gpus", "output_dir"):
+        for k in TOP_KEYS:
             if d.get(k) is not None:
                 cfg[k] = d[k]
 
         # federated
-        for k in ("federated_enabled", "num_rounds", "min_fit_clients", "min_available_clients", "min_evaluate_clients", "n_models"):
+        for k in FED_KEYS:
             if d.get(k) is not None:
                 _set_nested(cfg, ("federated", k), d[k])
 
         # dp
-        for k in ("dp_enabled", "opacus_secure_mode", "epsilon", "delta", "max_grad_norm"):
+        for k in DP_KEYS:
             if d.get(k) is not None:
                 _set_nested(cfg, ("dp", k), d[k])
 
@@ -474,7 +470,8 @@ class ConfigPipeline:
             "accuracy_tolerance",
             "train_method",
             "centralised_eval",
-            "scaled_lr"
+            "scaled_lr",
+            "test_fraction"
             # add more here as CLI grows
         )
 
@@ -500,26 +497,33 @@ class ConfigPipeline:
 
             # layer + apply schema defaults
             cfg = _to_layered_config(raw_cfg)
+            cfg = self._apply_cli_overrides(cfg, args)
+            cfg = _sync_enabled_flags(cfg, raw_cfg, args)
             cfg = apply_defaults(schema=schema, instance=cfg)
 
-            # override with CLI
-            cfg = self._apply_cli_overrides(cfg, args)
+            # validate final config
+            validate(instance=cfg, schema=schema)
 
             bad = find_unknown_fields(schema, cfg)
             if bad:
                 raise UnknownParameterError(bad, message="Unknown parameter name(s) in config. Please check the spelling of the inputs above and try again.")
 
-            # validate final config
-            validate(instance=cfg, schema=schema)
-
             # path checks / postprocessing (same logic you already had)
             if cfg.get("model_params", {}).get("data_partitions_file", "") not in ("", None):
                 validate_file_path(cfg["model_params"]["data_partitions_file"])
             validate_dir_path(cfg["output_dir"])
+            validate_dir_path(cfg["data_dir"])
+
+            # ensure batch_divisor size aligns with data size
+            validate_data_size(cfg["data_dir"], cfg["model_params"]["batch_divisor"])
 
             # your equalization logic
+            if cfg["model_params"]["partition_id"] > cfg["model_params"]["num_partitions"]:
+                raise ValueError("partition_id must be <= num_partitions.")
+
             if cfg.get("federated", {}).get("federated_enabled", False):
                 fed = cfg["federated"]
+                print(f"Normalizing min_available_clients, min_evaluate_clients, and min_fit_clients to their minimum value.")
                 if not (fed["min_available_clients"] == fed["min_evaluate_clients"] == fed["min_fit_clients"]):
                     min_val = min(fed["min_available_clients"], fed["min_evaluate_clients"], fed["min_fit_clients"])
                     fed["min_available_clients"] = min_val
@@ -540,6 +544,21 @@ class ConfigPipeline:
                     print(f"{elem}\t", end="")
             print()
             exit(1)
+        except FileNotFoundError as e:
+            print(e)
+            exit(1)
+        except json.JSONDecodeError as e:
+            print(f"An error occured while parsing the config file.", end = "")
+            print(f"Please check the following issue(s): {e.message}.")
+            exit(1)
+        except ValidationError as e:
+            print(f"An error occured during configuration validation.", end = "")
+            print(f"Please check the following issue(s): {e.message}.")
+            exit(1)
+        except ValueError as e:
+            print(e)
+            exit(1)
+        
 
         self.args = ConfigArgs(**cfg)
         return self.args
