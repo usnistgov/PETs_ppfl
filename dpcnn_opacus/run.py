@@ -15,6 +15,20 @@ from client import FlowerClient
 from server import create_strategy
 from utils import get_device, ConfigPipeline
 
+### REBECCA NOTES ###
+'''
+Ideally, this run.py should be a driver that calls out to the other model types. The other model types could be moved into a class-like structure, 
+with similar features inherited. There are probably nuances with how the clients are set up that will need to be understood. 
+
+Proposed steps:
+1) move over key pieces of code for other model types into a /tmp/ folder
+2) get this running with the /tmp/folder, no or minimal changes to code
+3) create the base model class with core features (load model, save model, etc.)
+4) create the three specific model classes (dpcnn, cnn, xgboost)
+5) move that code over, adjust this run.py to be a cleaner driver
+6) update documentation (beta-README.md and README.md)
+'''
+### END REBECCA NOTES ###
 
 # Parse arguments for flower server and client
 '''
