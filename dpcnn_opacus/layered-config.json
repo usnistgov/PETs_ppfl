@@ -1,5 +1,0 @@
-{
-  "model_type": "dpcnn",
-  "num_cpus":16,
-  "epochs": 5
-}
