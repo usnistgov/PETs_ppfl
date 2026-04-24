@@ -12,6 +12,7 @@ from flwr.common import ndarrays_to_parameters
 
 from dataset import load_pickle_data
 from model import Net
+from report import Report
 
 
 tol_offset = 0.01  # Small constant to avoid zero tolerance
@@ -104,6 +105,8 @@ def get_evaluate_fn(
                 Path(output_dir, "dpcnn_opacus_global_metadata.npz"),
                 **metadata
             )
+            report = Report(metadata)
+            report.save_to_file(Path(output_dir, "dpcnn_opacus_global_metadata.json"))
             torch.save(
                 model.state_dict(),
                 Path(output_dir, "dpcnn_opacus_global.torch"),

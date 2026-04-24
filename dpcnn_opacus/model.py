@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.metrics import mean_squared_error, r2_score
 from math import sqrt
+from report import Report
 
 
 class Net(nn.Module):
@@ -356,4 +357,6 @@ def save_cnn(
     metadata_path_name = f"{out_name}_meta.npz"
     metadata_path = Path(out_dir, metadata_path_name)
     np.savez(metadata_path, **metadata, allow_pickle=True)
+    report = Report(metadata)
+    report.save_to_file(Path(out_dir, f"{out_name}.json"))
     print(f"Model metadata saved to {metadata_path}")
