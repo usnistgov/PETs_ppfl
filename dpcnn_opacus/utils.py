@@ -163,7 +163,7 @@ def centralized_args_parser():
     )
     parser.add_argument(
         "--output-dir",
-        default=None,
+        default="../reports/",
         type=str,
         help="Output directory to save the trained models and metadata."
         "This should be a relative path from the parent directory of "

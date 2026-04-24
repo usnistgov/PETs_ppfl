@@ -13,6 +13,7 @@ from flwr.common import Context
 from client import FlowerClient
 from server import create_strategy
 from utils import flower_args_parser, json_args_parser, get_device
+from datetime import datetime
 
 
 # Parse arguments for flower server and client
@@ -56,7 +57,16 @@ test_fraction = args.test_frac
 epochs = args.epochs
 accuracy_tolerance = args.accuracy_tolerance
 data_partitions_file = args.data_partitions_file
+'''
+ORIGINAL CODE:
 out_dir = args.output_dir
+RECOMMENDED CODE:
+'''
+out_dir = os.path.join(args.output_dir, datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))
+'''
+INTENDED ACTION: Modify
+JUSTIFICATION: Creates a datetime folder on a run on top of the previously assigned directory. Provides additional separation for runs by default
+'''
 data_dir = args.data_dir
 optimizer_name = args.optimizer
 
