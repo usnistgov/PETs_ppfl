@@ -1,4 +1,6 @@
+import importlib.util
 import os
+import sys
 
 # Stop de-duplicating logs in Ray
 os.environ["RAY_DEDUP_LOGS"] = "0"
@@ -11,9 +13,7 @@ from flwr.client import ClientApp
 from flwr.server import ServerApp, ServerConfig, ServerAppComponents
 from flwr.common import Context
 
-from tmp.dpcnn.client import FlowerClient
-from tmp.dpcnn.server import create_strategy
-from tmp.dpcnn.utils import get_device, ConfigPipeline
+from utils import get_device, ConfigPipeline
 
 # Parse arguments for flower server and client
 '''
@@ -26,11 +26,10 @@ RECOMMENDED CODE:
 pipeline = ConfigPipeline()
 args = pipeline.parse()
 
+print("Parameter values:\n")
+args.print()
+
 if args.check_only:
-    print("Parameter values:\n")
-
-    args.print()
-
     print("Parameters validated. Ending script")
     exit()
 '''
@@ -39,7 +38,55 @@ INTENDED ACTION: Modify
 JUSTIFICAITON: Testing new parameterization methods
 '''
 
-print(f"flower args: {args}")
+#base params
+model_type = args.model_type
+num_cpus = args.num_cpus
+num_gpus = args.num_gpus
+out_dir = args.output_dir
+data_dir = args.data_dir
+
+#common params
+data_partitions_file = args.model_params["data_partitions_file"]
+partitioner_type = args.model_params["partitioner_type"]
+num_partitions = args.model_params["num_partitions"]
+partition_id = args.model_params["partition_id"]
+client_id = args.model_params["client_id"]
+seed = args.model_params["seed"]
+epochs = args.model_params["epochs"]
+batch_divisor = args.model_params["batch_divisor"]
+test_fraction = args.model_params["test_fraction"]
+
+
+#Federated params
+num_rounds = args.federated["num_rounds"]
+min_fit_clients = args.federated["min_fit_clients"]
+min_evaluate_clients = args.federated["min_evaluate_clients"]
+min_available_clients = args.federated["min_available_clients"]
+
+if model_type == "dpcnn":
+    learning_rate = args.model_params["learning_rate"]
+    weight_decay = args.model_params["weight_decay"]
+    optimizer_name = args.model_params["optimizer"]
+    accuracy_tolerance = args.model_params["accuracy_tolerance"]
+
+    # Privacy arguments
+    epsilon = args.dp["epsilon"]  # Target privacy budget (epsilon)
+    delta = args.dp["delta"]  # Target delta
+    max_grad_norm = args.dp["max_grad_norm"]  # param to clip the gradients
+    opacus_secure_mode = args.dp["opacus_secure_mode"]  # Use Opacus secure mode
+elif model_type == "cnn":
+    learning_rate = args.model_params["learning_rate"]
+    weight_decay = args.model_params["weight_decay"]
+    optimizer_name = args.model_params["optimizer"]
+elif model_type == "xgboost":
+    train_method = args.model_params["train_method"]
+    centralised_eval = args.model_params["centralised_eval"]
+    scaled_lr = args.model_params["scaled_lr"]
+else:
+    print("error - unhandled model type")
+    exit(1)
+
+'''
 # server arguments
 num_rounds = args.federated["num_rounds"]
 min_fit_clients = args.federated["min_fit_clients"]
@@ -61,11 +108,7 @@ out_dir = args.output_dir
 data_dir = args.data_dir
 optimizer_name = args.model_params["optimizer"]
 
-# Privacy arguments
-epsilon = args.dp["epsilon"]  # Target privacy budget (epsilon)
-delta = args.dp["delta"]  # Target delta
-max_grad_norm = args.dp["max_grad_norm"]  # param to clip the gradients
-opacus_secure_mode = args.dp["opacus_secure_mode"]  # Use Opacus secure mode
+'''
 
 # Get number of partitions from data_partitions_file
 # if it exists and is not None
@@ -97,6 +140,15 @@ min_available_clients = num_partitions
     JUSTIFICAITON: Original code was outside intended if statement
     '''
 
+#variable imports
+file_path = "tmp/" + args.model_type
+
+print(file_path)
+
+sys.path.append(file_path)
+
+from client import FlowerClient
+from server import create_strategy
 
 client_params = {
     # partitioner_type ->  uniform, linear, square, exponential

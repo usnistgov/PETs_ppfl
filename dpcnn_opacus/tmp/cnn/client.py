@@ -21,7 +21,7 @@ from dataset import (
     train_test_indices_split,
 )
 from model import Net, eval_cnn, save_cnn, train_cnn
-from utils import client_args_parser, get_device
+from utils import get_device
 
 
 # warnings.filterwarnings("ignore", category=UserWarning)

@@ -18,8 +18,8 @@ from tmp.dpcnn.dataset import (
     load_custom_partitions,
 )
 
-from tmp.dpcnn.model import Net, eval_cnn, save_cnn, train_cnn
-from tmp.dpcnn.utils import get_device
+from model import Net, eval_cnn, save_cnn, train_cnn
+from utils import get_device
 
 
 DEVICE = get_device()

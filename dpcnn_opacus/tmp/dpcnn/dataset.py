@@ -16,7 +16,7 @@ from flwr_datasets.partitioner import (
     SquarePartitioner,
     ExponentialPartitioner,
 )
-from tmp.dpcnn.utils import print_binned_counts
+from utils import print_binned_counts
 
 
 CORRELATION_TO_PARTITIONER = {
