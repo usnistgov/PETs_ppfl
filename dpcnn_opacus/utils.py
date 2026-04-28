@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Tuple, List, Set
 import os
 import pickle
-
+from difflib import get_close_matches
 from jsonschema import validate, ValidationError
 
 TOP_KEYS = ("model_type", "num_cpus", "num_gpus", "output_dir", "data_dir")
@@ -23,6 +23,67 @@ def get_device():
         return torch.device("cuda")
     else:
         return torch.device("cpu")
+
+def _model_param_keys_for_type(schema: Dict[str, Any], model_type: str) -> Set[str]:
+    keys: Set[str] = set()
+    for sub in schema.get("allOf", []):
+        for opt in sub.get("oneOf", []) or []:
+            const = opt.get("properties", {}).get("model_type", {}).get("const")
+            if const == model_type:
+                props = opt.get("properties", {}).get("model_params", {}).get("properties", {})
+                keys.update(props.keys())
+    return keys
+
+def _all_model_param_keys(schema: Dict[str, Any]) -> Set[str]:
+    keys: Set[str] = set()
+    for sub in schema.get("allOf", []):
+        for opt in sub.get("oneOf", []) or []:
+            props = opt.get("properties", {}).get("model_params", {}).get("properties", {})
+            keys.update(props.keys())
+    return keys
+
+def _allowed_flat_config_keys(schema: Dict[str, Any], raw_cfg: Dict[str, Any]) -> Set[str]:
+    allowed = set(TOP_KEYS) | set(FED_KEYS) | set(DP_KEYS)
+    model_type = raw_cfg.get("model_type")
+
+    if isinstance(model_type, str):
+        allowed |= _model_param_keys_for_type(schema, model_type)
+    else:
+        # if model_type is missing/invalid, use union so suggestions are still helpful
+        allowed |= _all_model_param_keys(schema)
+
+    return allowed
+
+def _find_unknown_flat_config_keys(
+    schema: Dict[str, Any],
+    raw_cfg: Dict[str, Any],
+    cutoff: float = 0.75
+) -> List[Tuple[str, str | None]]:
+    allowed = _allowed_flat_config_keys(schema, raw_cfg)
+    issues: List[Tuple[str, str | None]] = []
+
+    for key in raw_cfg.keys():
+        if key not in allowed:
+            match = get_close_matches(key, sorted(allowed), n=1, cutoff=cutoff)
+            issues.append((key, match[0] if match else None))
+
+    return issues
+
+def _suggest_cli_unknowns(parser: argparse.ArgumentParser, unknown: List[str], cutoff: float = 0.75) -> List[Tuple[str, str | None]]:
+    known_opts = sorted(
+        opt
+        for opt in parser._option_string_actions.keys()
+        if opt.startswith("--")
+    )
+
+    issues: List[Tuple[str, str | None]] = []
+    for token in unknown:
+        if not token.startswith("--"):
+            # likely a value attached to an unknown option; skip it
+            continue
+        match = get_close_matches(token, known_opts, n=1, cutoff=cutoff)
+        issues.append((token, match[0] if match else None))
+    return issues
 
 def validate_data_size(data_path, batch_divisor):
     pattern = ["_tt_vcf.dat", "_ho_vcf.dat"]
@@ -281,9 +342,19 @@ def find_unknown_fields(schema: Dict[str, Any], instance: Any, path: str = "") -
 
 class UnknownParameterError(ValueError):
     """Exception raised for unknown parameters."""
-    def __init__(self, parameters, message="Unknown parameter name(s). Please check the spelling of the inputs above and try again."):
-        self.parameters = parameters
-        super().__init__(message)
+    def __init__(self, issues, where="config"):
+        self.issues = issues
+        self.parameters = [name for name, _ in issues]
+
+        details = []
+        for name, suggestion in issues:
+            if suggestion:
+                details.append(f"'{name}' (did you mean '{suggestion}'?)")
+            else:
+                details.append(f"'{name}'")
+
+        msg = f"Unknown parameter name(s) in {where}: " + ", ".join(details)
+        super().__init__(msg)
 
 class ConfigArgs(argparse.Namespace):
     TOP_PRINT_ORDER = [
@@ -487,13 +558,18 @@ class ConfigPipeline:
         try:
             args, unknown = self.parser.parse_known_args()
             if unknown:
-                raise UnknownParameterError(unknown, message="Unknown parameter name(s) in CLI. Please check the spelling of the inputs above and try again.")
+                issues = _suggest_cli_unknowns(self.parser, unknown)
+                raise UnknownParameterError(issues, where="CLI")
 
             # validate paths exist
             validate_file_path([args.config, args.schema])
 
             schema = self._load_json(args.schema)
             raw_cfg = self._load_json(args.config)
+
+            unknown_config_keys = _find_unknown_flat_config_keys(schema, raw_cfg)
+            if unknown_config_keys:
+                raise UnknownParameterError(unknown_config_keys, where="config file")
 
             # layer + apply schema defaults
             cfg = _to_layered_config(raw_cfg)
@@ -537,12 +613,6 @@ class ConfigPipeline:
                 cfg["dp"]["opacus_secure_mode"] = False
         except UnknownParameterError as e:
             print(e)
-            for elem in e.parameters:
-                if "--" in elem:
-                    print(f"{elem[2:]}\t", end="")
-                else:
-                    print(f"{elem}\t", end="")
-            print()
             exit(1)
         except FileNotFoundError as e:
             print(e)
@@ -552,7 +622,7 @@ class ConfigPipeline:
             print(f"Please check the following issue(s): {e.message}.")
             exit(1)
         except ValidationError as e:
-            print(f"An error occured during configuration validation.", end = "")
+            print(f"An error occured during configuration validation. ", end = "")
             print(f"Please check the following issue(s): {e.message}.")
             exit(1)
         except ValueError as e:

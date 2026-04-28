@@ -1,6 +1,4 @@
 {
-  "model_type":"cnn",
-  "epochs":3,
-  "num_rounds":2,
+  "model_type":"dpcnn",
   "num_cpus":12
 }
