@@ -56,6 +56,10 @@ epochs = args.model_params["epochs"]
 batch_divisor = args.model_params["batch_divisor"]
 test_fraction = args.model_params["test_fraction"]
 
+learning_rate = None; weight_decay = None; optimizer_name = None
+accuracy_tolerance = None; epsilon = None; delta = None; max_grad_norm = None; opacus_secure_mode = None
+train_method = None; centralised_eval = None; scaled_lr = None
+
 
 #Federated params
 num_rounds = args.federated["num_rounds"]

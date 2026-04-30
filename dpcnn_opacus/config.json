@@ -1,4 +1,4 @@
 {
-  "model_type":"dpcnn",
+  "model_type":"cnn",
   "num_cpus":12
 }

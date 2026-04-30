@@ -219,28 +219,28 @@ class FlowerClient(fl.client.NumPyClient):
     def __init__(
         self, context: Context, client_id: int, params: Dict[str, Any]
     ):
-        self.seed = params.get('seed', 42)
+        self.seed = params.get('seed')
         torch.manual_seed(self.seed)
         self.current_round = 0
         self.client_state = context.state
         self.client_id = client_id
-        self.partitions_type = params.get('partitions_type', 'uniform')
-        self.num_partitions = params.get('num_partitions', 4)
-        self.partition_id = params.get('partition_id', 0)
-        self.batch_divisor = params.get('batch_divisor', 40)
-        self.learning_rate = params.get('learning_rate', 0.003)
-        self.weight_decay = params.get('weight_decay', 0.0001)
-        self.test_fraction = params.get('test_fraction', 0.2)
-        self.epochs = params.get('epochs', 10)
-        self.accuracy_tolerance = params.get('accuracy_tolerance', 0.0)
-        self.data_partitions_file = params.get('data_partitions_file', None)
-        self.optimizer_name = params.get('optimizer_name', 'adamax')
-        self.epsilon = params.get('epsilon', 1.0)
-        self.delta = params.get('delta', 1e-5)
-        self.max_grad_norm = params.get('max_grad_norm', 1.0)
-        self.opacus_secure_mode = params.get('opacus_secure_mode', False)
-        self.output_dir = params.get('output_dir', None)
-        self.data_dir=params.get('data_dir', None)
+        self.partitions_type = params.get('partitions_type')
+        self.num_partitions = params.get('num_partitions')
+        self.partition_id = params.get('partition_id')
+        self.batch_divisor = params.get('batch_divisor')
+        self.learning_rate = params.get('learning_rate')
+        self.weight_decay = params.get('weight_decay')
+        self.test_fraction = params.get('test_fraction')
+        self.epochs = params.get('epochs')
+        self.accuracy_tolerance = params.get('accuracy_tolerance')
+        self.data_partitions_file = params.get('data_partitions_file')
+        self.optimizer_name = params.get('optimizer_name')
+        self.epsilon = params.get('epsilon')
+        self.delta = params.get('delta')
+        self.max_grad_norm = params.get('max_grad_norm')
+        self.opacus_secure_mode = params.get('opacus_secure_mode')
+        self.output_dir = params.get('output_dir')
+        self.data_dir=params.get('data_dir')
 
         (
             self.num_data_features,

@@ -16,14 +16,14 @@ class Net(nn.Module):
         self.dropout2 = nn.Dropout1d(0.1)
         self.conv3 = nn.Conv1d(10, 8, kernel_size=8, padding=1)
         self.pool = nn.MaxPool1d(2, 2)
-        self.batch_norm1 = nn.BatchNorm1d(8)
+        self.batch_norm1 = nn.GroupNorm(num_groups=1, num_channels=8) 
         self.fc1 = nn.Linear(
             in_features=self._calculate_flatten_size(features), out_features=48
         )
         self.fc2 = nn.Linear(in_features=48, out_features=32)
         self.fc3 = nn.Linear(in_features=32, out_features=16)
-        self.batch_norm2 = nn.BatchNorm1d(16)
-        self.output = nn.Linear(in_features=16, out_features=2)
+        self.batch_norm2 = nn.LayerNorm(16)
+        self.output = nn.Linear(in_features=16, out_features=5)
 
     def _calculate_flatten_size(self, features: int):
         device = next(self.parameters()).device
@@ -31,7 +31,7 @@ class Net(nn.Module):
             x = torch.zeros(1, 1, features).to(device)
             x = self.conv1(x)
             x = F.relu(x)
-            x = self.dropout1(x)
+            x = self.dropout1(x) 
             x = self.conv2(x)
             x = F.relu(x)
             x = self.dropout2(x)
@@ -70,7 +70,7 @@ class Net(nn.Module):
         x = F.relu(x)
         x = self.batch_norm2(x)
         x = self.output(x)
-        x = F.softmax(x, dim=1)  # Changed to softmax activation
+        #x = F.softmax(x, dim=1)  # Changed to softmax activation
         return x
 
 
@@ -194,16 +194,23 @@ def save_cnn(
     metadata: Dict[str, any],
     name: str,
     round_number: int | None = None,
+    output_dir: str | None = None,
 ):
+    if output_dir is None:
+        out_dir = Path(__file__).parent
+    else:
+        out_dir = Path(output_dir).absolute()
+    if not out_dir.exists():
+        out_dir.mkdir(parents=True)
+
     out_name = (
         f"{name}_round_{round_number}" if round_number is not None else name
     )
-    parent_path = Path(__file__).parent
-    model_path = Path(parent_path, f"{out_name}.torch")
+    model_path = Path(out_dir, f"{out_name}.torch")
     torch.save(model.state_dict(), model_path)
     print(f"Model saved to {model_path}")
 
     metadata_path_name = f"{out_name}_meta.npz"
-    metadata_path = Path(parent_path, metadata_path_name)
-    np.savez(metadata_path, **metadata)
+    metadata_path = Path(out_dir, metadata_path_name)
+    np.savez(metadata_path, **metadata, allow_pickle=True)
     print(f"Model metadata saved to {metadata_path}")

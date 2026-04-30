@@ -7,26 +7,10 @@ from torch.utils.data import DataLoader
 import flwr as fl
 from flwr.common import Metrics
 from flwr.common import ndarrays_to_parameters
+from pathlib import Path
 
 from dataset import load_pickle_data
 from model import Net
-from utils import server_args_parser
-
-
-# Parse arguments for client parameters
-args = server_args_parser()
-print(f"server args: {args}")
-num_rounds = args.num_rounds
-min_fit_clients = args.min_fit_clients
-min_evaluate_clients = args.min_evaluate_clients
-min_available_clients = args.min_available_clients
-
-
-ohe, vcf, pheno = load_pickle_data()
-combined_dataset = np.concatenate((vcf, pheno), axis=1)
-
-test_loader = DataLoader(combined_dataset, batch_size=64, shuffle=False)
-
 
 def eval_model(model, test_loader):
     correct = 0
@@ -52,23 +36,35 @@ def eval_model(model, test_loader):
     return test_loss, test_accuracy
 
 
-def get_evaluate_fn(test_loader: DataLoader):
+def get_evaluate_fn(num_data_features, num_rounds, test_loader, output_dir):
     """Return a function that can be called to do global evaluation."""
 
     def evaluate_fn(server_round: int, parameters, config):
         """Evaluate global model on the whole test set."""
         if server_round == 0:
             return 0.0, {"accuracy": 0.0}
-        model = Net(vcf.shape[1])
-        # set parameters to the model
-        params_dict = zip(model.state_dict().keys(), parameters)
-        state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
+
+        model = Net(num_data_features)
+
+        state_dict = OrderedDict()
+        for (key, ref_tensor), value in zip(model.state_dict().items(), parameters):
+            state_dict[key] = torch.tensor(
+                value,
+                dtype=ref_tensor.dtype,
+                device=ref_tensor.device,
+            )
+
         model.load_state_dict(state_dict, strict=True)
         model.eval()
+
         loss, accuracy = eval_model(model, test_loader)
-        print('GLOBAL ACCURACY:', accuracy)
+        print("GLOBAL ACCURACY:", accuracy)
+
         if server_round == num_rounds:
-            torch.save(model.state_dict(), "cnn_global.torch")
+            out_dir = Path(output_dir).absolute()
+            out_dir.mkdir(parents=True, exist_ok=True)
+            torch.save(model.state_dict(), Path(out_dir, "cnn_global.torch"))
+
         return loss, {"accuracy": accuracy}
 
     return evaluate_fn
@@ -90,21 +86,25 @@ def fit_round(server_round: int):
 def get_parameters(net) -> List[np.ndarray]:
     return [val.cpu().numpy() for _, val in net.state_dict().items()]
 
-params = get_parameters(Net(vcf.shape[1]))
+def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
+    _, vcf, pheno = load_pickle_data(strategy_params['data_dir'])
+    combined_dataset = np.concatenate((vcf, pheno), axis=1)
+    test_loader = DataLoader(combined_dataset, batch_size=64, shuffle=False)
+    num_data_features = vcf.shape[1]
+    params = get_parameters(Net(num_data_features))
 
-# Define strategy
-strategy = fl.server.strategy.FedAvg(
+    strategy = fl.server.strategy.FedAvg(
     initial_parameters=ndarrays_to_parameters(params),
-    evaluate_fn=get_evaluate_fn(test_loader),
+    evaluate_fn=get_evaluate_fn(
+        num_data_features,
+        strategy_params['num_rounds'],
+        test_loader,
+        strategy_params['output_dir'],
+    ),
     evaluate_metrics_aggregation_fn=weighted_average,
-    min_fit_clients=min_fit_clients,
-    min_evaluate_clients=min_evaluate_clients,
-    min_available_clients=min_available_clients,
-    on_fit_config_fn=fit_round)
-
-# Start Flower server
-fl.server.start_server(
-    server_address="0.0.0.0:8080",
-    config=fl.server.ServerConfig(num_rounds=num_rounds),
-    strategy=strategy,
-)
+    min_fit_clients=strategy_params['min_fit_clients'],
+    min_evaluate_clients=strategy_params['min_evaluate_clients'],
+    min_available_clients=strategy_params['min_available_clients'],
+    on_fit_config_fn=fit_round,
+    )
+    return strategy

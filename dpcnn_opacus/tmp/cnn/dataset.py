@@ -26,44 +26,39 @@ def pickle_params(best_params, filename):
     pickle.dump(best_params, open(f"./cnn/{filename}.dat", "wb"))
 
 
-def load_pickle_data():
-    cur_path = os.path.dirname(__file__)
-    dir_path = os.path.join(cur_path, "..", "genetic_plant_data")
-    ohe = pickle.load(
-        open(os.path.relpath(os.path.join(dir_path, "FC_QTL_ohe.dat")), "rb")
-    )
-    tt_vcf = pickle.load(
-        open(
-            os.path.relpath(os.path.join(dir_path, "FC_QTL_tt_vcf.dat")), "rb"
-        )
-    )
-    tt_pheno = pickle.load(
-        open(
-            os.path.relpath(os.path.join(dir_path, "FC_QTL_tt_pheno.dat")),
-            "rb",
-        )
-    )
-    ho_vcf = pickle.load(
-        open(
-            os.path.relpath(os.path.join(dir_path, "FC_QTL_ho_vcf.dat")), "rb"
-        )
-    )
-    ho_pheno = pickle.load(
-        open(
-            os.path.relpath(os.path.join(dir_path, "FC_QTL_ho_pheno.dat")),
-            "rb",
-        )
-    )
-    # combine traintest and ho data
+def load_pickle_data(data_path):
+    cur_path = os.path.dirname(__file__).split("/tmp/")[0]
+    file_patterns = ["_ohe.dat", "_tt_vcf.dat", "_tt_pheno.dat", "_ho_vcf.dat", "_ho_pheno.dat"]
+
+    dir_path = os.path.join(cur_path, data_path)
+
+    def load_by_pattern(pattern):
+        matches = [f for f in os.listdir(dir_path) if f.endswith(pattern)]
+        if not matches:
+            raise FileNotFoundError(
+                f"No file found in {dir_path} matching {pattern}"
+            )
+        if len(matches) > 1:
+            raise ValueError(
+                f"Multiple files found in {dir_path} matching {pattern}: "
+                f"{matches}"
+            )
+        with open(os.path.relpath(os.path.join(dir_path, matches[0])), "rb") as f:
+            return pickle.load(f)
+
+    ohe, tt_vcf, tt_pheno, ho_vcf, ho_pheno = [
+        load_by_pattern(pattern) for pattern in file_patterns
+    ]
+
     vcf = np.concatenate((tt_vcf, ho_vcf), axis=0)
     pheno = np.concatenate((tt_pheno, ho_pheno), axis=0)
     return ohe, vcf, pheno
 
 
-def instantiate_partitioner(partitioner_type: str, num_partitions: int):
+def instantiate_partitioner(partitioner_type: str, num_partitions: int, data_dir=None):
     """Initialise partitioner based on selected partitioner type
     and number of partitions"""
-    _, vcf, pheno = load_pickle_data()
+    _, vcf, pheno = load_pickle_data(data_dir)
 
     concat_dataset = np.concatenate((vcf, pheno), axis=1)
     indices = np.arange(len(concat_dataset))
