@@ -1,0 +1,152 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Client Outputs",
+    "description": "Schema defining the output of the data contents",
+    "type": "object",
+    "properties":
+    {
+        "created on":
+            {
+                "description": "The timestamp of when the report was created",
+                "type": "string"
+            },
+        "model id":
+            {
+                "description": "The id of the model trained",
+                "type": "integer"
+            },
+        "partitions file":
+            {
+                "description": "The file used to partition the data for training",
+                "type": "string"
+            },
+        "min_fit_clients":{
+                "description": "The minimum number of clients that must contribute to the federated training rounds",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+            },
+        "min_available_clients":{
+                "description": "The minimum number of clients that must be connected to the server for the federated learning to begin",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+            },
+        "min_evaluate_clients":{
+                "description": "The minimum number of clients that must participate in a federated evaluation round for the round to be successful",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+            },
+        "data_partitions_file":{
+                "description": "A path to a file that contains the data partitions - NEED TO RESTRICT THIS VALUE",
+                "type": "string"
+            },
+        "partitioner_type":{
+                "description": "The type of partitioner to use if a data partition was not provided",
+                "type": "string",
+                "enum": ["uniform", "linear", "square", "exponential"]
+            },
+        "num_partitions": {
+                "description": "The number of data partitions",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+            },
+        "partition_id":{
+                "description": "Partition ID used for the current client",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+            },
+        "client_id":{
+                "description": "Client ID used for the current client",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+            },
+        "seed":{
+                "description": "The seed used to randomize training/testing",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+            },
+        "epochs":{
+                "description": "The number of model training epochs. An epoch is one full pass through a training dataset",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+            },
+        "batch_divisor":{
+                "description": "The divisor to determine the number of batches (num_batches = dataset_size/batch_divisor) -- I can only check this after loading in the dataset, not in the json",
+                "type": "integer",
+                "minimum": 1
+            },
+        "n_models":{
+                "description": "The number of models to train. This can be useful if simulating federated learning locally",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+            },
+        "test_frac":{
+                "description": "The fraction of the data set to set aside for testing",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+            },
+        "learning_rate":{
+                "description": "Sets the model’s learning rate. This defines how much a model changes at each iteration",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+            },
+        "weight_decay":{
+                "description": "Sets the model’s weight decay. This is a regularization method that penalizes high weights",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 0.1
+            },
+        "optimizer":{
+                "description": "The optimizer is responsible for adjusting model parameters based on the value of the loss function",
+                "type": "string",
+                "enum": ["sgd", "adamax"]
+            },
+        "opacus_secure_mode":{
+                "description": "Turns on differential privacy when set to True",
+                "type": "boolean"
+            },
+        "epsilon":{
+                "description": "Determines the amount of privacy added to the data. ",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 50
+            },
+        "delta":{
+                "description": "Measures the chance of a data breach. It defines the probability of the noise not adding sufficient privacy",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+            },
+        "max_grad_norm":{
+                "description": "Clips the gradients to be under this maximum before adding noise",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+            },
+        "accuracy_tolerance":{
+                "description": "Error tolerance to declare prediction as correct",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+            },
+        "output_dir":{
+            "description": "The output path for the generated reports",
+            "type":"string"
+        },
+        "data_dir":{
+            "description": "the directory to the data files",
+            "type":"string"
+        }
+    },
+    "required": ["data_dir","num_rounds","min_fit_clients","min_available_clients","min_evaluate_clients","data_partitions_file","partitioner_type","num_partitions","partition_id","client_id","seed","epochs","batch_divisor","n_models","test_frac","learning_rate","weight_decay","optimizer","opacus_secure_mode","epsilon","delta","max_grad_norm","accuracy_tolerance"]
+}

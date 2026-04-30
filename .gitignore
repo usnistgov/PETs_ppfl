@@ -8,6 +8,8 @@ OIL_QTL_ho_pheno.dat
 .venv/*
 *.dat
 reports/*
+!reports/SampleReportsV1/
+!reports/SampleReportsV1/**
 inputs.py
 .pytest_cache
 DataAnalysis
