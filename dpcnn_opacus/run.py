@@ -59,6 +59,13 @@ epochs = args.model_params["epochs"]
 accuracy_tolerance = args.model_params["accuracy_tolerance"]
 data_partitions_file = args.model_params["data_partitions_file"]
 out_dir = args.output_dir
+RECOMMENDED CODE:
+'''
+out_dir = os.path.join(args.output_dir, datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))
+'''
+INTENDED ACTION: Modify
+JUSTIFICATION: Creates a datetime folder on a run on top of the previously assigned directory. Provides additional separation for runs by default
+'''
 data_dir = args.data_dir
 optimizer_name = args.model_params["optimizer"]
 
