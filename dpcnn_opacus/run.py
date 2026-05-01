@@ -156,9 +156,10 @@ from server import create_strategy
 
 client_params = {
     # partitioner_type ->  uniform, linear, square, exponential
-    'partitioner_type': partitioner_type,
+    'partitions_type': partitioner_type,
     'num_partitions': num_partitions,
-    'batch_division': batch_divisor,
+    'batch_divisor': batch_divisor,
+    'partition_id': partition_id,
     'learning_rate': learning_rate,
     'weight_decay': weight_decay,
     'epochs': epochs,
