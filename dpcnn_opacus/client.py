@@ -163,7 +163,7 @@ def save_client(
         "epsilon per epoch": np.array(per_epoch_metrics["eps_spent"]),
         "train predictions": np.array(predictions["train"]),
         "test predictions": np.array(predictions["test"]),
-        "hyperparameters": json.dumps(hyperparams),
+        "hyperparameters": hyperparams
     }
 
     filename = f'dpcnn{hyperparams["epsilon"]}_opacus_oil_{client_id}'
