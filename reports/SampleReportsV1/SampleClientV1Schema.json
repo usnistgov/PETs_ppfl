@@ -150,3 +150,39 @@
     },
     "required": ["data_dir","num_rounds","min_fit_clients","min_available_clients","min_evaluate_clients","data_partitions_file","partitioner_type","num_partitions","partition_id","client_id","seed","epochs","batch_divisor","n_models","test_frac","learning_rate","weight_decay","optimizer","opacus_secure_mode","epsilon","delta","max_grad_norm","accuracy_tolerance"]
 }
+
+
+{
+    "created on": "2026-04-24 15:24:40.582244",
+    "model id": 0,
+    "partitions file": "none",
+    "train accuracy": 0.02127659574468085,
+    "test accuracy": 0.010526315789473684,
+    "train mean squared error": 1.6443989755111332,
+    "test mean squared error": 1.702289968583251,
+    "train loss": 144.8086700439453,
+    "test loss": 120.62084636688232,
+    "train indices": [int],
+    "test indices": [int],
+    "train accuracy per epoch": [
+        float
+    ],
+    "test accuracy per epoch": [
+        float
+    ],
+    "train mse per epoch": [
+        float
+    ],
+    "test mse per epoch": [
+        float
+    ],
+    "losses per epoch": [
+        float
+    ],
+    "epsilon per epoch": [
+        float
+    ],
+    "train predictions": [float],
+    "test predictions": [float],
+    "hyperparameters": "{\"learning rate\": 0.003, \"weight decay\": 0.0001, \"batch divisor\": 40, \"epochs\": 1, \"seed\": 42, \"test fraction\": 0.2, \"accuracy tolerance\": 0.1, \"optimizer\": \"sgd\", \"epsilon\": 1, \"delta\": 1e-05, \"max grad norm\": 1}"
+}
