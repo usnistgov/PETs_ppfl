@@ -14,10 +14,6 @@ import pickle
 
 from jsonschema import validate, ValidationError
 
-TOP_KEYS = ("model_type", "num_cpus", "num_gpus", "output_dir", "data_dir")
-FED_KEYS = ("num_rounds", "min_fit_clients", "min_available_clients", "min_evaluate_clients", "n_models", "federated_enabled")
-DP_KEYS = ("opacus_secure_mode", "epsilon", "delta", "max_grad_norm", "dp_enabled")
-
 def get_device():
     if torch.cuda.is_available():
         return torch.device("cuda")
@@ -69,6 +65,14 @@ def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, nu
                 f"{bins[bin_idx]:.2f} - {bins[bin_idx + 1]:.2f}: "
                 f"{count} records"
             )
+def _iter_subschemas(sch: Dict[str, Any]):
+    if not isinstance(sch, dict):
+        return
+
+    for k in ("allOf", "oneOf", "anyOf"):
+        for sub in sch.get(k, []) if isinstance(sch.get(k), list) else []:
+            yield sub
+            yield from _iter_subschemas(sub)
 
 def _is_object_schema(sch: dict) -> bool:
     return isinstance(sch, dict) and (sch.get("type") == "object" or "properties" in sch)
@@ -123,60 +127,90 @@ def apply_defaults(schema: dict, instance):
 
     return instance
 
-def _sync_enabled_flags(cfg: Dict[str, Any], raw_cfg: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
-    argd = vars(args)
+def _build_schema_path_index(schema: Dict[str, Any]):
+    by_name: Dict[str, Tuple[str, ...]] = {}
+    by_dot: Dict[str, Tuple[str, ...]] = {}
+    name_to_paths: Dict[str, Set[Tuple[str, ...]]] = {}
+    seen_paths: Set[Tuple[str, ...]] = set()
 
-    cfg.setdefault("federated", {})
-    cfg.setdefault("dp", {})
-    cfg.setdefault("model_params", {})
+    for path, _ in _iter_schema_leaf_args(schema):
+        if path in seen_paths:
+            continue
+        seen_paths.add(path)
+        by_dot[".".join(path)] = path
+        name_to_paths.setdefault(path[-1], set()).add(path)
 
-    fed_from_config = any(k in raw_cfg for k in FED_KEYS)
-    fed_from_cli = any(argd.get(k) is not None for k in FED_KEYS)
-    cfg["federated"]["federated_enabled"] = fed_from_config or fed_from_cli
+    for name, paths in name_to_paths.items():
+        if len(paths) == 1:
+            by_name[name] = next(iter(paths))
 
-    dp_from_config = any(k in raw_cfg for k in DP_KEYS)
-    dp_from_cli = any(argd.get(k) is not None for k in DP_KEYS)
-    cfg["dp"]["dp_enabled"] = dp_from_config or dp_from_cli
+    return by_name, by_dot
+
+def _flatten_config_items(data: Dict[str, Any], prefix: Tuple[str, ...] = ()):
+    for key, value in data.items():
+        path = prefix + (key,)
+        if isinstance(value, dict):
+            yield from _flatten_config_items(value, path)
+        else:
+            yield ".".join(path), value
+
+def _top_level_object_schemas(schema: Dict[str, Any], instance: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    top_objects: Dict[str, Dict[str, Any]] = {}
+
+    for sch in _iter_applicable_schemas(schema, instance):
+        props = sch.get("properties", {})
+        if isinstance(props, dict):
+            for key, prop_schema in props.items():
+                if key not in top_objects and _is_object_schema(prop_schema):
+                    top_objects[key] = prop_schema
+
+    return top_objects
+
+def _sync_enabled_flags(cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+    top_objects = _top_level_object_schemas(schema, cfg)
+
+    for group_name, group_schema in top_objects.items():
+        cfg.setdefault(group_name, {})
+        group_cfg = cfg.get(group_name)
+
+        if not isinstance(group_cfg, dict):
+            continue
+
+        child_props: Dict[str, Any] = {}
+        for sch in _iter_applicable_schemas(group_schema, group_cfg):
+            props = sch.get("properties", {})
+            if isinstance(props, dict):
+                child_props.update(props)
+
+        enabled_keys = [
+            key for key, prop_schema in child_props.items()
+            if isinstance(prop_schema, dict)
+            and prop_schema.get("type") == "boolean"
+            and key.endswith("_enabled")
+        ]
+
+        if len(enabled_keys) == 1:
+            enabled_key = enabled_keys[0]
+            cfg[group_name][enabled_key] = any(k != enabled_key for k in group_cfg.keys())
 
     return cfg
 
-def _to_layered_config(flat_cfg: Dict[str, Any]) -> Dict[str, Any]:
+def _to_layered_config(flat_cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
     cfg: Dict[str, Any] = {}
+    by_name, by_dot = _build_schema_path_index(schema)
 
-    # Top-level
-    for k in TOP_KEYS:
-        if k in flat_cfg:
-            cfg[k] = flat_cfg[k]
+    # Keep top-level object groups present, like federated/dp/model_params
+    for group_name in _top_level_object_schemas(schema, flat_cfg).keys():
+        cfg[group_name] = {}
 
-    # Federated group
-    fed: Dict[str, Any] = {"federated_enabled": False}
-    for k in FED_KEYS:
-        if k in flat_cfg:
-            fed[k] = flat_cfg[k]
-    if len(fed) > 1 or "federated_enabled" in flat_cfg:
-        cfg["federated"] = fed
-    else:
-        # Keep federated present for tests that validate its parameters
-        cfg["federated"] = fed
-
-    # DP group
-    dp: Dict[str, Any] = {"dp_enabled": False}
-    for k in DP_KEYS:
-        if k in flat_cfg:
-            dp[k] = flat_cfg[k]
-    if len(dp) > 1 or "dp_enabled" in flat_cfg:
-        cfg["dp"] = dp
-    else:
-        # Keep dp present for tests that validate its parameters
-        cfg["dp"] = dp
-
-    # Model params group
-    mp: Dict[str, Any] = {}
-    for k, v in flat_cfg.items():
-        if k in TOP_KEYS or k in FED_KEYS or k in DP_KEYS:
-            continue
-        mp[k] = v
-    cfg["model_params"] = mp
+    for flat_key, value in _flatten_config_items(flat_cfg):
+        if flat_key in by_dot:
+            _set_nested(cfg, by_dot[flat_key], value)
+        elif "." not in flat_key and flat_key in by_name:
+            _set_nested(cfg, by_name[flat_key], value)
+        else:
+            # preserve unknown keys so find_unknown_fields() can report them
+            _set_nested(cfg, tuple(flat_key.split(".")), value)
 
     return cfg
 ###
@@ -239,13 +273,22 @@ def _iter_applicable_schemas(schema: Dict[str, Any], instance: Any) -> List[Dict
 
     return schemas
 
-def _allowed_keys_at_level(applicable: List[Dict[str, Any]]) -> Set[str]:
-    allowed: Set[str] = set()
+def _ordered_keys_at_level(applicable: List[Dict[str, Any]]) -> List[str]:
+    ordered: List[str] = []
+    seen: Set[str] = set()
+
     for sch in applicable:
         props = sch.get("properties")
         if isinstance(props, dict):
-            allowed.update(props.keys())
-    return allowed
+            for key in props.keys():
+                if key not in seen:
+                    ordered.append(key)
+                    seen.add(key)
+
+    return ordered
+
+def _allowed_keys_at_level(applicable: List[Dict[str, Any]]) -> Set[str]:
+    return set(_ordered_keys_at_level(applicable))
 
 def find_unknown_fields(schema: Dict[str, Any], instance: Any, path: str = "") -> List[str]:
     """
@@ -269,15 +312,109 @@ def find_unknown_fields(schema: Dict[str, Any], instance: Any, path: str = "") -
         # Recurse if value is an object and schema for that key looks object-ish in any applicable layer
         if isinstance(v, dict):
             # merge the property schemas for k from all applicable layers using allOf
-            prop_schemas = []
-            for sch in applicable:
-                props = sch.get("properties")
-                if isinstance(props, dict) and k in props:
-                    prop_schemas.append(props[k])
-            if prop_schemas:
-                bad.extend(find_unknown_fields({"allOf": prop_schemas}, v, p))
+            child_schema = _property_schema(schema, instance, k)
+            if child_schema:
+                bad.extend(find_unknown_fields(child_schema, v, p))
 
     return bad
+
+def _schema_key_order(schema: Dict[str, Any], instance: Dict[str, Any]) -> List[str]:
+    return _ordered_keys_at_level(_iter_applicable_schemas(schema, instance))
+
+def _property_schema(schema: Dict[str, Any], instance: Dict[str, Any], key: str) -> Dict[str, Any]:
+    prop_schemas = []
+
+    for sch in _iter_applicable_schemas(schema, instance):
+        props = sch.get("properties", {})
+        if isinstance(props, dict) and key in props and isinstance(props[key], dict):
+            prop_schemas.append(props[key])
+
+    if not prop_schemas:
+        return {}
+
+    return {"allOf": prop_schemas}
+
+def _print_config_by_schema(data: Dict[str, Any], schema: Dict[str, Any], indent: int = 0) -> None:
+    pad = "  " * indent
+    ordered_keys = _schema_key_order(schema, data)
+
+    for key in data.keys():
+        if key not in ordered_keys and not key.startswith("_"):
+            ordered_keys.append(key)
+
+    non_dict_keys = [key for key in ordered_keys if key in data and not isinstance(data[key], dict)]
+    dict_keys = [key for key in ordered_keys if key in data and isinstance(data[key], dict)]
+
+    for key in non_dict_keys:
+        if not "enabled" in key:
+            print(f"{pad}{key}={data[key]}")
+
+    if indent == 0 and dict_keys:
+        print()
+
+    for key in dict_keys:
+        print(f"{pad}{key}={{")
+        child_schema = _property_schema(schema, data, key)
+        _print_config_by_schema(data[key], child_schema, indent + 1)
+        print(f"{pad}}}")
+        if indent == 0:
+            print()
+
+def _argparse_type_from_schema(sch: Dict[str, Any]):
+    if not isinstance(sch, dict):
+        return str
+
+    t = sch.get("type")
+    if t == "boolean":
+        return strtobool
+    if t == "integer":
+        return int
+    if t == "number":
+        return float
+    if t == "array" or t == "object":
+        return json.loads
+    if t == "string":
+        return str
+
+    for sub in _iter_subschemas(sch):
+        sub_t = _argparse_type_from_schema(sub)
+        if sub_t is not str:
+            return sub_t
+
+    return str
+
+def _schema_choices(sch: Dict[str, Any]):
+    if not isinstance(sch, dict):
+        return None
+
+    if "enum" in sch and isinstance(sch["enum"], list):
+        return sch["enum"]
+
+    for sub in _iter_subschemas(sch):
+        choices = _schema_choices(sub)
+        if choices is not None:
+            return choices
+
+    return None
+
+def _iter_schema_leaf_args(schema: Dict[str, Any], prefix: Tuple[str, ...] = ()):
+    if not isinstance(schema, dict):
+        return
+
+    props = schema.get("properties", {})
+    if isinstance(props, dict):
+        for key, prop_schema in props.items():
+            path = prefix + (key,)
+            if _is_object_schema(prop_schema):
+                yield from _iter_schema_leaf_args(prop_schema, path)
+            else:
+                yield path, prop_schema
+
+    for sub in schema.get("allOf", []) or []:
+        yield from _iter_schema_leaf_args(sub, prefix)
+
+    for sub in schema.get("oneOf", []) or []:
+        yield from _iter_schema_leaf_args(sub, prefix)
 
 class UnknownParameterError(ValueError):
     """Exception raised for unknown parameters."""
@@ -286,198 +423,71 @@ class UnknownParameterError(ValueError):
         super().__init__(message)
 
 class ConfigArgs(argparse.Namespace):
-    TOP_PRINT_ORDER = [
-    "model_type",
-    "num_cpus",
-    "num_gpus",
-    "output_dir",
-    "data_dir",
-    "check_only",
-    ]
-
-    DICT_PRINT_ORDER = [
-        "federated",
-        "dp",
-        "model_params",
-    ]
-
-    NESTED_PRINT_ORDER = {
-        "federated": [
-            "federated_enabled",
-            "num_rounds",
-            "min_fit_clients",
-            "min_available_clients",
-            "min_evaluate_clients",
-            "n_models",
-        ],
-        "dp": [
-            "dp_enabled",
-            "opacus_secure_mode",
-            "epsilon",
-            "delta",
-            "max_grad_norm",
-        ],
-        "model_params": [
-            "data_partitions_file",
-            "partitioner_type",
-            "num_partitions",
-            "partition_id",
-            "client_id",
-            "seed",
-            "epochs",
-            "batch_divisor",
-            "test_fraction",
-            "learning_rate",
-            "weight_decay",
-            "optimizer",
-            "accuracy_tolerance",
-            "train_method",
-            "centralised_eval",
-            "scaled_lr",
-        ],
-    }
+    def __init__(self, schema: Dict[str, Any] | None = None, **kwargs):
+        super().__init__(**kwargs)
+        self._print_schema = schema or {}
 
     def print(self):
-        data = vars(self)
-        printed = set()
-
-        # non-dict items first, in fixed order
-        for key in self.TOP_PRINT_ORDER:
-            if key in data and not isinstance(data[key], dict):
-                print(f"{key}={data[key]}")
-                printed.add(key)
-
-        # any other non-dict items not listed above
-        for key, value in data.items():
-            if key not in printed and not isinstance(value, dict):
-                print(f"{key}={value}")
-                printed.add(key)
-
-        print()
-
-        # dict items in fixed order
-        for key in self.DICT_PRINT_ORDER:
-            if key in data and isinstance(data[key], dict):
-                print(f"{key}={{")
-                nested = data[key]
-                nested_printed = set()
-
-                for subkey in self.NESTED_PRINT_ORDER.get(key, []):
-                    if subkey in nested:
-                        print(f"  {subkey}={nested[subkey]}")
-                        nested_printed.add(subkey)
-
-                for subkey, subvalue in nested.items():
-                    if subkey not in nested_printed:
-                        print(f"  {subkey}={subvalue}")
-
-                print("}\n")
-                printed.add(key)
-
-        # any other dicts not listed above
-        for key, value in data.items():
-            if key not in printed and isinstance(value, dict):
-                print(f"{key}={{")
-                for subkey, subvalue in value.items():
-                    print(f"  {subkey}={subvalue}")
-                print("}\n")
+        data = {k: v for k, v in vars(self).items() if not k.startswith("_")}
+        _print_config_by_schema(data, self._print_schema)
 
 class ConfigPipeline:
     def __init__(self) -> None:
         self.parser = argparse.ArgumentParser(exit_on_error=False)
         self.args = None
+        self._cli_dest_to_path = {}
+        self._schema_args_added = False
 
         # "meta" args
         self.parser.add_argument("--config", default="config.json", type=str)
         self.parser.add_argument("--schema", default="configuration-schema.json", type=str)
         self.parser.add_argument("--check_only", default=False, type=strtobool)
 
-        # top-level overrides
-        self.parser.add_argument("--model_type", type=str)
-        self.parser.add_argument("--num_cpus", type=int)
-        self.parser.add_argument("--num_gpus", type=int)
-        self.parser.add_argument("--output_dir", type=str)
-        self.parser.add_argument("--data_dir", type=str)
-
-        # federated overrides
-        self.parser.add_argument("--federated_enabled", type=strtobool)
-        self.parser.add_argument("--num_rounds", type=int)
-        self.parser.add_argument("--min_fit_clients", type=int)
-        self.parser.add_argument("--min_available_clients", type=int)
-        self.parser.add_argument("--min_evaluate_clients", type=int)
-        self.parser.add_argument("--n_models", type=int)
-
-        # dp overrides
-        self.parser.add_argument("--dp_enabled", type=strtobool)
-        self.parser.add_argument("--opacus_secure_mode", type=strtobool)
-        self.parser.add_argument("--epsilon", type=float)
-        self.parser.add_argument("--delta", type=float)
-        self.parser.add_argument("--max_grad_norm", type=float)
-
-        # model_params overrides (flat CLI, nested in config)
-        self.parser.add_argument("--data_partitions_file", type=str)
-        self.parser.add_argument("--partitioner_type", type=str)
-        self.parser.add_argument("--num_partitions", type=int)
-        self.parser.add_argument("--partition_id", type=int)
-        self.parser.add_argument("--client_id", type=int)
-        self.parser.add_argument("--seed", type=int)
-        self.parser.add_argument("--epochs", type=int)
-        self.parser.add_argument("--batch_divisor", type=int)
-        self.parser.add_argument("--test_fraction", type=float)   # NOTE: maps to model_params.test_frac
-        self.parser.add_argument("--learning_rate", type=float)
-        self.parser.add_argument("--weight_decay", type=float)
-        self.parser.add_argument("--optimizer", type=str)
-        self.parser.add_argument("--accuracy_tolerance", type=float)
-        self.parser.add_argument("--train_method", type=str)
-        self.parser.add_argument("--centralised_eval", type=strtobool)
-        self.parser.add_argument("--scaled_lr", type=strtobool)
-
     def _load_json(self, path: str) -> Dict[str, Any]:
         with Path(path).open("r", encoding="utf-8") as f:
             return json.load(f)
 
+    def _add_schema_cli_arguments(self, schema: Dict[str, Any]) -> None:
+        if self._schema_args_added:
+            return
+
+        leaf_paths = {}
+        for path, prop_schema in _iter_schema_leaf_args(schema):
+            if path not in leaf_paths:
+                leaf_paths[path] = prop_schema
+
+        leaf_name_counts = Counter(path[-1] for path in leaf_paths.keys())
+
+        for path, prop_schema in leaf_paths.items():
+            # Use plain leaf name when unique, otherwise dotted path
+            if leaf_name_counts[path[-1]] == 1:
+                arg_name = path[-1]
+            else:
+                arg_name = ".".join(path)
+
+            dest = "__".join(path)
+
+            kwargs = {
+                "dest": dest,
+                "default": None,
+                "type": _argparse_type_from_schema(prop_schema),
+            }
+
+            choices = _schema_choices(prop_schema)
+            if choices is not None and all(not isinstance(c, (dict, list)) for c in choices):
+                kwargs["choices"] = choices
+
+            self.parser.add_argument(f"--{arg_name}", **kwargs)
+            self._cli_dest_to_path[dest] = path
+
+        self._schema_args_added = True
+
     def _apply_cli_overrides(self, cfg: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
         d = vars(args)
 
-        # top-level
-        for k in TOP_KEYS:
-            if d.get(k) is not None:
-                cfg[k] = d[k]
-
-        # federated
-        for k in FED_KEYS:
-            if d.get(k) is not None:
-                _set_nested(cfg, ("federated", k), d[k])
-
-        # dp
-        for k in DP_KEYS:
-            if d.get(k) is not None:
-                _set_nested(cfg, ("dp", k), d[k])
-
-        # model_params
-        model_params_keys = (
-            "data_partitions_file",
-            "partitioner_type",
-            "num_partitions",
-            "partition_id",
-            "client_id",
-            "seed",
-            "epochs",
-            "batch_divisor",
-            "learning_rate",
-            "weight_decay",
-            "optimizer",
-            "accuracy_tolerance",
-            "train_method",
-            "centralised_eval",
-            "scaled_lr",
-            "test_fraction"
-            # add more here as CLI grows
-        )
-
-        for k in model_params_keys:
-            if d.get(k) is not None:
-                _set_nested(cfg, ("model_params", k), d[k])
+        for dest, path in self._cli_dest_to_path.items():
+            if d.get(dest) is not None:
+                _set_nested(cfg, path, d[dest])
 
         # carry check_only (not part of schema, but you use it)
         cfg["check_only"] = bool(d.get("check_only", False))
@@ -485,20 +495,24 @@ class ConfigPipeline:
 
     def parse(self) -> argparse.Namespace:
         try:
+            # first pass: only meta args (config, schema, check_only) are known yet
+            meta_args, _ = self.parser.parse_known_args()
+
+            # validate and load paths
+            validate_file_path([meta_args.config, meta_args.schema])
+            schema = self._load_json(meta_args.schema)
+            raw_cfg = self._load_json(meta_args.config)
+
+            # build CLI args from schema, then parse again
+            self._add_schema_cli_arguments(schema)
             args, unknown = self.parser.parse_known_args()
             if unknown:
                 raise UnknownParameterError(unknown, message="Unknown parameter name(s) in CLI. Please check the spelling of the inputs above and try again.")
 
-            # validate paths exist
-            validate_file_path([args.config, args.schema])
-
-            schema = self._load_json(args.schema)
-            raw_cfg = self._load_json(args.config)
-
             # layer + apply schema defaults
-            cfg = _to_layered_config(raw_cfg)
+            cfg = _to_layered_config(raw_cfg, schema)
             cfg = self._apply_cli_overrides(cfg, args)
-            cfg = _sync_enabled_flags(cfg, raw_cfg, args)
+            cfg = _sync_enabled_flags(cfg, schema)
             cfg = apply_defaults(schema=schema, instance=cfg)
 
             # validate final config
@@ -560,5 +574,5 @@ class ConfigPipeline:
             exit(1)
         
 
-        self.args = ConfigArgs(**cfg)
+        self.args = ConfigArgs(schema=schema, **cfg)
         return self.args

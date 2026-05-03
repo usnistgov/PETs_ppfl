@@ -59,6 +59,8 @@ epochs = args.model_params["epochs"]
 accuracy_tolerance = args.model_params["accuracy_tolerance"]
 data_partitions_file = args.model_params["data_partitions_file"]
 out_dir = args.output_dir
+
+'''
 RECOMMENDED CODE:
 '''
 out_dir = os.path.join(args.output_dir, datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))
