@@ -31,12 +31,12 @@ Throughout the beta development process, these capabilities are expected to expa
 - Validation of provided file paths against the currently visible directory
 - Generation of machine-readable reports, with some values printed to the terminal
 
-_*Please note that bring-your-own data partitions files have not been tested yet. There may be unexpected behaviors. Also note that users are expected to have already preprocessed their data prior to uploading it to the `data/` folder.*_
+_*Please note that bring-your-own-data partition files have not been tested yet. There may be unexpected behaviors. Also note that users are expected to have already preprocessed their data prior to uploading it to the `data/` folder.*_
 
 ## Currently In-Progress Capabilities <a name="future_supported"></a>
 - Generation of human-readable and machine-readable reports
 - Improvement of report organization
-- Support for the `opacus_secure_mode` parameter being `true` in DP
+- Support for setting the `opacus_secure_mode` parameter to true in DP
 
 ## Setting Up the Testbed <a name="setup"></a>
 
@@ -70,13 +70,23 @@ _*Please note that bring-your-own data partitions files have not been tested yet
 7. Install packages with the commands `python -m pip install --upgrade pip` and then `pip install -r requirements.txt` while in the project root directory.
    1. Note that if there are errors with the `torch` package, you may need to uninstall the packages and reinstall them using `pip uninstall -y -r .\requirements.txt`
 8. Change directories to the `dpcnn_opacus` directory (note that this is necessary due to relative paths).
-9. Run the command `python run.py`.
-   1. Note that this will use the `config.json` file for input parameters. These inputs are validated through the `configuration-schema.json` file.
+9. Run the command: 
+```bash
+python run.py
+```
+   - Note that this will use the `config.json` file for input parameters. These inputs are validated through the `configuration-schema.json` file.
 
 ## Running the Testbed <a name="running"></a>
 
 ### Hello World for the testbed
-Once you have your environment set up, the most basic way to run the testbed is to navigate into the `dpcnn_opacus` folder and simply run `python3.10 run.py`. If `python3.10` is the only Python version in your environment, you may be able to run `python run.py` instead. This will load the default parameter values from the schema and run a simple federated learning workflow with differential privacy.
+Once you have your environment set up, the most basic way to run the testbed is to navigate into the `dpcnn_opacus` folder and simply run:
+```bash 
+python3.10 run.py
+
+# Or to just validate parameters:
+python3.10 run.py --check_only
+```
+If `python3.10` is the only Python version in your environment, you may be able to run `python run.py` instead. This will load the default parameter values from the schema and run a simple federated learning workflow with differential privacy.
 
 ### Adjusting testbed parameters from the configuration file
 One way to modify the parameters of the testbed is to edit the `config.json` file with new values. To do this, simply open the JSON file and add the field for the parameter you want to modify. You do not need to mirror the layered structure of the schema. Please enter parameters as key-value pairs, such as `"epochs": 20` or `"data_dir": "../data/my_data"`. Please note that the configuration file will be validated at runtime, so if there are invalid values or incorrect types, you will be able to correct them before running the testbed. See the table below for details on each parameter you can modify.
@@ -89,13 +99,13 @@ If you want to modify a value for a single run, or see whether a parameter input
 
 Modifying parameters in this way will not affect the contents of the configuration file.
 
-Please note that some variables are only set through the command line. These variables are `--config` (to tell the testbed to use a configuration file other than `config.json`) and `--check_only` (which, when set to `true`, tells the testbed to only check whether the parameter values given are supported).
+Please note that some variables are only set through the command line. These variables are `--config` (to tell the testbed to use a configuration file other than `config.json`), `--schema` (to tell the testbed to use a JSON schema file other than `configuration-schema.json`), and `--check_only` (which, when passed, tells the testbed to only check whether the parameter values given are supported).
 
 ## Modifying the Parameters <a name="params"></a>
 
 The default parameter values are placed in the `configuration-schema.json` file. Parameter values can be changed either directly through that file or through the command line. Parameter values modified through the command line will not change the contents of the `config.json` file.
 
-Regardless of how the parameter values are input, the values will be validated against the types and ranges specified by `configuration-schema.json`. Any provided file paths, such as a data partitions file or an output directory, must exist prior to running the testbed to avoid early termination. If parameter errors occur, error messages and suggestions should be printed to the terminal.
+Regardless of how the parameter values are input, the values will be validated against the types and ranges specified by `configuration-schema.json`. Any provided file paths, such as a data partition file or an output directory, must exist prior to running the testbed to avoid early termination. If parameter errors occur, error messages and suggestions should be printed to the terminal.
 
 ### Parameter Definitions
 
@@ -109,7 +119,7 @@ Regardless of how the parameter values are input, the values will be validated a
 | `min_available_clients` | The minimum number of clients that must be connected to the server for federated learning to begin | integer | min: 1, max: 100 |
 | `min_evaluate_clients` | The minimum number of clients that must participate in a federated evaluation round for the round to be successful | integer | min: 1, max: 100 |
 | `data_partitions_file` | A path to a file that contains the data partitions | string | — |
-| `partitioner_type` | The type of partitioner to use if a data partitions file was not provided | string | `"uniform"`, `"linear"`, `"square"`, `"exponential"` |
+| `partitioner_type` | The type of partitioner to use if a data partition file was not provided | string | `"uniform"`, `"linear"`, `"square"`, `"exponential"` |
 | `num_partitions` | The number of data partitions. If this value is less than `min_fit_clients`, `min_available_clients`, or `min_evaluate_clients`, then those values may be lowered accordingly. | integer | min: 1, max: 100 |
 | `partition_id` | Partition ID used for the current client | integer | min: 0, max: 100 |
 | `client_id` | Client ID used for the current client | integer | min: 0, max: 100 |
@@ -172,11 +182,22 @@ There are two types of output files: `.npz` files and `.torch` files. The `.npz`
 
 ## Regression Testing <a name="regression"></a>
 
-For regression testing, I am using a Python library called `pytest`. This helps automate the testing process. There are various test cases described in the `test_cli_config_regression.py` script. In this regression testing, it is only checking whether the parameter inputs are valid. To run the regression tests, ensure you are in the `dpcnn_opacus` folder, and if using a virtual environment, make sure it is active. Also ensure you have `pytest` installed in your environment; it is now listed in `requirements.txt`. Then, run `python3.10 -m pytest -q`. This will loop through every single test case with a progress tracker at the bottom. Any failed tests will be printed at the end.
+For regression testing, I am using a Python library called `pytest`. This helps automate the testing process. There are various test cases described in the `test_cli_config_regression.py` script. In this regression testing, it is only checking whether the parameter inputs are valid. To run the regression tests, ensure you are in the `dpcnn_opacus` folder, and if using a virtual environment, make sure it is active. Also ensure you have `pytest` installed in your environment; it is now listed in `requirements.txt`. Then, run:
+```bash
+python3.10 -m pytest -q
+``` 
+This will loop through every single test case with a progress tracker at the bottom. Any failed tests will be printed at the end.
 
-These regression tests do have an end-to-end run, but it is skipped by default due to the time it takes. If you want to include the end-to-end run in the regression testing, run `python3.10 -m pytest -q --run-e2e`.
+These regression tests do have an end-to-end run, but it is skipped by default due to the time it takes. If you want to include the end-to-end run in the regression testing, run:
+```bash
+python3.10 -m pytest -q --run-e2e
+```
 
-To manually go through each test case using `pytest`, first gather a list of all possible tests. I recommend recording it in a `.txt` file for easy lookup by running `python3.10 -m pytest --collect-only -q > test_list.txt`. Then, identify the test you want to run, for example `test_cli_config_regression.py::test_run_py_regressions[t12a]`. To run that individual test, use:
+To manually go through each test case using `pytest`, first gather a list of all possible tests. I recommend recording it in a `.txt` file for easy lookup by running 
+```bash
+python3.10 -m pytest --collect-only -q > test_list.txt
+```
+Then, identify the test you want to run, for example `test_cli_config_regression.py::test_run_py_regressions[t12a]`. To run that individual test, use:
 
 ```bash
 python3.10 -m pytest test_cli_config_regression.py::test_run_py_regressions[t12a]

@@ -633,6 +633,7 @@ class ConfigPipeline:
             if validation_errors:
                 msg = "An error occured during configuration validation. Please check the following issue(s):\n"
                 for path, bad_value, err_msg in validation_errors:
+                    path = path.split(".")[-1]
                     if bad_value is None:
                         msg += f"  {path} -> {err_msg}\n"
                     else:

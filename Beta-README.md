@@ -1,6 +1,6 @@
 # Privacy-Enhancing Technologies (PETs) Testbed
 
-Welcome to the NIST genomics PETs testbed (beta version). This testbed aims to provide you with tools that help you evaluate the efficacy of different data privacy technologies on your genomics data.
+Welcome to the NIST genomics PETs testbed (beta version). This testbed aims to provide tools that help you evaluate the efficacy of different data privacy technologies on your genomics data.
 
 # Table of Contents
 1. [Currently Supported Capabilities](#current)
@@ -8,12 +8,15 @@ Welcome to the NIST genomics PETs testbed (beta version). This testbed aims to p
 3. [Setting Up the Testbed](#setup)
 4. [Running the Testbed](#running)
 5. [Modifying the Parameters](#params)
+6. [Output](#output)
+7. [References](#refs)
 
 ## Currently Supported Capabilities <a name="current"></a>
-Throughout the beta development process, these capabilities are expected to expand. Feedback on additional features and discovered issues is welcome and encouraged.
+
+Throughout the beta development process, these capabilities are expected to expand. Feedback on additional features and discovered issues is welcome and encouraged. These are the currently supported capabilities:
 
 ### Data
-- Testing using _any*_ dataset provided in the `data/` folder
+- Testing using any dataset provided in the `data/` folder
 
 ### Privacy and Training
 - Applying differential privacy (DP) to data prior to training through the Opacus framework
@@ -25,19 +28,25 @@ Throughout the beta development process, these capabilities are expected to expa
 - Modifying model and privacy parameters through command-line arguments
 - Validation of provided parameters against the provided JSON schema
 - Validation of provided file paths against the currently visible directory
-- Generation of machine-readable reports, with some values printed out to the terminal
+- Generation of machine-readable reports, with some values printed to the terminal
 
-_\* Please note that bring-your-own data partitions files have not been tested yet. There may be unexpected behaviors. Also note that users are expected to have already preprocessed their data prior to uploading it to the `data/` folder._
-
-## Currently In-Progress Capabilities <a name="future_supported"></a>
+### Reports
 - Generation of human-readable and machine-readable reports
 - Improvement of report organization
-- Support for the `opacus_secure_mode` parameter being `true` in DP
+
+_*Please note that bring-your-own-data partition files have not been tested yet. There may be unexpected behaviors. Also note that users are expected to have already preprocessed their data prior to uploading it to the `data/` folder.*_
+
+## Currently In-Progress Capabilities <a name="future_supported"></a>
+- Support for setting the `opacus_secure_mode` parameter to true in DP
+- Batched experimentation
+- Progress bars during runtime
+- Tutorial notebook for meta-analysis
+- Ability to run other models (besides Differential Privacy + CNN)
 
 ## Setting Up the Testbed <a name="setup"></a>
 
 1. Download the zip file containing the data and code.
-   1. If using the provided test data, ensure the following files exist in the `data/Oil_binned5` directory. The included files will be:
+   1. If using the provided test data, ensure the following files exist in the `data/Oil_binned5` directory:
       1. `Oil_QTL_ho_pheno.dat`
       2. `Oil_QTL_ho_vcf.dat`
       3. `Oil_QTL_ohe_map.dat`
@@ -46,7 +55,7 @@ _\* Please note that bring-your-own data partitions files have not been tested y
       6. `Oil_QTL_tt_pheno.dat`
       7. `Oil_QTL_tt_vcf.dat`
    2. If using your own data:
-      - Please ensure that all data files are of type `.dat`. It is also expected that the endings of the data match the provided test data. For example, this testbed assumes the endings of the data files are:
+      - Please ensure that all data files are of type `.dat`. It is also expected that the endings of the data files match the provided test data. For example, this testbed assumes the data file endings are:
          1. `_ho_pheno.dat`
          2. `_ho_vcf.dat`
          3. `_ohe.dat`
@@ -54,76 +63,93 @@ _\* Please note that bring-your-own data partitions files have not been tested y
          5. `_tt_vcf.dat`
       - Please also remember to update the `data_dir` variable either through the command line or through the provided configuration file.
 2. Transfer the files to the beta machine.
-3. Download or validate a Python 3.10 installation (other installations result in errors with the `torch` library) via the `python -V` or `python3 -V` commands.
-   1. Run the command `python -V` to check the installation version.
-   2. If the wrong version of Python, or no Python installation, is installed, try:
+3. Download or validate a Python 3.10 installation (other versions may result in errors with the `torch` library) via the `python -V` or `python3 -V` commands.
+   1. Run the command `python -V` to check the installed version.
+   2. If the wrong version of Python is installed, or if Python is not installed, try:
       1. Running the `setup.sh` bash script, which downloads Python 3.10 from the deadsnakes repository
-   3. Run the command `python3.10.exe -V` to confirm a successful installation.
-4. `cd` into the directory where the downloaded project is located. You should see folders for `data`, `dpcnn_opacus`, etc. Create a virtual environment with the command `python3.10.exe -m venv .venv`.
-5. Confirm that the `.venv` directory is created by running `ls -la`.
-6. Activate the virtual environment. On success, `(.venv)` should be prepended to your shell.
+   3. Run the command `python3.10 -V` to confirm a successful installation.
+4. `cd` into the directory where the downloaded project is located. You should see folders such as `data`, `dpcnn_opacus`, etc. Create a virtual environment with the command `python3.10 -m venv .venv`.
+5. Confirm that the `.venv` directory was created by running `ls -la`.
+6. Activate the virtual environment. On success, `(.venv)` should be prepended to your shell prompt.
    1. On Linux: `source ./.venv/bin/activate`
-7. Install packages with the commands `python -m pip install --upgrade pip` and then `pip install -r requirements.txt` while in the home codebase directory.
+7. Install packages with the commands `python -m pip install --upgrade pip` and then `pip install -r requirements.txt` while in the project root directory.
    1. Note that if there are errors with the `torch` package, you may need to uninstall the packages and reinstall them using `pip uninstall -y -r .\requirements.txt`
-8. Change directories to the `dpcnn_opacus` directory (note that this is necessary due to relative pathing).
-9. Run the command `python run.py`.
-   1. Note that this will use the `config.json` file for input parameters. These inputs are validated through the `configuration-schema.json` file.
+8. Change directories to the `dpcnn_opacus` directory (note that this is necessary due to relative paths).
+9. Run the command: 
+```bash
+python run.py
+```
+   - Note that this will use the `config.json` file for input parameters. These inputs are validated through the `configuration-schema.json` file.
 
 ## Running the Testbed <a name="running"></a>
 
 ### Hello World for the testbed
-Once you have your environment set up, the most basic way to run the testbed is to navigate into the `dpcnn_opacus` folder and simply run `python3.10 run.py`. If `python3.10` is the only Python version in your environment, you may be able to run `python run.py` instead. This will load the default parameter values from the schema and get a simple version of federated learning with differential privacy running.
+Once you have your environment set up, the most basic way to run the testbed is to navigate into the `dpcnn_opacus` folder and simply run:
+```bash 
+python3.10 run.py
+
+# Or to just validate parameters:
+python3.10 run.py --check_only
+```
+If `python3.10` is the only Python version in your environment, you may be able to run `python run.py` instead. This will load the default parameter values from the schema and run a simple federated learning workflow with differential privacy.
 
 ### Adjusting testbed parameters from the configuration file
-One way to modify the parameters of the testbed is to edit the `config.json` file to have new values. To do this, simply open the JSON file and add the field for the parameter you want to modify. You do not need to worry about layering your configuration file like the schema. Please enter parameters as key-value pairs, such as `"epochs": 20` or `"data_dir": "../data/my_data"`. Please note that the configuration file will be validated at runtime, so if there are any invalid values or incorrect types, you will be able to correct them prior to running the testbed. See the table below for details on each parameter you can modify.
+One way to modify the parameters of the testbed is to edit the `config.json` file with new values. To do this, simply open the JSON file and add the field for the parameter you want to modify. You do not need to mirror the layered structure of the schema. Please enter parameters as key-value pairs, such as `"epochs": 20` or `"data_dir": "../data/my_data"`. Please note that the configuration file will be validated at runtime, so if there are invalid values or incorrect types, you will be able to correct them before running the testbed. See the table below for details on each parameter you can modify.
 
 ### How to create your own JSON file
-If you want to create a separate JSON file for a test case (to help record the inputs), first make a copy of the `config.json` file, then rename it, and finally change the values to match your desired experiment. You can tell the testbed to use this configuration file through the `--config my_config.json` command-line flag. If you want to make a copy of and edit the `configuration-schema.json`, you can also pass in the schema through the `--schema my_schema.json` command-line flag.
+If you want to create a separate JSON file for a test case to help record the inputs, first make a copy of `config.json`, then rename it, and finally change the values to match your desired experiment. You can tell the testbed to use this configuration file through the `--config my_config.json` command-line flag. If you want to make a copy of and edit `configuration-schema.json`, you can also pass in the schema through the `--schema my_schema.json` command-line flag.
 
 ### Using the command line to adjust parameter values
-If you want to modify a value for a single run (or see if a parameter input is valid) and do not want to modify the `.json` configuration file, then you can use the command line to modify one or more parameters. To do this, treat the desired variables as flags and use the following format: `--foo bar`, which would set the `foo` parameter's value to `bar`.
+If you want to modify a value for a single run, or see whether a parameter input is valid, and do not want to modify the `.json` configuration file, then you can use the command line to modify one or more parameters. To do this, treat the desired variables as flags and use the format `--foo bar`, which would set the `foo` parameter's value to `bar`.
 
 Modifying parameters in this way will not affect the contents of the configuration file.
 
-Please note that some variables are only set through the command line. These variables are `--config` (to redirect the testbed to use a configuration file other than `config.json`) and `--check_only` (which, when set to `true`, tells the testbed to only see if the parameter values given are supported).
+Please note that some variables are only set through the command line. These variables are `--config` (to tell the testbed to use a configuration file other than `config.json`), `--schema` (to tell the testbed to use a JSON schema file other than `configuration-schema.json`), and `--check_only` (which, when passed, tells the testbed to only check whether the parameter values given are supported).
 
 ## Modifying the Parameters <a name="params"></a>
-The default parameter values are placed in the `configuration-schema.json` file. Parameter values can be changed either directly through that file or through the command line. Parameter values modified by the command line will not change the contents of the `config.json` file.
 
-Regardless of how the parameter values are input, the values will be validated against the types and ranges specified by the `configuration-schema.json`. Any provided file paths (e.g., a data partitions file or an output directory) must exist prior to running the testbed to avoid early termination of the testbed. If parameter errors occur, error messages and suggestions should be printed out to the terminal.
+The default parameter values are placed in the `configuration-schema.json` file. Parameter values can be changed either directly through that file or through the command line. Parameter values modified through the command line will not change the contents of the `config.json` file.
+
+Regardless of how the parameter values are input, the values will be validated against the types and ranges specified by `configuration-schema.json`. Any provided file paths, such as a data partition file or an output directory, must exist prior to running the testbed to avoid early termination. If parameter errors occur, error messages and suggestions should be printed to the terminal.
 
 ### Parameter Definitions
 
 | Parameter | Description | Type | Limits / Allowed Values |
 |---|---|---|---|
+| `model_type` | The model family to run | string | `"dpcnn"`, `"cnn"`, `"xgboost"` |
+| `num_cpus` | The number of CPUs available to the run | integer | min: 1, max: 100 |
+| `num_gpus` | The number of GPUs available to the run | integer | min: 0, max: 100 |
 | `num_rounds` | The number of rounds of federated learning | integer | min: 1, max: 100 |
 | `min_fit_clients` | The minimum number of clients that must contribute to the federated training rounds | integer | min: 1, max: 100 |
 | `min_available_clients` | The minimum number of clients that must be connected to the server for federated learning to begin | integer | min: 1, max: 100 |
 | `min_evaluate_clients` | The minimum number of clients that must participate in a federated evaluation round for the round to be successful | integer | min: 1, max: 100 |
 | `data_partitions_file` | A path to a file that contains the data partitions | string | — |
-| `partitioner_type` | The type of partitioner to use if a data partition was not provided | string | "uniform", "linear", "square", "exponential" |
-| `num_partitions` | The number of data partitions. If this value is less than `min_fit_clients`, `min_available_clients`, or `min_evaluate_clients`, then those values will take the lower value. | integer | min: 1, max: 100 |
+| `partitioner_type` | The type of partitioner to use if a data partition file was not provided | string | `"uniform"`, `"linear"`, `"square"`, `"exponential"` |
+| `num_partitions` | The number of data partitions. If this value is less than `min_fit_clients`, `min_available_clients`, or `min_evaluate_clients`, then those values may be lowered accordingly. | integer | min: 1, max: 100 |
 | `partition_id` | Partition ID used for the current client | integer | min: 0, max: 100 |
 | `client_id` | Client ID used for the current client | integer | min: 0, max: 100 |
-| `seed` | The seed used to randomize training/testing | integer | min: 1, max: 1000 |
-| `epochs` | The number of model training epochs. An epoch is one full pass through a training dataset | integer | min: 1, max: 100 |
+| `seed` | The seed used to randomize training and testing | integer | min: 1, max: 1000 |
+| `epochs` | The number of model training epochs. An epoch is one full pass through a training dataset. | integer | min: 1, max: 100 |
 | `batch_divisor` | The divisor used to determine the number of batches (`num_batches = dataset_size / batch_divisor`) | integer | min: 1 |
-| `n_models` | The number of models to train. This can be useful if simulating federated learning locally | integer | min: 1, max: 100 |
+| `n_models` | The number of models to train. This can be useful if simulating federated learning locally. | integer | min: 1, max: 100 |
 | `test_fraction` | The fraction of the dataset to set aside for testing | number | exclusive min: 0, exclusive max: 1 |
-| `learning_rate` | Sets the model’s learning rate. This defines how much a model changes at each iteration | number | exclusive min: 0, exclusive max: 1 |
-| `weight_decay` | Sets the model’s weight decay. This is a regularization method that penalizes high weights | number | exclusive min: 0, exclusive max: 0.1 |
-| `optimizer` | The optimizer is responsible for adjusting model parameters based on the value of the loss function | string | "sgd", "adamax" |
+| `learning_rate` | Sets the model’s learning rate. This defines how much a model changes at each iteration. | number | exclusive min: 0, exclusive max: 1 |
+| `weight_decay` | Sets the model’s weight decay. This is a regularization method that penalizes high weights. | number | exclusive min: 0, exclusive max: 0.1 |
+| `optimizer` | The optimizer is responsible for adjusting model parameters based on the value of the loss function | string | `"sgd"`, `"adamax"` |
 | `opacus_secure_mode` | Turns on cryptographically secure differential privacy when set to `True` | boolean | — |
 | `epsilon` | Determines the amount of privacy added to the data | number | exclusive min: 0, exclusive max: 50 |
-| `delta` | Measures the chance of a data breach. It defines the probability of the noise not adding sufficient privacy | number | min: 0, max: 1 |
+| `delta` | Measures the chance of a data breach. It defines the probability that the noise does not add sufficient privacy. | number | min: 0, max: 1 |
 | `max_grad_norm` | Clips the gradients to be under this maximum before adding noise | number | min: 0, max: 100 |
 | `accuracy_tolerance` | Error tolerance used to declare a prediction correct | number | min: 0, max: 1 |
 | `check_only` | A flag to turn on the check-only feature, which ensures all parameter values are within the appropriate range and have the correct type. When `true`, the testbed will not run. Execution will stop after the parameters are validated. | boolean | — |
 | `config` | A way to specify a different configuration file path | string | — |
 | `data_dir` | The path to the intended data files to run the testbed on | string | — |
+| `train_method` | The XGBoost training method | string | `"bagging"`, `"cyclic"` |
+| `centralised_eval` | Whether centralized evaluation is enabled for XGBoost | boolean | — |
+| `scaled_lr` | Whether scaled learning rate behavior is enabled for XGBoost | boolean | — |
 
 ### Parameter settings
-To run `centralized_training` in `run.py` (running with the `centralized_train.py` file is allowed, but note that the configuration file will not be read for it), you _should_ be able to use the following parameter values. Please note that the output will still look like federated learning training rounds, even though it is only one client, one round, and one data partition:
+To run centralized training from `run.py` (`centralized_train.py` may also be used directly, but note that the configuration file will not be read in that case), you should be able to use the following parameter values. Please note that the output may still look like federated learning training rounds, even though it is only one client, one round, and one data partition:
 
 | Parameter | Value |
 |---|---|
@@ -137,6 +163,7 @@ To run `centralized_training` in `run.py` (running with the `centralized_train.p
 | `num_rounds` | 1 |
 
 Example `config.json`:
+
 ```json
 {
   "model_type": "dpcnn",
@@ -152,14 +179,24 @@ Example `config.json`:
 }
 ```
 
-There is currently no way to fully turn off DP. This will be added during a later beta release.
+There is currently no way to fully turn off DP. This will be added in a later beta release.
 
-## Understanding the Output
-There are two types of output files: `.npz` files and `.torch` files. Within the `.npz` files, there is metadata on the model's global and round-based performance. In the `.torch` files, there are model weights that can be loaded for further inference with the trained model. A human-readable output file is currently being worked on.
+## Understanding the Output <a name="output"></a>
 
-## Upcoming Features
-- Batched experimentation
-- Progress bars during runtime
-- Improved reporting
-- Tutorial notebook for meta-analysis
-- Ability to run other models (besides Differential Privacy + CNN)
+There are two types of output files: `.npz` files and `.torch` files. The `.npz` files contain metadata on the model's global and round-based performance. The `.torch` files contain model weights that can be loaded for further inference with the trained model. A human-readable output file is currently being developed.
+
+## References <a name="refs"></a>
+
+### Soybean Trait Prediction Research
+
+Published paper: [Machine learning models outperform deep learning models, provide interpretation and facilitate feature selection for soybean trait prediction](https://bmcplantbiol.biomedcentral.com/articles/10.1186/s12870-022-03559-z)
+
+Jupyter notebooks for the soybean paper (GitHub): [Soybean_Trait_Prediction](https://github.com/mitchgill16/Soybean_Trait_Prediction)
+
+#### Datasets
+
+Dataset host site: https://data.pawsey.org.au/projects/
+
+Unfortunately, you cannot share a link that goes directly to the folders containing the dataset CSV files, so you will have to navigate through the UI's folder structure to `/NGS Analysis Results/shortTerm/mgill/DL/holdout_and_equivalent_merged_1pcnt_removed`.
+
+In that folder, you will see the `holdout` and `train_test` datasets named with the feature as a prefix, for example `"FlC_"` for flower color.
