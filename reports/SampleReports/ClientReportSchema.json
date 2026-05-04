@@ -95,7 +95,7 @@
                             "type": "number"
                         }
                 },
-            "Test mse per epoch":
+            "test mse per epoch":
                 {
                     "description": "MSE over epochs for testing",
                     "type": "array",
