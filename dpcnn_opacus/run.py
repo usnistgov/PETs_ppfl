@@ -10,6 +10,7 @@ from flwr.simulation import run_simulation
 from flwr.client import ClientApp
 from flwr.server import ServerApp, ServerConfig, ServerAppComponents
 from flwr.common import Context
+from datetime import datetime
 
 from client import FlowerClient
 from server import create_strategy
@@ -26,12 +27,10 @@ RECOMMENDED CODE:
 '''
 pipeline = ConfigPipeline()
 args = pipeline.parse()
+print("Parameter values:\n")
+args.print()
 
 if args.check_only:
-    print("Parameter values:\n")
-
-    args.print()
-
     print("Parameters validated. Ending script")
     exit()
 '''
@@ -40,7 +39,6 @@ INTENDED ACTION: Modify
 JUSTIFICAITON: Testing new parameterization methods
 '''
 
-print(f"flower args: {args}")
 # server arguments
 num_rounds = args.federated["num_rounds"]
 min_fit_clients = args.federated["min_fit_clients"]

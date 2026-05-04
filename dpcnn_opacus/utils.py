@@ -1,6 +1,4 @@
 import argparse
-import types
-from typing import List, Dict, Any
 import numpy as np
 from collections import Counter
 import torch
@@ -11,15 +9,24 @@ from pathlib import Path
 from typing import Any, Dict, Tuple, List, Set
 import os
 import pickle
+import re
 
-from jsonschema import validate, ValidationError
+from jsonschema.validators import validator_for
 
+###
+#   get_device()
+#   purpose: Return the default torch device, preferring CUDA when available and falling back to CPU otherwise.
+###
 def get_device():
     if torch.cuda.is_available():
         return torch.device("cuda")
     else:
         return torch.device("cpu")
 
+###
+#   validate_data_size(data_path, batch_divisor)
+#   purpose: Validate that the discovered train/holdout dataset files are large enough for the requested batch divisor.
+###
 def validate_data_size(data_path, batch_divisor):
     pattern = ["_tt_vcf.dat", "_ho_vcf.dat"]
     for pat in pattern: 
@@ -55,28 +62,26 @@ def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, nu
     labels = dataset[indices, -1]
     # Create bins for the selected labels
     bins = np.linspace(np.min(labels), np.max(labels), num_bins + 1)
-    binned_labels = np.digitize(labels, bins) - 1
+    binned_labels = np.digitize(labels, bins, right=True) - 1
+    binned_labels = np.clip(binned_labels, 0, num_bins - 1)
     # Count occurrences of each bin
     binned_counts = Counter(binned_labels)
     # Print binned label counts with ranges
-    for bin_idx, count in sorted(binned_counts.items()):
-        if bin_idx < len(bins) - 1:
-            print(
-                f"{bins[bin_idx]:.2f} - {bins[bin_idx + 1]:.2f}: "
-                f"{count} records"
-            )
-def _iter_subschemas(sch: Dict[str, Any]):
-    if not isinstance(sch, dict):
-        return
+    for bin_idx in range(num_bins):
+        count = binned_counts.get(bin_idx, 0)
+        print(f"{bins[bin_idx]:.2f} - {bins[bin_idx + 1]:.2f}: {count} records")
 
-    for k in ("allOf", "oneOf", "anyOf"):
-        for sub in sch.get(k, []) if isinstance(sch.get(k), list) else []:
-            yield sub
-            yield from _iter_subschemas(sub)
-
+###
+#   _is_object_schema(sch)
+#   purpose: Return True when the given schema behaves like a JSON object schema, based on type or properties.
+###
 def _is_object_schema(sch: dict) -> bool:
     return isinstance(sch, dict) and (sch.get("type") == "object" or "properties" in sch)
 
+###
+#   _has_any_default(sch)
+#   purpose: Recursively check whether a schema or any nested applicable subschema defines a default value.
+###
 def _has_any_default(sch: dict) -> bool:
     if not isinstance(sch, dict):
         return False
@@ -92,6 +97,10 @@ def _has_any_default(sch: dict) -> bool:
                 return True
     return False
 
+###
+#   _select_oneof_branch(oneof_list, instance)
+#   purpose: Select the matching oneOf branch using model_type as a discriminator from the current instance.
+###
 def _select_oneof_branch(oneof_list, instance):
     mt = instance.get("model_type")
     for opt in oneof_list:
@@ -100,6 +109,10 @@ def _select_oneof_branch(oneof_list, instance):
             return opt
     return None
 
+###
+#   apply_defaults(schema, instance)
+#   purpose: Recursively apply schema defaults to a config instance, including nested object properties.
+###
 def apply_defaults(schema: dict, instance):
     # Layer: allOf
     for sub in schema.get("allOf", []):
@@ -127,16 +140,27 @@ def apply_defaults(schema: dict, instance):
 
     return instance
 
+###
+#   _schema_leaf_map(schema)
+#   purpose: Build a mapping from leaf property paths to their corresponding schema definitions.
+###
+def _schema_leaf_map(schema: Dict[str, Any]) -> Dict[Tuple[str, ...], Dict[str, Any]]:
+    leaf_paths = {}
+    for path, prop_schema in _iter_schema_leaf_args(schema):
+        if path not in leaf_paths:
+            leaf_paths[path] = prop_schema
+    return leaf_paths
+
+###
+#   _build_schema_path_index(schema)
+#   purpose: Build lookup tables for resolving schema leaf paths by leaf name or dotted path.
+###
 def _build_schema_path_index(schema: Dict[str, Any]):
     by_name: Dict[str, Tuple[str, ...]] = {}
     by_dot: Dict[str, Tuple[str, ...]] = {}
     name_to_paths: Dict[str, Set[Tuple[str, ...]]] = {}
-    seen_paths: Set[Tuple[str, ...]] = set()
 
-    for path, _ in _iter_schema_leaf_args(schema):
-        if path in seen_paths:
-            continue
-        seen_paths.add(path)
+    for path in _schema_leaf_map(schema).keys():
         by_dot[".".join(path)] = path
         name_to_paths.setdefault(path[-1], set()).add(path)
 
@@ -146,6 +170,10 @@ def _build_schema_path_index(schema: Dict[str, Any]):
 
     return by_name, by_dot
 
+###
+#   _flatten_config_items(data, prefix=())
+#   purpose: Flatten a nested config dictionary into dotted-path key/value pairs.
+###
 def _flatten_config_items(data: Dict[str, Any], prefix: Tuple[str, ...] = ()):
     for key, value in data.items():
         path = prefix + (key,)
@@ -154,6 +182,10 @@ def _flatten_config_items(data: Dict[str, Any], prefix: Tuple[str, ...] = ()):
         else:
             yield ".".join(path), value
 
+###
+#   _top_level_object_schemas(schema, instance)
+#   purpose: Collect top-level object-valued schema groups that apply to the current config instance.
+###
 def _top_level_object_schemas(schema: Dict[str, Any], instance: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     top_objects: Dict[str, Dict[str, Any]] = {}
 
@@ -166,13 +198,17 @@ def _top_level_object_schemas(schema: Dict[str, Any], instance: Dict[str, Any]) 
 
     return top_objects
 
+###
+#   _sync_enabled_flags(cfg, schema)
+#   purpose: Infer or validate group-level *_enabled flags based on the presence of other keys in each group.
+###
 def _sync_enabled_flags(cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
     top_objects = _top_level_object_schemas(schema, cfg)
 
     for group_name, group_schema in top_objects.items():
-        cfg.setdefault(group_name, {})
         group_cfg = cfg.get(group_name)
-
+        if group_cfg is None:
+            continue
         if not isinstance(group_cfg, dict):
             continue
 
@@ -183,7 +219,8 @@ def _sync_enabled_flags(cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str
                 child_props.update(props)
 
         enabled_keys = [
-            key for key, prop_schema in child_props.items()
+            key
+            for key, prop_schema in child_props.items()
             if isinstance(prop_schema, dict)
             and prop_schema.get("type") == "boolean"
             and key.endswith("_enabled")
@@ -191,10 +228,15 @@ def _sync_enabled_flags(cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str
 
         if len(enabled_keys) == 1:
             enabled_key = enabled_keys[0]
-            cfg[group_name][enabled_key] = any(k != enabled_key for k in group_cfg.keys())
+            if enabled_key not in group_cfg:
+                cfg[group_name][enabled_key] = any(k != enabled_key for k in group_cfg.keys())
 
     return cfg
 
+###
+#   _to_layered_config(flat_cfg, schema)
+#   purpose: Convert a flat or partially nested config into a nested structure aligned to schema paths.
+###
 def _to_layered_config(flat_cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
     cfg: Dict[str, Any] = {}
     by_name, by_dot = _build_schema_path_index(schema)
@@ -209,10 +251,10 @@ def _to_layered_config(flat_cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict
         elif "." not in flat_key and flat_key in by_name:
             _set_nested(cfg, by_name[flat_key], value)
         else:
-            # preserve unknown keys so find_unknown_fields() can report them
             _set_nested(cfg, tuple(flat_key.split(".")), value)
 
     return cfg
+
 ###
 # _validate_paths(paths, check_func, kind)
 #   input: paths (string or iterable of strings), check_func (function like os.path.exists or os.path.isdir), kind (description for error message ("file", "directory", etc.))
@@ -249,6 +291,10 @@ def validate_file_path(test_path: str) -> None:
 def validate_dir_path(test_path: str) -> None:
     _validate_paths(test_path, os.path.isdir, "directory")
 
+###
+#   _set_nested(cfg, path, value)
+#   purpose: Set a value inside a nested dictionary, creating intermediate dictionaries as needed.
+###
 def _set_nested(cfg: Dict[str, Any], path: Tuple[str, ...], value: Any) -> None:
     cur = cfg
     for k in path[:-1]:
@@ -257,6 +303,10 @@ def _set_nested(cfg: Dict[str, Any], path: Tuple[str, ...], value: Any) -> None:
         cur = cur[k]
     cur[path[-1]] = value
 
+###
+#   _iter_applicable_schemas(schema, instance)
+#   purpose: Yield the base schema and any allOf/selected oneOf subschemas that apply to the instance.
+###
 def _iter_applicable_schemas(schema: Dict[str, Any], instance: Any) -> List[Dict[str, Any]]:
     # Base schema applies
     schemas = [schema]
@@ -273,12 +323,25 @@ def _iter_applicable_schemas(schema: Dict[str, Any], instance: Any) -> List[Dict
 
     return schemas
 
-def _ordered_keys_at_level(applicable: List[Dict[str, Any]]) -> List[str]:
+###
+#   _iter_schema_layers(schema)
+#   purpose: Iterate through the schema and its allOf layers in declaration order.
+###
+def _iter_schema_layers(schema: Dict[str, Any]):
+    yield schema
+    for sub in schema.get("allOf", []) or []:
+        yield from _iter_schema_layers(sub)
+
+###
+#   _schema_key_order(schema)
+#   purpose: Derive a stable property-printing order from the schema and its layered definitions.
+###
+def _schema_key_order(schema: Dict[str, Any]) -> List[str]:
     ordered: List[str] = []
     seen: Set[str] = set()
 
-    for sch in applicable:
-        props = sch.get("properties")
+    for sch in _iter_schema_layers(schema):
+        props = sch.get("properties", {})
         if isinstance(props, dict):
             for key in props.keys():
                 if key not in seen:
@@ -287,44 +350,14 @@ def _ordered_keys_at_level(applicable: List[Dict[str, Any]]) -> List[str]:
 
     return ordered
 
-def _allowed_keys_at_level(applicable: List[Dict[str, Any]]) -> Set[str]:
-    return set(_ordered_keys_at_level(applicable))
-
-def find_unknown_fields(schema: Dict[str, Any], instance: Any, path: str = "") -> List[str]:
-    """
-    Returns dot-paths for keys present in instance that are not present in the
-    relevant schema portions (allOf layers + chosen oneOf branch).
-    """
-    if not isinstance(instance, dict):
-        return []
-
-    applicable = _iter_applicable_schemas(schema, instance)
-    allowed_here = _allowed_keys_at_level(applicable)
-    allowed_here.update(["check_only"])
-
-    bad: List[str] = []
-    for k, v in instance.items():
-        p = f"{path}.{k}" if path else k
-        if k not in allowed_here:
-            bad.append(p)
-            continue
-
-        # Recurse if value is an object and schema for that key looks object-ish in any applicable layer
-        if isinstance(v, dict):
-            # merge the property schemas for k from all applicable layers using allOf
-            child_schema = _property_schema(schema, instance, k)
-            if child_schema:
-                bad.extend(find_unknown_fields(child_schema, v, p))
-
-    return bad
-
-def _schema_key_order(schema: Dict[str, Any], instance: Dict[str, Any]) -> List[str]:
-    return _ordered_keys_at_level(_iter_applicable_schemas(schema, instance))
-
-def _property_schema(schema: Dict[str, Any], instance: Dict[str, Any], key: str) -> Dict[str, Any]:
+###
+#   _property_schema(schema, key)
+#   purpose: Gather all schema fragments that define a given property and combine them into one schema view.
+###
+def _property_schema(schema: Dict[str, Any], key: str) -> Dict[str, Any]:
     prop_schemas = []
 
-    for sch in _iter_applicable_schemas(schema, instance):
+    for sch in _iter_schema_layers(schema):
         props = sch.get("properties", {})
         if isinstance(props, dict) and key in props and isinstance(props[key], dict):
             prop_schemas.append(props[key])
@@ -334,9 +367,13 @@ def _property_schema(schema: Dict[str, Any], instance: Dict[str, Any], key: str)
 
     return {"allOf": prop_schemas}
 
+###
+#   _print_config_by_schema(data, schema, indent=0)
+#   purpose: Print config values in schema-defined key order, recursively formatting nested objects.
+###
 def _print_config_by_schema(data: Dict[str, Any], schema: Dict[str, Any], indent: int = 0) -> None:
     pad = "  " * indent
-    ordered_keys = _schema_key_order(schema, data)
+    ordered_keys = _schema_key_order(schema)
 
     for key in data.keys():
         if key not in ordered_keys and not key.startswith("_"):
@@ -346,57 +383,23 @@ def _print_config_by_schema(data: Dict[str, Any], schema: Dict[str, Any], indent
     dict_keys = [key for key in ordered_keys if key in data and isinstance(data[key], dict)]
 
     for key in non_dict_keys:
-        if not "enabled" in key:
-            print(f"{pad}{key}={data[key]}")
+        print(f"{pad}{key}={data[key]}")
 
     if indent == 0 and dict_keys:
         print()
 
     for key in dict_keys:
         print(f"{pad}{key}={{")
-        child_schema = _property_schema(schema, data, key)
+        child_schema = _property_schema(schema, key)
         _print_config_by_schema(data[key], child_schema, indent + 1)
         print(f"{pad}}}")
         if indent == 0:
             print()
 
-def _argparse_type_from_schema(sch: Dict[str, Any]):
-    if not isinstance(sch, dict):
-        return str
-
-    t = sch.get("type")
-    if t == "boolean":
-        return strtobool
-    if t == "integer":
-        return int
-    if t == "number":
-        return float
-    if t == "array" or t == "object":
-        return json.loads
-    if t == "string":
-        return str
-
-    for sub in _iter_subschemas(sch):
-        sub_t = _argparse_type_from_schema(sub)
-        if sub_t is not str:
-            return sub_t
-
-    return str
-
-def _schema_choices(sch: Dict[str, Any]):
-    if not isinstance(sch, dict):
-        return None
-
-    if "enum" in sch and isinstance(sch["enum"], list):
-        return sch["enum"]
-
-    for sub in _iter_subschemas(sch):
-        choices = _schema_choices(sub)
-        if choices is not None:
-            return choices
-
-    return None
-
+###
+#   _iter_schema_leaf_args(schema, prefix=())
+#   purpose: Recursively iterate over leaf argument paths and their schemas from a nested JSON schema.
+###
 def _iter_schema_leaf_args(schema: Dict[str, Any], prefix: Tuple[str, ...] = ()):
     if not isinstance(schema, dict):
         return
@@ -415,6 +418,108 @@ def _iter_schema_leaf_args(schema: Dict[str, Any], prefix: Tuple[str, ...] = ())
 
     for sub in schema.get("oneOf", []) or []:
         yield from _iter_schema_leaf_args(sub, prefix)
+
+###
+#   _schema_without_combinators(sch)
+#   purpose: Return a copy of a schema with combinator keywords like allOf/oneOf/anyOf removed.
+###
+def _schema_without_combinators(sch: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: v for k, v in sch.items() if k not in ("allOf", "oneOf", "anyOf")}
+
+###
+#   _effective_schema(schema, instance)
+#   purpose: Build the effective validation schema for an instance by combining all applicable schema parts.
+###
+def _effective_schema(schema: Dict[str, Any], instance: Any) -> Dict[str, Any]:
+    parts = []
+
+    for sch in _iter_applicable_schemas(schema, instance):
+        cleaned = _schema_without_combinators(sch)
+        if cleaned:
+            parts.append(cleaned)
+
+    if not parts:
+        return {}
+
+    if len(parts) == 1:
+        return parts[0]
+
+    return {"allOf": parts}
+
+###
+#   _validation_instance(cfg)
+#   purpose: Create a copy of the config suitable for schema validation by removing non-schema runtime fields.
+###
+def _validation_instance(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    instance = deepcopy(cfg)
+    instance.pop("check_only", None)
+    return instance
+
+###
+#   _get_validation_errors(schema, instance)
+#   purpose: Validate an instance against a schema and return normalized, user-friendly error tuples.
+###
+def _get_validation_errors(schema: Dict[str, Any], instance: Dict[str, Any]) -> List[Tuple[str, Any, str]]:
+    Validator = validator_for(schema)
+    Validator.check_schema(schema)
+    validator = Validator(schema)
+
+    errors = []
+    for err in sorted(validator.iter_errors(instance), key=lambda e: list(e.path)):
+        path = ".".join(str(p) for p in err.path)
+
+        if err.validator == "additionalProperties":
+            bad_keys = re.findall(r"'([^']+)'", err.message)
+            if bad_keys:
+                for bad_key in bad_keys:
+                    full_path = f"{path}.{bad_key}" if path else bad_key
+                    errors.append((full_path, None, "Unknown parameter"))
+            else:
+                errors.append((path, None, err.message))
+
+        elif err.validator == "required":
+            m = re.search(r"'([^']+)' is a required property", err.message)
+            missing_key = m.group(1) if m else None
+            if missing_key is not None:
+                full_path = f"{path}.{missing_key}" if path else missing_key
+                errors.append((full_path, None, "Missing required parameter"))
+            else:
+                errors.append((path, None, err.message))
+
+        else:
+            errors.append((path, err.instance, err.message))
+
+    return errors
+
+###
+#   _coerce_cli_value(raw_value, sch)
+#   purpose: Convert a CLI string value into the schema-expected Python type when possible.
+###
+def _coerce_cli_value(raw_value: str, sch: Dict[str, Any]) -> Any:
+    if not isinstance(raw_value, str) or not isinstance(sch, dict):
+        return raw_value
+
+    t = sch.get("type")
+
+    try:
+        if t == "boolean":
+            return bool(strtobool(raw_value))
+        if t == "integer":
+            return int(raw_value)
+        if t == "number":
+            return float(raw_value)
+        if t == "array" or t == "object":
+            return json.loads(raw_value)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return raw_value
+
+    for k in ("allOf", "oneOf", "anyOf"):
+        for sub in sch.get(k, []) if isinstance(sch.get(k), list) else []:
+            coerced = _coerce_cli_value(raw_value, sub)
+            if coerced is not raw_value or sub.get("type") in ("boolean", "integer", "number", "array", "object"):
+                return coerced
+
+    return raw_value
 
 class UnknownParameterError(ValueError):
     """Exception raised for unknown parameters."""
@@ -437,24 +542,30 @@ class ConfigPipeline:
         self.args = None
         self._cli_dest_to_path = {}
         self._schema_args_added = False
+        self._cli_dest_to_schema = {}
 
         # "meta" args
         self.parser.add_argument("--config", default="config.json", type=str)
         self.parser.add_argument("--schema", default="configuration-schema.json", type=str)
-        self.parser.add_argument("--check_only", default=False, type=strtobool)
+        self.parser.add_argument("--check_only", action="store_true")
 
+    ###
+    #   _load_json(path)
+    #   purpose: Load and return a JSON file from disk as a Python dictionary.
+    ###
     def _load_json(self, path: str) -> Dict[str, Any]:
         with Path(path).open("r", encoding="utf-8") as f:
             return json.load(f)
 
+    ###
+    #   _add_schema_cli_arguments(schema)
+    #   purpose: Dynamically add CLI arguments for schema leaf properties and track their path mappings.
+    ###
     def _add_schema_cli_arguments(self, schema: Dict[str, Any]) -> None:
         if self._schema_args_added:
             return
 
-        leaf_paths = {}
-        for path, prop_schema in _iter_schema_leaf_args(schema):
-            if path not in leaf_paths:
-                leaf_paths[path] = prop_schema
+        leaf_paths = _schema_leaf_map(schema)
 
         leaf_name_counts = Counter(path[-1] for path in leaf_paths.keys())
 
@@ -467,27 +578,23 @@ class ConfigPipeline:
 
             dest = "__".join(path)
 
-            kwargs = {
-                "dest": dest,
-                "default": None,
-                "type": _argparse_type_from_schema(prop_schema),
-            }
-
-            choices = _schema_choices(prop_schema)
-            if choices is not None and all(not isinstance(c, (dict, list)) for c in choices):
-                kwargs["choices"] = choices
-
-            self.parser.add_argument(f"--{arg_name}", **kwargs)
+            self.parser.add_argument(f"--{arg_name}", dest=dest, default=None, type=str)
             self._cli_dest_to_path[dest] = path
+            self._cli_dest_to_schema[dest] = prop_schema
 
         self._schema_args_added = True
 
+    ###
+    #   _apply_cli_overrides(cfg, args)
+    #   purpose: Apply CLI-provided values onto the nested config, coercing values using schema metadata.
+    ###
     def _apply_cli_overrides(self, cfg: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
         d = vars(args)
 
         for dest, path in self._cli_dest_to_path.items():
             if d.get(dest) is not None:
-                _set_nested(cfg, path, d[dest])
+                value = _coerce_cli_value(d[dest], self._cli_dest_to_schema[dest])
+                _set_nested(cfg, path, value)
 
         # carry check_only (not part of schema, but you use it)
         cfg["check_only"] = bool(d.get("check_only", False))
@@ -507,20 +614,30 @@ class ConfigPipeline:
             self._add_schema_cli_arguments(schema)
             args, unknown = self.parser.parse_known_args()
             if unknown:
+                bad_cli_params = [elem for elem in unknown if elem.startswith("--")]
+                if bad_cli_params:
+                    raise UnknownParameterError(bad_cli_params, message="Unknown parameter name(s) in CLI. Please check the spelling of the inputs above and try again.")
                 raise UnknownParameterError(unknown, message="Unknown parameter name(s) in CLI. Please check the spelling of the inputs above and try again.")
-
+            
             # layer + apply schema defaults
             cfg = _to_layered_config(raw_cfg, schema)
             cfg = self._apply_cli_overrides(cfg, args)
             cfg = _sync_enabled_flags(cfg, schema)
             cfg = apply_defaults(schema=schema, instance=cfg)
 
-            # validate final config
-            validate(instance=cfg, schema=schema)
+            validation_cfg = _validation_instance(cfg)
+            effective_schema = _effective_schema(schema, validation_cfg)
 
-            bad = find_unknown_fields(schema, cfg)
-            if bad:
-                raise UnknownParameterError(bad, message="Unknown parameter name(s) in config. Please check the spelling of the inputs above and try again.")
+            # validate final config
+            validation_errors = _get_validation_errors(effective_schema, validation_cfg)
+            if validation_errors:
+                msg = "An error occured during configuration validation. Please check the following issue(s):\n"
+                for path, bad_value, err_msg in validation_errors:
+                    if bad_value is None:
+                        msg += f"  {path} -> {err_msg}\n"
+                    else:
+                        msg += f"  {path}={bad_value!r} -> {err_msg}\n"
+                raise ValueError(msg.rstrip())
 
             # path checks / postprocessing (same logic you already had)
             if cfg.get("model_params", {}).get("data_partitions_file", "") not in ("", None):
@@ -552,10 +669,10 @@ class ConfigPipeline:
         except UnknownParameterError as e:
             print(e)
             for elem in e.parameters:
-                if "--" in elem:
-                    print(f"{elem[2:]}\t", end="")
-                else:
-                    print(f"{elem}\t", end="")
+                name = elem[2:] if elem.startswith("--") else elem
+                name = name.split("=", 1)[0]
+                name = name.split(".")[-1]
+                print(f"{name}\t", end="")
             print()
             exit(1)
         except FileNotFoundError as e:
@@ -565,14 +682,10 @@ class ConfigPipeline:
             print(f"An error occured while parsing the config file.", end = "")
             print(f"Please check the following issue(s): {e.message}.")
             exit(1)
-        except ValidationError as e:
-            print(f"An error occured during configuration validation.", end = "")
-            print(f"Please check the following issue(s): {e.message}.")
-            exit(1)
         except ValueError as e:
             print(e)
             exit(1)
         
 
-        self.args = ConfigArgs(schema=schema, **cfg)
+        self.args = ConfigArgs(schema=effective_schema, **cfg)
         return self.args

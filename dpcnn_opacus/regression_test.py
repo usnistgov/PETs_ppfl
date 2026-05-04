@@ -16,6 +16,8 @@ RUN_PY = Path(
     os.environ.get("RUN_PY", Path(__file__).resolve().parents[0] / "run.py")
 ).resolve()
 
+DEFAULT_SCHEMA = (RUN_PY.parent / "configuration-schema.json").resolve()
+
 
 COMMON_BASE_CONFIG: Dict[str, Any] = {
     "model_type": "dpcnn",
@@ -138,6 +140,83 @@ def _base_without(*keys: str) -> Dict[str, Any]:
     return cfg
 
 
+def _load_default_schema() -> Dict[str, Any]:
+    if not DEFAULT_SCHEMA.exists():
+        pytest.skip(f"Default schema file not found: {DEFAULT_SCHEMA}")
+    return json.loads(DEFAULT_SCHEMA.read_text(encoding="utf-8"))
+
+
+def _test_is_object_schema(sch: Dict[str, Any]) -> bool:
+    return isinstance(sch, dict) and (sch.get("type") == "object" or "properties" in sch)
+
+
+def _test_select_oneof_branch(oneof_list: List[Dict[str, Any]], instance: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    mt = instance.get("model_type")
+    for opt in oneof_list:
+        const = opt.get("properties", {}).get("model_type", {}).get("const")
+        if const == mt:
+            return opt
+    return None
+
+
+def _test_iter_applicable_schemas(schema: Dict[str, Any], instance: Dict[str, Any]) -> List[Dict[str, Any]]:
+    schemas = [schema]
+    for sub in schema.get("allOf", []) or []:
+        schemas.extend(_test_iter_applicable_schemas(sub, instance))
+    if "oneOf" in schema:
+        chosen = _test_select_oneof_branch(schema["oneOf"], instance)
+        if chosen is not None:
+            schemas.extend(_test_iter_applicable_schemas(chosen, instance))
+    return schemas
+
+
+def _test_effective_top_level_key_order(schema: Dict[str, Any], instance: Dict[str, Any]) -> List[str]:
+    ordered: List[str] = []
+    seen: Set[str] = set()
+    for sch in _test_iter_applicable_schemas(schema, instance):
+        props = sch.get("properties", {})
+        if isinstance(props, dict):
+            for key in props.keys():
+                if key not in seen:
+                    ordered.append(key)
+                    seen.add(key)
+    return ordered
+
+
+def _extract_printed_top_level_scalar_keys(stdout: str) -> List[str]:
+    keys: List[str] = []
+    started = False
+    for line in stdout.splitlines():
+        if not line.strip():
+            if started:
+                break
+            continue
+        if line.startswith("  "):
+            continue
+        if line.rstrip().endswith("{"):
+            continue
+        if "=" in line:
+            started = True
+            keys.append(line.split("=", 1)[0].strip())
+    return keys
+
+
+def _extract_printed_top_level_dict_keys(stdout: str) -> List[str]:
+    keys: List[str] = []
+    after_blank = False
+    for line in stdout.splitlines():
+        if not line.strip():
+            after_blank = True
+            continue
+        if not after_blank:
+            continue
+        if line.startswith("  "):
+            continue
+        if line.rstrip().endswith("{"):
+            keys.append(line.split("=", 1)[0].strip().rstrip("{").strip())
+    return keys
+
+
 CASES: List[Any] = [
     # A. Config/CLI precedence & parsing
     pytest.param(
@@ -178,11 +257,12 @@ CASES: List[Any] = [
     ),
     pytest.param(
         Case(
-            name="5. Unknown CLI argument",
+            name="5. Unknown CLI argument prints only the bad parameter name",
             config=_base_with(),
-            cli_args=["--unknown_flag", "1"],
-            allowed_exit_codes={2, 1},
-            stdout_must_match=[r"unknown|unrecognized|no such option|invalid option"],
+            cli_args=["--unknown_flag", "zzzbadvcli"],
+            allowed_exit_codes={1},
+            stdout_must_match=[r"\bunknown_flag\b", r"unknown"],
+            stdout_must_not_match=[r"\bzzzbadvcli\b", r"--unknown_flag"],
         ),
         id="t05",
     ),
@@ -192,7 +272,8 @@ CASES: List[Any] = [
             config={**_base_with(), "unknown_key": 123},
             cli_args=[],
             allowed_exit_codes={1},
-            stdout_must_match=[r"unknown_key|unknown|unexpected|additional"],
+            stdout_must_match=[r"\bunknown_key\b", r"Unknown parameter"],
+            stdout_must_not_match=[r"Additional properties are not allowed", r"was unexpected"],
         ),
         id="t06"
     ),
@@ -226,7 +307,7 @@ CASES: List[Any] = [
             config=None,
             cli_args=[],
             allowed_exit_codes={1},
-            stdout_must_match=[r"missing|required|model_type|default"],
+            stdout_must_match=[r"model_type", r"Missing required parameter"],
         ),
         id="t09"
     ),
@@ -235,7 +316,7 @@ CASES: List[Any] = [
             name="10. Type coercion rules (CLI)",
             config=_base_with(),
             cli_args=["--opacus_secure_mode", "true", "--learning_rate", "1e-3"],
-            allowed_exit_codes={0, 2, 1},
+            allowed_exit_codes={0},
         ),
         id="t10"
     ),
@@ -254,7 +335,16 @@ CASES: List[Any] = [
     pytest.param(Case("12b. num_rounds accepts max", _base_with(num_rounds=100)), id="t12b"),
     pytest.param(Case("12c. num_rounds rejects below min", _base_with(num_rounds=0), allowed_exit_codes={1, 2}), id="t12c"),
     pytest.param(Case("12d. num_rounds rejects above max", _base_with(num_rounds=101), allowed_exit_codes={1, 2}), id="t12d"),
-    pytest.param(Case("12e. num_rounds rejects wrong type", _base_with(num_rounds=1.5), allowed_exit_codes={1, 2}), id="t12e"),
+    pytest.param(
+        Case(
+            "12e. num_rounds rejects wrong type",
+            _base_with(num_rounds=1.5),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"num_rounds", r"type|integer"],
+            stdout_must_not_match=[r"not valid under any of the given schemas"],
+        ),
+        id="t12e"
+    ),
 
     pytest.param(Case("13a. min_fit_clients boundary valid", _base_with(min_fit_clients=1)), id="t13a"),
     pytest.param(Case("13b. min_fit_clients boundary invalid", _base_with(min_fit_clients=0), allowed_exit_codes={1, 2}), id="t13b"),
@@ -309,10 +399,28 @@ CASES: List[Any] = [
     pytest.param(Case("29b. accuracy_tolerance invalid (>1)", _base_with(accuracy_tolerance=2), allowed_exit_codes={1, 2}), id="t29b"),
 
     pytest.param(Case("30a. partitioner_type accepts allowed value", _base_with(partitioner_type="exponential")), id="t30a"),
-    pytest.param(Case("30b. partitioner_type rejects bad enum", _base_with(partitioner_type="log"), allowed_exit_codes={1, 2}), id="t30b"),
+    pytest.param(
+        Case(
+            "30b. partitioner_type rejects bad enum",
+            _base_with(partitioner_type="log"),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"partitioner_type", r"enum|one of|uniform|exponential"],
+            stdout_must_not_match=[r"not valid under any of the given schemas"],
+        ),
+        id="t30b"
+    ),
 
     pytest.param(Case("31a. optimizer accepts allowed value", _base_with(optimizer="adamax")), id="t31a"),
-    pytest.param(Case("31b. optimizer rejects bad enum", _base_with(optimizer="adam"), allowed_exit_codes={1, 2}), id="t31b"),
+    pytest.param(
+        Case(
+            "31b. optimizer rejects bad enum",
+            _base_with(optimizer="adam"),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"optimizer", r"enum|one of|sgd|adamax"],
+            stdout_must_not_match=[r"not valid under any of the given schemas"],
+        ),
+        id="t31b"
+    ),
 
     pytest.param(Case("52a. lower one bad value", _base_with(min_available_clients=2)), id="t52a"),
     pytest.param(Case("52b. lower two bad values", _base_with(min_evaluate_clients=2, min_fit_clients=2)), id="t52b"),
@@ -332,10 +440,28 @@ CASES: List[Any] = [
         ),
         id="t32a"
     ),
-    pytest.param(Case("32b. data_partitions_file rejects non-string", _base_with(data_partitions_file=123), allowed_exit_codes={1, 2}), id="t32b"),
+    pytest.param(
+        Case(
+            "32b. data_partitions_file rejects non-string",
+            _base_with(data_partitions_file=123),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"data_partitions_file", r"type|string"],
+            stdout_must_not_match=[r"not valid under any of the given schemas"],
+        ),
+        id="t32b"
+    ),
 
     pytest.param(Case("33a. opacus_secure_mode accepts boolean", _base_with(opacus_secure_mode=True)), id="t33a"),
-    pytest.param(Case("33b. opacus_secure_mode rejects non-boolean", _base_with(opacus_secure_mode="yes"), allowed_exit_codes={1, 2}), id="t33b"),
+    pytest.param(
+        Case(
+            "33b. opacus_secure_mode rejects non-boolean",
+            _base_with(opacus_secure_mode="yes"),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"opacus_secure_mode", r"type|boolean"],
+            stdout_must_not_match=[r"not valid under any of the given schemas"],
+        ),
+        id="t33b"
+    ),
 
     # C. Cross-parameter interactions
     pytest.param(
@@ -429,8 +555,9 @@ CASES: List[Any] = [
         Case(
             "44. Multiple invalid params reported (aggregation)",
             _base_with(epochs=0, learning_rate=0, optimizer="adam"),
-            allowed_exit_codes={1, 2},
+            allowed_exit_codes={1},
             stdout_must_match=[r"epochs", r"learning_rate", r"optimizer"],
+            stdout_must_not_match=[r"not valid under any of the given schemas"],
         ),
         id="t44"
     ),
@@ -520,22 +647,23 @@ CASES: List[Any] = [
         marks=pytest.mark.skip(reason="Requires a real partitions file"),
     ),
 
-    # F. [NEW] Regressions added for schema changes
+    # F. Regressions added for schema/effective-schema/CLI behavior
     pytest.param(
         Case(
             "[NEW] 54a. model_type is required",
             config=_base_without("model_type"),
-            allowed_exit_codes={1, 2},
-            stdout_must_match=[r"model_type|required|missing"],
-        ),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"\bmodel_type\b", r"Missing required parameter"],
+            stdout_must_not_match=[r"is a required property"]),
         id="t54a",
     ),
     pytest.param(
         Case(
             "[NEW] 54b. model_type rejects bad enum",
             config=_base_with(model_type="transformer"),
-            allowed_exit_codes={1, 2},
-            stdout_must_match=[r"model_type|xgboost|dpcnn|cnn|enum"],
+            allowed_exit_codes={1},
+            stdout_must_match=[r"model_type|xgboost|dpcnn|cnn|enum|one of"],
+            stdout_must_not_match=[r"not valid under any of the given schemas"],
         ),
         id="t54b",
     ),
@@ -551,8 +679,9 @@ CASES: List[Any] = [
         Case(
             "[NEW] 55b. xgboost rejects bad train_method enum",
             config=_xgb_base_with(train_method="invalid_method"),
-            allowed_exit_codes={1, 2},
-            stdout_must_match=[r"train_method|bagging|cyclic|enum"],
+            allowed_exit_codes={1},
+            stdout_must_match=[r"train_method|bagging|cyclic|enum|one of"],
+            stdout_must_not_match=[r"not valid under any of the given schemas"],
         ),
         id="t55b",
     ),
@@ -572,6 +701,145 @@ CASES: List[Any] = [
         ),
         id="t56b",
     ),
+
+    # G. New targeted regressions for the recent improvements
+    pytest.param(
+        Case(
+            "[NEW] 57. Unknown CLI --flag=value prints only the flag name",
+            config=_base_with(),
+            cli_args=["--another_unknown=zzz_eq_value"],
+            allowed_exit_codes={1},
+            stdout_must_match=[r"\banother_unknown\b", r"unknown"],
+            stdout_must_not_match=[r"\bzzz_eq_value\b", r"--another_unknown"],
+        ),
+        id="t57",
+    ),
+    pytest.param(
+        Case(
+            "[NEW] 58. Unknown nested config key is reported via schema validation",
+            config={**_base_with(), "model_params": {"badleaf": 123}},
+            allowed_exit_codes={1},
+            stdout_must_match=[r"model_params\.badleaf", r"Unknown parameter"],
+            stdout_must_not_match=[r"Additional properties are not allowed", r"was unexpected", r"check_only -> Unknown parameter"],
+        ),
+        id="t58",
+    ),
+    pytest.param(
+        Case(
+            "[NEW] 59. Known CLI bad integer type is validated by schema, not argparse",
+            config=_base_with(),
+            cli_args=["--epochs", "foo"],
+            allowed_exit_codes={1},
+            stdout_must_match=[r"epochs", r"integer|type"],
+            stdout_must_not_match=[
+                r"argument --epochs",
+                r"invalid int value",
+                r"not valid under any of the given schemas",
+                r"'model_params':\s*\{",
+            ],
+        ),
+        id="t59",
+    ),
+    pytest.param(
+        Case(
+            "[NEW] 60. Known CLI bad boolean is validated by schema, not argparse",
+            config=_base_with(),
+            cli_args=["--opacus_secure_mode", "notabool"],
+            allowed_exit_codes={1},
+            stdout_must_match=[r"opacus_secure_mode", r"boolean|type"],
+            stdout_must_not_match=[
+                r"argument --opacus_secure_mode",
+                r"invalid choice",
+                r"not valid under any of the given schemas",
+            ],
+        ),
+        id="t60",
+    ),
+    pytest.param(
+        Case(
+            "[NEW] 61. Known CLI bad enum is validated by schema, not argparse",
+            config=_base_with(),
+            cli_args=["--optimizer", "not_an_optimizer"],
+            allowed_exit_codes={1},
+            stdout_must_match=[r"optimizer", r"not_an_optimizer", r"one of|enum|sgd|adamax"],
+            stdout_must_not_match=[
+                r"argument --optimizer",
+                r"invalid choice",
+                r"not valid under any of the given schemas",
+            ],
+        ),
+        id="t61",
+    ),
+    pytest.param(
+        Case(
+            "[NEW] 62. Multiple bad CLI values are aggregated by schema validation",
+            config=_base_with(),
+            cli_args=["--epochs", "foo", "--learning_rate", "0", "--optimizer", "not_an_optimizer"],
+            allowed_exit_codes={1},
+            stdout_must_match=[r"epochs", r"learning_rate", r"optimizer"],
+            stdout_must_not_match=[
+                r"argument --epochs",
+                r"argument --learning_rate",
+                r"argument --optimizer",
+                r"not valid under any of the given schemas",
+            ],
+        ),
+        id="t62",
+    ),
+    pytest.param(
+        Case(
+            "[NEW] 63. Known bad config type reports field-level error, not giant oneOf blob",
+            config=_base_with(epochs="foo"),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"epochs", r"integer|type"],
+            stdout_must_not_match=[
+                r"not valid under any of the given schemas",
+                r"'model_params':\s*\{",
+            ],
+        ),
+        id="t63",
+    ),
+    pytest.param(
+        Case(
+            "[NEW] 64. Multiple bad config values are reported individually",
+            config=_base_with(epochs="foo", learning_rate=0, optimizer="not_an_optimizer"),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"epochs", r"learning_rate", r"optimizer"],
+            stdout_must_not_match=[r"not valid under any of the given schemas"],
+        ),
+        id="t64",
+    ),
+    pytest.param(
+        Case(
+            "[NEW] 65. Branch-specific CLI arg is accepted by parser but rejected by effective schema for dpcnn",
+            config=_base_with(model_type="dpcnn"),
+            cli_args=["--train_method", "cyclic"],
+            allowed_exit_codes={1},
+            stdout_must_match=[r"train_method"],
+            stdout_must_not_match=[r"Unknown parameter name\(s\) in CLI", r"unrecognized|invalid option|no such option"],
+        ),
+        id="t65",
+    ),
+    pytest.param(
+        Case(
+            "[NEW] 66. Branch-specific CLI arg is accepted and valid for xgboost",
+            config=_xgb_base_with(),
+            cli_args=["--train_method", "cyclic"],
+            allowed_exit_codes={0},
+        ),
+        id="t66",
+    ),
+    pytest.param(
+        Case(
+            "[NEW] 67. model_type bad enum via CLI is validated by schema, not argparse",
+            config=_base_with(),
+            cli_args=["--model_type", "transformer"],
+            allowed_exit_codes={1},
+            stdout_must_match=[r"model_type", r"transformer", r"dpcnn|cnn|xgboost|one of|enum"],
+            stdout_must_not_match=[r"argument --model_type", r"invalid choice", r"not valid under any of the given schemas"],
+        ),
+        id="t67",
+    ),
 ]
 
 
@@ -584,13 +852,16 @@ def test_run_py_regressions(case: Case, tmp_path: Path, request: pytest.FixtureR
 
     cmd = [sys.executable, str(RUN_PY)]
     if not is_t46:
-        cmd += ["--check_only", "True"]
+        cmd += ["--check_only"]
 
     if case.create_config_file:
         cfg_path = _write_config(tmp_path, case)
         cmd += ["--config", str(cfg_path)]
     else:
         cmd += ["--config", str(tmp_path / case.config_filename)]
+
+    if DEFAULT_SCHEMA.exists():
+        cmd += ["--schema", str(DEFAULT_SCHEMA)]
 
     cmd += list(case.cli_args)
 
@@ -606,3 +877,59 @@ def test_run_py_regressions(case: Case, tmp_path: Path, request: pytest.FixtureR
 
     if not is_t46:
         _assert_patterns(proc.stdout, case.stdout_must_match, case.stdout_must_not_match, "stdout")
+
+
+def test_check_only_print_order_follows_effective_schema_top_level(tmp_path: Path) -> None:
+    schema = _load_default_schema()
+    cfg = _base_with()
+
+    case = Case(name="print-order", config=cfg)
+    cfg_path = _write_config(tmp_path, case)
+
+    cmd = [
+        sys.executable,
+        str(RUN_PY),
+        "--check_only",
+        "--schema",
+        str(DEFAULT_SCHEMA),
+        "--config",
+        str(cfg_path),
+    ]
+    proc = _run(cmd, capture=True)
+
+    assert proc.returncode == 0, (
+        f"Expected successful check_only run.\n"
+        f"Command: {' '.join(cmd)}\n"
+        f"--- stdout ---\n{proc.stdout}\n"
+        f"--- stderr ---\n{proc.stderr}\n"
+    )
+
+    expected_top_level_order = _test_effective_top_level_key_order(schema, cfg)
+
+    expected_scalar_keys = [
+        key for key in expected_top_level_order
+        if key in {"model_type", "num_cpus", "num_gpus", "output_dir", "data_dir"}
+    ]
+    expected_scalar_keys.append("check_only")
+
+    actual_scalar_keys = _extract_printed_top_level_scalar_keys(proc.stdout)
+
+    assert actual_scalar_keys[:len(expected_scalar_keys)] == expected_scalar_keys, (
+        f"Top-level scalar print order did not follow effective schema order.\n"
+        f"Expected prefix: {expected_scalar_keys}\n"
+        f"Actual: {actual_scalar_keys}\n"
+        f"--- stdout ---\n{proc.stdout}\n"
+    )
+
+    expected_dict_keys = [
+        key for key in expected_top_level_order
+        if key in {"federated", "dp", "model_params"}
+    ]
+    actual_dict_keys = _extract_printed_top_level_dict_keys(proc.stdout)
+
+    assert actual_dict_keys[:len(expected_dict_keys)] == expected_dict_keys, (
+        f"Top-level dict print order did not follow effective schema order.\n"
+        f"Expected prefix: {expected_dict_keys}\n"
+        f"Actual: {actual_dict_keys}\n"
+        f"--- stdout ---\n{proc.stdout}\n"
+    )
