@@ -158,7 +158,7 @@
                                 },
                             "batch divisor":
                                 {
-                                    "description": "The divisor to determine the number of batches (num_batches = dataset_size/batch_divisor) -- I can only check this after loading in the dataset, not in the json",
+                                    "description": "The divisor to determine the number of batches (num_batches = dataset_size/batch_divisor)",
                                     "type": "integer"
                                 },
                             "epochs":
