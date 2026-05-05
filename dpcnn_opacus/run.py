@@ -33,6 +33,11 @@ args.print()
 if args.check_only:
     print("Parameters validated. Ending script")
     exit()
+
+if args.model_type != "dpcnn":
+    print("That functionality has not been implemented yet. Terminating process.")
+    exit(0)
+    
 '''
 INTENDED ACTION: Modify
 

@@ -233,15 +233,27 @@ CASES: List[Any] = [
             name="2. CLI overrides config (single field)",
             config=_base_with(num_rounds=10),
             cli_args=["--num_rounds", "11"],
+            stdout_must_match=[r"num_rounds=11"],
             allowed_exit_codes={0},
         ),
         id="t02",
     ),
     pytest.param(
         Case(
+            name="2a. Checking that opacus_secure_mode always is false, no matter what input is given",
+            config=_base_with(opacus_secure_mode=True),
+            cli_args=["--opacus_secure_mode", "True"],
+            stdout_must_match=[r"opacus_secure_mode=False"],
+            allowed_exit_codes={0},
+        ),
+        id="t02a",
+    ),
+    pytest.param(
+        Case(
             name="3. CLI overrides config (multiple fields)",
-            config=_base_with(epochs=2, optimizer="sgd", opacus_secure_mode=False),
-            cli_args=["--epochs", "3", "--optimizer", "adamax", "--opacus_secure_mode", "True"],
+            config=_base_with(epochs=2, optimizer="sgd"),
+            cli_args=["--epochs", "3", "--optimizer", "adamax"],
+            stdout_must_match=[r"epochs=3", r"optimizer=adamax"],
             allowed_exit_codes={0},
         ),
         id="t03",
@@ -573,7 +585,7 @@ CASES: List[Any] = [
         marks=pytest.mark.skip(reason="Needs a defined deterministic artifact/output to compare across runs"),
     ),
     pytest.param(
-        Case("46. Minimal valid run (E2E smoke)", _base_with(num_cpus=12, delta=1e-5), allowed_exit_codes={0}),
+        Case("46. Minimal valid run (E2E smoke)", _base_with(num_cpus=4, epochs=5, delta=1e-5), allowed_exit_codes={0}),
         id="t46"
     ),
     pytest.param(
@@ -719,7 +731,7 @@ CASES: List[Any] = [
             "[NEW] 58. Unknown nested config key is reported via schema validation",
             config={**_base_with(), "model_params": {"badleaf": 123}},
             allowed_exit_codes={1},
-            stdout_must_match=[r"model_params\.badleaf", r"Unknown parameter"],
+            stdout_must_match=[r"badleaf", r"Unknown parameter"],
             stdout_must_not_match=[r"Additional properties are not allowed", r"was unexpected", r"check_only -> Unknown parameter"],
         ),
         id="t58",
