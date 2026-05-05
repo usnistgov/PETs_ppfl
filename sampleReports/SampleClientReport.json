@@ -1,7 +1,7 @@
 {
-    "created on": "2026-05-05 14:31:30.899277",
+    "created on": "2026-05-05 14:37:18.166190",
     "model id": 0,
-    "round id": 0,
+    "round number": 0,
     "partitions file": "none",
     "train accuracy": 0.02127659574468085,
     "test accuracy": 0.010526315789473684,
