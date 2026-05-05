@@ -15,6 +15,11 @@
                     "description": "The id of the model trained",
                     "type": "integer"
                 },
+            "round number":
+                {
+                    "description": "The round of training",
+                    "type": "integer"
+                },
             "partitions file":
                 {
                     "description": "The file used to partition the data for training",
