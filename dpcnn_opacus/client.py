@@ -146,6 +146,7 @@ def save_client(
     metadata = {
         "created on": str(datetime.now()),
         "model id": client_id,
+        "round number": federated_round,
         "partitions file": partitions_path,
         "train accuracy": float(train_metrics["accuracy"]),
         "test accuracy": float(test_metrics["accuracy"]),
