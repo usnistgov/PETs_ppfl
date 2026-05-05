@@ -1,32 +1,49 @@
 import argparse
-import types
-from typing import List, Dict, Any
 import numpy as np
 from collections import Counter
 import torch
 import json
-from jsonschema import validate, ValidationError
-import argparse
-from pathlib import Path
-import os
+from copy import deepcopy
 from distutils.util import strtobool
+from pathlib import Path
+from typing import Any, Dict, Tuple, List, Set
+import os
+import pickle
+import re
 
-class UnknownParameterError(ValueError):
-    """Exception raised for unknown parameters."""
-    def __init__(self, parameters, message="Unknown parameter name(s). Please check the spelling of the inputs above and try again."):
-        self.parameters = parameters
-        super().__init__(message)
+from jsonschema.validators import validator_for
 
+###
+#   get_device()
+#   purpose: Return the default torch device, preferring CUDA when available and falling back to CPU otherwise.
+###
 def get_device():
     if torch.cuda.is_available():
         return torch.device("cuda")
     else:
         return torch.device("cpu")
 
+###
+#   validate_data_size(data_path, batch_divisor)
+#   purpose: Validate that the discovered train/holdout dataset files are large enough for the requested batch divisor.
+###
+def validate_data_size(data_path, batch_divisor):
+    pattern = ["_tt_vcf.dat", "_ho_vcf.dat"]
+    for pat in pattern: 
+        matches = [f for f in os.listdir(data_path) if f.endswith(pat)]
+        if not matches:
+            raise FileNotFoundError(f"No file found in {data_path} matching {pat}")
+        if len(matches) > 1:
+            raise ValueError(f"Multiple files found in {data_path} matching {pat}: {matches}")
 
-def print_binned_counts(
-    dataset: np.ndarray, indices: List[int] | np.ndarray, num_bins: int = 10
-):
+        file_path = os.path.relpath(os.path.join(data_path, matches[0]))
+        with open(file_path, "rb") as f:
+            num_data_rows = pickle.load(f).shape[0]
+            if batch_divisor > num_data_rows:
+                raise ValueError(f"Batch divisor (batch_divisor={batch_divisor}) is greater than train/test dataset size (num_rows={num_data_rows})")
+
+
+def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, num_bins: int = 10):
     """
     Count the occurrences of binned labels for a given indices in the dataset
     and print the counts with the bin ranges
@@ -45,281 +62,198 @@ def print_binned_counts(
     labels = dataset[indices, -1]
     # Create bins for the selected labels
     bins = np.linspace(np.min(labels), np.max(labels), num_bins + 1)
-    binned_labels = np.digitize(labels, bins) - 1
+    binned_labels = np.digitize(labels, bins, right=True) - 1
+    binned_labels = np.clip(binned_labels, 0, num_bins - 1)
     # Count occurrences of each bin
     binned_counts = Counter(binned_labels)
     # Print binned label counts with ranges
-    for bin_idx, count in sorted(binned_counts.items()):
-        if bin_idx < len(bins) - 1:
-            print(
-                f"{bins[bin_idx]:.2f} - {bins[bin_idx + 1]:.2f}: "
-                f"{count} records"
-            )
+    for bin_idx in range(num_bins):
+        count = binned_counts.get(bin_idx, 0)
+        print(f"{bins[bin_idx]:.2f} - {bins[bin_idx + 1]:.2f}: {count} records")
 
+###
+#   _is_object_schema(sch)
+#   purpose: Return True when the given schema behaves like a JSON object schema, based on type or properties.
+###
+def _is_object_schema(sch: dict) -> bool:
+    return isinstance(sch, dict) and (sch.get("type") == "object" or "properties" in sch)
 
-def centralized_args_parser():
-    """
-    Parse arguments to define hyperparameter settings for centralized training.
-    """
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--seed",
-        default=42,
-        type=int,
-        help="Seed used for train/test splitting (default = 42).",
-    )
-    parser.add_argument(
-        "--test-fraction",
-        default=0.2,
-        type=float,
-        help="Test fraction for train/test splitting (default = 0.2).",
-    )
-    parser.add_argument(
-        "--epochs",
-        default=20,
-        type=int,
-        help="Number of training epochs (default = 20).",
-    )
-    parser.add_argument(
-        "--learning-rate",
-        default=0.003,
-        type=float,
-        help="Learning rate (default = 0.003).",
-    )
-    parser.add_argument(
-        "--batch-divisor",
-        default=40,
-        type=int,
-        help="Divisor to determine batch size (default = 40).",
-    )
-    parser.add_argument(
-        "--weight-decay",
-        default=0.0001,
-        type=float,
-        help="Weight decay constant (default = 0.0001).",
-    )
-    parser.add_argument(
-        "--accuracy-tolerance",
-        default=0.1,
-        type=float,
-        help="Error tolerance to declare prediction as correct "
-        "(default = 0.1). This is used for computing the "
-        "accuracy of the model.",
-    )
-    parser.add_argument(
-        "--data-partitions-file",
-        default=None,
-        type=str,
-        help=f"Path to the data partitions file (default = {None}).\n"
-        "If not used, then the data is split into n_models equal parts."
-        "If data-partitions file is provided, "
-        "then the number of models (n_models) "
-        "to train is equal to the number of "
-        "data partitions available in the file. In the data partitions, "
-        "each key is a client id and value for each key is a list of "
-        "dataset indices to be used for that client.",
-    )
-    parser.add_argument(
-        "--n-models",
-        default=1,
-        type=int,
-        help="Number of models to train (default = 1). "
-        "Data is split into n_models equal parts."
-        "This is used when the clustered-indices file is not found.",
-    )
-    parser.add_argument(
-        "--optimizer",
-        default="sgd",
-        type=str,
-        choices=["sgd", "adamax"],
-        help="Optimizer to use sgd or adamax (default = sgd).",
-    )
-    parser.add_argument(
-        "--opacus-secure-mode",
-        default=False,
-        type=bool,
-        help="Use Opacus secure mode. It is set to false by default for "
-        "faster experimentation (default = False).",
-    )
-    parser.add_argument(
-        "--epsilon",
-        default=1.0,
-        type=float,
-        help="Privacy parameter: epsilon (default = 1.0).",
-    )
-    parser.add_argument(
-        "--delta",
-        default=1e-5,
-        type=float,
-        help="Privacy parameter: delta (default = 1e-5).",
-    )
-    parser.add_argument(
-        "--max-grad-norm",
-        default=1.0,
-        type=float,
-        help="Privacy parameter: max grad norm (default = 1.0)."
-        "This clips the gradients to be under this value before "
-        "applying noise.",
-    )
-    parser.add_argument(
-        "--output-dir",
-        default="../reports/",
-        type=str,
-        help="Output directory to save the trained models and metadata."
-        "This should be a relative path from the parent directory of "
-        "the centralized_train.py script.",
-    )
-    args = parser.parse_args()
-    return args
+###
+#   _has_any_default(sch)
+#   purpose: Recursively check whether a schema or any nested applicable subschema defines a default value.
+###
+def _has_any_default(sch: dict) -> bool:
+    if not isinstance(sch, dict):
+        return False
+    if "default" in sch:
+        return True
+    if _is_object_schema(sch):
+        for subschema in sch.get("properties", {}).values():
+            if _has_any_default(subschema):
+                return True
+    for k in ("allOf", "oneOf", "anyOf"):
+        for subschema in sch.get(k, []) if isinstance(sch.get(k), list) else []:
+            if _has_any_default(subschema):
+                return True
+    return False
 
+###
+#   _select_oneof_branch(oneof_list, instance)
+#   purpose: Select the matching oneOf branch using model_type as a discriminator from the current instance.
+###
+def _select_oneof_branch(oneof_list, instance):
+    mt = instance.get("model_type")
+    for opt in oneof_list:
+        const = opt.get("properties", {}).get("model_type", {}).get("const")
+        if const == mt:
+            return opt
+    return None
 
-def flower_args_parser():
-    """
-    Parse arguments to define hyperparameter settings for centralized training.
-    """
-    parser = argparse.ArgumentParser()
+###
+#   apply_defaults(schema, instance)
+#   purpose: Recursively apply schema defaults to a config instance, including nested object properties.
+###
+def apply_defaults(schema: dict, instance):
+    # Layer: allOf
+    for sub in schema.get("allOf", []):
+        apply_defaults(sub, instance)
 
-    # server arguments
-    parser.add_argument(
-        "--num-rounds",
-        default=3,
-        type=int,
-        help="Number of training rounds (default = 3).",
-    )
-    parser.add_argument(
-        "--min-fit-clients",
-        default=1,
-        type=int,
-        help="Minimum number of fit clients (default = 1).",
-    )
-    parser.add_argument(
-        "--min-evaluate-clients",
-        default=1,
-        type=int,
-        help="Minimum number of evaluation clients (default = 1).",
-    )
-    parser.add_argument(
-        "--min-available-clients",
-        default=1,
-        type=int,
-        help="Minimum number of available clients (default = 1).",
-    )
-    parser.add_argument(
-        "--num-partitions",
-        default=1,
-        type=int,
-        help="Number of partitions (default = 1)."
-        "This is used when the data-partitions file is not provided.",
-    )
-    # client arguments
-    parser.add_argument(
-        "--partitioner-type",
-        default="uniform",
-        type=str,
-        choices=["uniform", "linear", "square", "exponential"],
-        help="Partitioner types (default = 'uniform').",
-    )
-    parser.add_argument(
-        "--epochs",
-        default=20,
-        type=int,
-        help="Number of training epochs (default = 20).",
-    )
-    parser.add_argument(
-        "--batch-divisor",
-        default=5,
-        type=int,
-        help="Divisor to determine batch size (default = 5).",
-    )
-    parser.add_argument(
-        "--seed",
-        default=42,
-        type=int,
-        help="Seed used for train/test splitting (default = 42).",
-    )
-    parser.add_argument(
-        "--test-fraction",
-        default=0.2,
-        type=float,
-        help="Test fraction for train/test splitting (default = 0.2).",
-    )
-    parser.add_argument(
-        "--learning-rate",
-        default=0.003,
-        type=float,
-        help="Learning rate (default = 0.003).",
-    )
-    parser.add_argument(
-        "--weight-decay",
-        default=0.0001,
-        type=float,
-        help="Weight decay constant (default = 0.0001).",
-    )
-    parser.add_argument(
-        "--accuracy-tolerance",
-        default=0.1,
-        type=float,
-        help="Error tolerance to declare prediction as correct "
-        "(default = 0.1). This is used for computing the "
-        "accuracy of the model.",
-    )
-    parser.add_argument(
-        "--optimizer",
-        default="sgd",
-        type=str,
-        choices=["sgd", "adamax"],
-        help="Optimizer to use sgd or adamax (default = sgd).",
-    )
-    parser.add_argument(
-        "--opacus-secure-mode",
-        default=False,
-        type=bool,
-        help="Use Opacus secure mode. It is set to false by default for "
-        "faster experimentation (default = False).",
-    )
-    parser.add_argument(
-        "--epsilon",
-        default=1.0,
-        type=float,
-        help="Privacy parameter: epsilon (default = 1.0).",
-    )
-    parser.add_argument(
-        "--delta",
-        default=1e-5,
-        type=float,
-        help="Privacy parameter: delta (default = 1e-5).",
-    )
-    parser.add_argument(
-        "--max-grad-norm",
-        default=1.0,
-        type=float,
-        help="Privacy parameter: max grad norm (default = 1.0)."
-        "This clips the gradients to be under this value before "
-        "applying noise.",
-    )
-    parser.add_argument(
-        "--data-partitions-file",
-        default=None,
-        type=str,
-        help=f"Path to the data partitions file (default = {None}).\n"
-        "If not used, then the data is split into n_models equal parts."
-        "If data-partitions file is provided, "
-        "then the number of models (n_models) "
-        "to train is equal to the number of "
-        "data partitions available in the file. In the data partitions, "
-        "each key is a client id and value for each key is a list of "
-        "dataset indices to be used for that client.",
-    )
-    parser.add_argument(
-        "--output-dir",
-        default=None,
-        type=str,
-        help="Output directory to save the trained models and metadata."
-        "This should be a relative path from the parent directory of "
-        "the centralized_train.py script.",
-    )
-    args = parser.parse_args()
-    return args
+    # Choose: oneOf (by model_type discriminator)
+    if "oneOf" in schema:
+        chosen = _select_oneof_branch(schema["oneOf"], instance)
+        if chosen is not None:
+            apply_defaults(chosen, instance)
+
+    # Apply defaults for object properties (even if "type":"object" is omitted)
+    if _is_object_schema(schema) and isinstance(instance, dict):
+        for prop, prop_schema in schema.get("properties", {}).items():
+            if prop not in instance:
+                if isinstance(prop_schema, dict) and "default" in prop_schema:
+                    instance[prop] = deepcopy(prop_schema["default"])
+                elif _is_object_schema(prop_schema) and _has_any_default(prop_schema):
+                    instance[prop] = {}
+                else:
+                    continue
+
+            if isinstance(instance.get(prop), dict):
+                apply_defaults(prop_schema, instance[prop])
+
+    return instance
+
+###
+#   _schema_leaf_map(schema)
+#   purpose: Build a mapping from leaf property paths to their corresponding schema definitions.
+###
+def _schema_leaf_map(schema: Dict[str, Any]) -> Dict[Tuple[str, ...], Dict[str, Any]]:
+    leaf_paths = {}
+    for path, prop_schema in _iter_schema_leaf_args(schema):
+        if path not in leaf_paths:
+            leaf_paths[path] = prop_schema
+    return leaf_paths
+
+###
+#   _build_schema_path_index(schema)
+#   purpose: Build lookup tables for resolving schema leaf paths by leaf name or dotted path.
+###
+def _build_schema_path_index(schema: Dict[str, Any]):
+    by_name: Dict[str, Tuple[str, ...]] = {}
+    by_dot: Dict[str, Tuple[str, ...]] = {}
+    name_to_paths: Dict[str, Set[Tuple[str, ...]]] = {}
+
+    for path in _schema_leaf_map(schema).keys():
+        by_dot[".".join(path)] = path
+        name_to_paths.setdefault(path[-1], set()).add(path)
+
+    for name, paths in name_to_paths.items():
+        if len(paths) == 1:
+            by_name[name] = next(iter(paths))
+
+    return by_name, by_dot
+
+###
+#   _flatten_config_items(data, prefix=())
+#   purpose: Flatten a nested config dictionary into dotted-path key/value pairs.
+###
+def _flatten_config_items(data: Dict[str, Any], prefix: Tuple[str, ...] = ()):
+    for key, value in data.items():
+        path = prefix + (key,)
+        if isinstance(value, dict):
+            yield from _flatten_config_items(value, path)
+        else:
+            yield ".".join(path), value
+
+###
+#   _top_level_object_schemas(schema, instance)
+#   purpose: Collect top-level object-valued schema groups that apply to the current config instance.
+###
+def _top_level_object_schemas(schema: Dict[str, Any], instance: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    top_objects: Dict[str, Dict[str, Any]] = {}
+
+    for sch in _iter_applicable_schemas(schema, instance):
+        props = sch.get("properties", {})
+        if isinstance(props, dict):
+            for key, prop_schema in props.items():
+                if key not in top_objects and _is_object_schema(prop_schema):
+                    top_objects[key] = prop_schema
+
+    return top_objects
+
+###
+#   _sync_enabled_flags(cfg, schema)
+#   purpose: Infer or validate group-level *_enabled flags based on the presence of other keys in each group.
+###
+def _sync_enabled_flags(cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+    top_objects = _top_level_object_schemas(schema, cfg)
+
+    for group_name, group_schema in top_objects.items():
+        group_cfg = cfg.get(group_name)
+        if group_cfg is None:
+            continue
+        if not isinstance(group_cfg, dict):
+            continue
+
+        child_props: Dict[str, Any] = {}
+        for sch in _iter_applicable_schemas(group_schema, group_cfg):
+            props = sch.get("properties", {})
+            if isinstance(props, dict):
+                child_props.update(props)
+
+        enabled_keys = [
+            key
+            for key, prop_schema in child_props.items()
+            if isinstance(prop_schema, dict)
+            and prop_schema.get("type") == "boolean"
+            and key.endswith("_enabled")
+        ]
+
+        if len(enabled_keys) == 1:
+            enabled_key = enabled_keys[0]
+            if enabled_key not in group_cfg:
+                cfg[group_name][enabled_key] = any(k != enabled_key for k in group_cfg.keys())
+
+    return cfg
+
+###
+#   _to_layered_config(flat_cfg, schema)
+#   purpose: Convert a flat or partially nested config into a nested structure aligned to schema paths.
+###
+def _to_layered_config(flat_cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+    cfg: Dict[str, Any] = {}
+    by_name, by_dot = _build_schema_path_index(schema)
+
+    # Keep top-level object groups present, like federated/dp/model_params
+    for group_name in _top_level_object_schemas(schema, flat_cfg).keys():
+        cfg[group_name] = {}
+
+    for flat_key, value in _flatten_config_items(flat_cfg):
+        if flat_key in by_dot:
+            _set_nested(cfg, by_dot[flat_key], value)
+        elif "." not in flat_key and flat_key in by_name:
+            _set_nested(cfg, by_name[flat_key], value)
+        else:
+            _set_nested(cfg, tuple(flat_key.split(".")), value)
+
+    return cfg
 
 ###
 # _validate_paths(paths, check_func, kind)
@@ -327,7 +261,6 @@ def flower_args_parser():
 #   output: none
 #   purpose:  Internal helper to validate one or many paths.
 ###
-
 def _validate_paths(paths, check_func, kind: str) -> None:
 
     # Normalize to a list of paths
@@ -359,158 +292,401 @@ def validate_dir_path(test_path: str) -> None:
     _validate_paths(test_path, os.path.isdir, "directory")
 
 ###
-#   override_cli(defaults)
-#   input: a dictionary with string keys representing the values loaded in from the configuration json files
-#   output: a dictionary with string keys that contain the configuration json file defaults, updated based on command line input
-#   purpose: to allow the command line arguments to supersede the configuration json file
+#   _set_nested(cfg, path, value)
+#   purpose: Set a value inside a nested dictionary, creating intermediate dictionaries as needed.
 ###
-def override_cli(defaults: Dict[str, Any]):
-
-    parser = argparse.ArgumentParser(exit_on_error=False)
-
-    #Checks if this should only validate parameters or if it should run the testbed
-    parser.add_argument("--check_only", default=False, type=strtobool)
-
-    parser.add_argument("--num_rounds", type=int)
-    parser.add_argument("--min_fit_clients", type=int)
-    parser.add_argument("--min_available_clients", type=int)
-    parser.add_argument("--min_evaluate_clients", type=int)
-    parser.add_argument("--num_partitions", type=int)
-    
-    parser.add_argument("--data_partitions_file", type=str)
-    parser.add_argument("--partitioner_type", type=str)
-    parser.add_argument("--partition_id", type=int)
-    parser.add_argument("--client_id", type=int)
-    parser.add_argument("--seed", type=int)
-    parser.add_argument("--epochs", type=int)
-    parser.add_argument("--batch_divisor", type=int)
-    parser.add_argument("--n_models", type=int)
-    parser.add_argument("--test_fraction", type=float)
-    parser.add_argument("--learning_rate", type=float)
-    parser.add_argument("--weight_decay", type=float)
-    parser.add_argument("--accuracy_tolerance", type=float)
-    parser.add_argument("--optimizer", type=str)
-    parser.add_argument("--epsilon", type=float)
-    parser.add_argument("--delta", type=float)
-    parser.add_argument("--max_grad_norm", type=float)
-    parser.add_argument("--opacus_secure_mode", type=strtobool)
-    parser.add_argument("--output_dir", type=str)
-    parser.add_argument("--data_dir", type=str)
-
-    args, unknown = parser.parse_known_args()
-
-    if "--config" in unknown:
-        remove_index = unknown.index("--config")
-        unknown.pop(remove_index); unknown.pop(remove_index) #removes key and value pair
-    
-    if len(unknown) > 0:
-        raise UnknownParameterError(unknown)
-
-    for key, value in vars(args).items():
-        if value is not None:
-            defaults[key] = value
-
-    # For pretty prints
-    defaults["opacus_secure_mode"]=bool(defaults["opacus_secure_mode"])
-    defaults["check_only"]=bool(defaults["check_only"])
-    return defaults
+def _set_nested(cfg: Dict[str, Any], path: Tuple[str, ...], value: Any) -> None:
+    cur = cfg
+    for k in path[:-1]:
+        if k not in cur or not isinstance(cur[k], dict):
+            cur[k] = {}
+        cur = cur[k]
+    cur[path[-1]] = value
 
 ###
-#   validate_config_file(config_path, schema_path)
-#   input: Two strings: one representing the configuration path and one representing the json schema path
-#   output: A dictionary representing the input json file
-#   purpose: Validate and load then configuration file and its schema. Then, apply the schema to the configuration file to validate parameter bounds
+#   _iter_applicable_schemas(schema, instance)
+#   purpose: Yield the base schema and any allOf/selected oneOf subschemas that apply to the instance.
 ###
-def validate_config_file(config_path: str, schema_path:str):
-    validate_file_path([config_path, schema_path])
+def _iter_applicable_schemas(schema: Dict[str, Any], instance: Any) -> List[Dict[str, Any]]:
+    # Base schema applies
+    schemas = [schema]
 
-    with Path(config_path).open("r", encoding="utf-8") as f:
-        config = json.load(f)
-    with Path(schema_path).open("r", encoding="utf-8") as s:
-        schema = json.load(s)
+    # allOf: all apply
+    for sub in schema.get("allOf", []) or []:
+        schemas.extend(_iter_applicable_schemas(sub, instance))
 
-    try:
-        validate(instance=config, schema=schema) #checks for missing fields
+    # oneOf: only chosen applies (using your discriminator helper)
+    if "oneOf" in schema:
+        chosen = _select_oneof_branch(schema["oneOf"], instance)
+        if chosen is not None:
+            schemas.extend(_iter_applicable_schemas(chosen, instance))
 
-        defaults = override_cli(config) #override config file with command line inputs
-
-        validate(instance=defaults, schema=schema) #validate with the schema only after the command line arguments are loaded in
-
-    except ValidationError as err:  #adds in the offending parameter name
-        param = ".".join(map(str, err.absolute_path)) or "<root>"
-        raise ValueError(f"Invalid parameter '{param}': {err.message}") from err
-
-    return defaults
+    return schemas
 
 ###
-#   json_args_parser(config_path, schema_path)
-#   input: Two strings: one representing the configuration path and one representing the json schema path
-#   output: An argparse parser
-#   purpose: Load and validate all parameters from the configuration file. Also validate that passed paths exist.
+#   _iter_schema_layers(schema)
+#   purpose: Iterate through the schema and its allOf layers in declaration order.
 ###
-def json_args_parser(schema_path="configuration-schema.json"):
-    try:
+def _iter_schema_layers(schema: Dict[str, Any]):
+    yield schema
+    for sub in schema.get("allOf", []) or []:
+        yield from _iter_schema_layers(sub)
+
+###
+#   _schema_key_order(schema)
+#   purpose: Derive a stable property-printing order from the schema and its layered definitions.
+###
+def _schema_key_order(schema: Dict[str, Any]) -> List[str]:
+    ordered: List[str] = []
+    seen: Set[str] = set()
+
+    for sch in _iter_schema_layers(schema):
+        props = sch.get("properties", {})
+        if isinstance(props, dict):
+            for key in props.keys():
+                if key not in seen:
+                    ordered.append(key)
+                    seen.add(key)
+
+    return ordered
+
+###
+#   _property_schema(schema, key)
+#   purpose: Gather all schema fragments that define a given property and combine them into one schema view.
+###
+def _property_schema(schema: Dict[str, Any], key: str) -> Dict[str, Any]:
+    prop_schemas = []
+
+    for sch in _iter_schema_layers(schema):
+        props = sch.get("properties", {})
+        if isinstance(props, dict) and key in props and isinstance(props[key], dict):
+            prop_schemas.append(props[key])
+
+    if not prop_schemas:
+        return {}
+
+    return {"allOf": prop_schemas}
+
+###
+#   _print_config_by_schema(data, schema, indent=0)
+#   purpose: Print config values in schema-defined key order, recursively formatting nested objects.
+###
+def _print_config_by_schema(data: Dict[str, Any], schema: Dict[str, Any], indent: int = 0) -> None:
+    pad = "  " * indent
+    ordered_keys = _schema_key_order(schema)
+
+    for key in data.keys():
+        if key not in ordered_keys and not key.startswith("_"):
+            ordered_keys.append(key)
+
+    non_dict_keys = [key for key in ordered_keys if key in data and not isinstance(data[key], dict)]
+    dict_keys = [key for key in ordered_keys if key in data and isinstance(data[key], dict)]
+
+    for key in non_dict_keys:
+        print(f"{pad}{key}={data[key]}")
+
+    if indent == 0 and dict_keys:
         print()
-        #parses the configuration path separately from everything else so that can be loaded first
-        config_args = argparse.ArgumentParser(exit_on_error=False)
-        config_args.add_argument("--config", default="config.json", type=str)
-        args, _ = config_args.parse_known_args()
 
-        defaults = validate_config_file(args.config, schema_path)
+    for key in dict_keys:
+        print(f"{pad}{key}={{")
+        child_schema = _property_schema(schema, key)
+        _print_config_by_schema(data[key], child_schema, indent + 1)
+        print(f"{pad}}}")
+        if indent == 0:
+            print()
 
-        parser = argparse.Namespace(**defaults)
-        print("Configuration file validated against JSON schema")
+###
+#   _iter_schema_leaf_args(schema, prefix=())
+#   purpose: Recursively iterate over leaf argument paths and their schemas from a nested JSON schema.
+###
+def _iter_schema_leaf_args(schema: Dict[str, Any], prefix: Tuple[str, ...] = ()):
+    if not isinstance(schema, dict):
+        return
 
-        if not parser.data_partitions_file == "":
-            validate_file_path(parser.data_partitions_file)
-            print("Data partitions file successfully validated")
+    props = schema.get("properties", {})
+    if isinstance(props, dict):
+        for key, prop_schema in props.items():
+            path = prefix + (key,)
+            if _is_object_schema(prop_schema):
+                yield from _iter_schema_leaf_args(prop_schema, path)
+            else:
+                yield path, prop_schema
+
+    for sub in schema.get("allOf", []) or []:
+        yield from _iter_schema_leaf_args(sub, prefix)
+
+    for sub in schema.get("oneOf", []) or []:
+        yield from _iter_schema_leaf_args(sub, prefix)
+
+###
+#   _schema_without_combinators(sch)
+#   purpose: Return a copy of a schema with combinator keywords like allOf/oneOf/anyOf removed.
+###
+def _schema_without_combinators(sch: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: v for k, v in sch.items() if k not in ("allOf", "oneOf", "anyOf")}
+
+###
+#   _effective_schema(schema, instance)
+#   purpose: Build the effective validation schema for an instance by combining all applicable schema parts.
+###
+def _effective_schema(schema: Dict[str, Any], instance: Any) -> Dict[str, Any]:
+    parts = []
+
+    for sch in _iter_applicable_schemas(schema, instance):
+        cleaned = _schema_without_combinators(sch)
+        if cleaned:
+            parts.append(cleaned)
+
+    if not parts:
+        return {}
+
+    if len(parts) == 1:
+        return parts[0]
+
+    return {"allOf": parts}
+
+###
+#   _validation_instance(cfg)
+#   purpose: Create a copy of the config suitable for schema validation by removing non-schema runtime fields.
+###
+def _validation_instance(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    instance = deepcopy(cfg)
+    instance.pop("check_only", None)
+    return instance
+
+###
+#   _get_validation_errors(schema, instance)
+#   purpose: Validate an instance against a schema and return normalized, user-friendly error tuples.
+###
+def _get_validation_errors(schema: Dict[str, Any], instance: Dict[str, Any]) -> List[Tuple[str, Any, str]]:
+    Validator = validator_for(schema)
+    Validator.check_schema(schema)
+    validator = Validator(schema)
+
+    errors = []
+    for err in sorted(validator.iter_errors(instance), key=lambda e: list(e.path)):
+        path = ".".join(str(p) for p in err.path)
+
+        if err.validator == "additionalProperties":
+            bad_keys = re.findall(r"'([^']+)'", err.message)
+            if bad_keys:
+                for bad_key in bad_keys:
+                    full_path = f"{path}.{bad_key}" if path else bad_key
+                    errors.append((full_path, None, "Unknown parameter"))
+            else:
+                errors.append((path, None, err.message))
+
+        elif err.validator == "required":
+            m = re.search(r"'([^']+)' is a required property", err.message)
+            missing_key = m.group(1) if m else None
+            if missing_key is not None:
+                full_path = f"{path}.{missing_key}" if path else missing_key
+                errors.append((full_path, None, "Missing required parameter"))
+            else:
+                errors.append((path, None, err.message))
+
+        else:
+            errors.append((path, err.instance, err.message))
+
+    return errors
+
+###
+#   _coerce_cli_value(raw_value, sch)
+#   purpose: Convert a CLI string value into the schema-expected Python type when possible.
+###
+def _coerce_cli_value(raw_value: str, sch: Dict[str, Any]) -> Any:
+    if not isinstance(raw_value, str) or not isinstance(sch, dict):
+        return raw_value
+
+    t = sch.get("type")
+
+    try:
+        if t == "boolean":
+            return bool(strtobool(raw_value))
+        if t == "integer":
+            return int(raw_value)
+        if t == "number":
+            return float(raw_value)
+        if t == "array" or t == "object":
+            return json.loads(raw_value)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return raw_value
+
+    for k in ("allOf", "oneOf", "anyOf"):
+        for sub in sch.get(k, []) if isinstance(sch.get(k), list) else []:
+            coerced = _coerce_cli_value(raw_value, sub)
+            if coerced is not raw_value or sub.get("type") in ("boolean", "integer", "number", "array", "object"):
+                return coerced
+
+    return raw_value
+
+class UnknownParameterError(ValueError):
+    """Exception raised for unknown parameters."""
+    def __init__(self, parameters, message="Unknown parameter name(s). Please check the spelling of the inputs above and try again."):
+        self.parameters = parameters
+        super().__init__(message)
+
+class ConfigArgs(argparse.Namespace):
+    def __init__(self, schema: Dict[str, Any] | None = None, **kwargs):
+        super().__init__(**kwargs)
+        self._print_schema = schema or {}
+
+    def print(self):
+        data = {k: v for k, v in vars(self).items() if not k.startswith("_")}
+        _print_config_by_schema(data, self._print_schema)
+
+class ConfigPipeline:
+    def __init__(self) -> None:
+        self.parser = argparse.ArgumentParser(exit_on_error=False)
+        self.args = None
+        self._cli_dest_to_path = {}
+        self._schema_args_added = False
+        self._cli_dest_to_schema = {}
+
+        # "meta" args
+        self.parser.add_argument("--config", default="config.json", type=str)
+        self.parser.add_argument("--schema", default="configuration-schema.json", type=str)
+        self.parser.add_argument("--check_only", action="store_true")
+
+    ###
+    #   _load_json(path)
+    #   purpose: Load and return a JSON file from disk as a Python dictionary.
+    ###
+    def _load_json(self, path: str) -> Dict[str, Any]:
+        with Path(path).open("r", encoding="utf-8") as f:
+            return json.load(f)
+
+    ###
+    #   _add_schema_cli_arguments(schema)
+    #   purpose: Dynamically add CLI arguments for schema leaf properties and track their path mappings.
+    ###
+    def _add_schema_cli_arguments(self, schema: Dict[str, Any]) -> None:
+        if self._schema_args_added:
+            return
+
+        leaf_paths = _schema_leaf_map(schema)
+
+        leaf_name_counts = Counter(path[-1] for path in leaf_paths.keys())
+
+        for path, prop_schema in leaf_paths.items():
+            # Use plain leaf name when unique, otherwise dotted path
+            if leaf_name_counts[path[-1]] == 1:
+                arg_name = path[-1]
+            else:
+                arg_name = ".".join(path)
+
+            dest = "__".join(path)
+
+            self.parser.add_argument(f"--{arg_name}", dest=dest, default=None, type=str)
+            self._cli_dest_to_path[dest] = path
+            self._cli_dest_to_schema[dest] = prop_schema
+
+        self._schema_args_added = True
+
+    ###
+    #   _apply_cli_overrides(cfg, args)
+    #   purpose: Apply CLI-provided values onto the nested config, coercing values using schema metadata.
+    ###
+    def _apply_cli_overrides(self, cfg: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
+        d = vars(args)
+
+        for dest, path in self._cli_dest_to_path.items():
+            if d.get(dest) is not None:
+                value = _coerce_cli_value(d[dest], self._cli_dest_to_schema[dest])
+                _set_nested(cfg, path, value)
+
+        # carry check_only (not part of schema, but you use it)
+        cfg["check_only"] = bool(d.get("check_only", False))
+        return cfg
+
+    def parse(self) -> argparse.Namespace:
+        try:
+            # first pass: only meta args (config, schema, check_only) are known yet
+            meta_args, _ = self.parser.parse_known_args()
+
+            # validate and load paths
+            validate_file_path([meta_args.config, meta_args.schema])
+            schema = self._load_json(meta_args.schema)
+            raw_cfg = self._load_json(meta_args.config)
+
+            # build CLI args from schema, then parse again
+            self._add_schema_cli_arguments(schema)
+            args, unknown = self.parser.parse_known_args()
+            if unknown:
+                bad_cli_params = [elem for elem in unknown if elem.startswith("--")]
+                if bad_cli_params:
+                    raise UnknownParameterError(bad_cli_params, message="Unknown parameter name(s) in CLI. Please check the spelling of the inputs above and try again.")
+                raise UnknownParameterError(unknown, message="Unknown parameter name(s) in CLI. Please check the spelling of the inputs above and try again.")
+            
+            # layer + apply schema defaults
+            cfg = _to_layered_config(raw_cfg, schema)
+            cfg = self._apply_cli_overrides(cfg, args)
+            cfg = _sync_enabled_flags(cfg, schema)
+            cfg = apply_defaults(schema=schema, instance=cfg)
+
+            validation_cfg = _validation_instance(cfg)
+            effective_schema = _effective_schema(schema, validation_cfg)
+
+            # validate final config
+            validation_errors = _get_validation_errors(effective_schema, validation_cfg)
+            if validation_errors:
+                msg = "An error occured during configuration validation. Please check the following issue(s):\n"
+                for path, bad_value, err_msg in validation_errors:
+                    path = path.split(".")[-1]
+                    if bad_value is None:
+                        msg += f"  {path} -> {err_msg}\n"
+                    else:
+                        msg += f"  {path}={bad_value!r} -> {err_msg}\n"
+                raise ValueError(msg.rstrip())
+
+            # path checks / postprocessing (same logic you already had)
+            if cfg.get("model_params", {}).get("data_partitions_file", "") not in ("", None):
+                validate_file_path(cfg["model_params"]["data_partitions_file"])
+            validate_dir_path(cfg["output_dir"])
+            validate_dir_path(cfg["data_dir"])
+
+            # ensure batch_divisor size aligns with data size
+            validate_data_size(cfg["data_dir"], cfg["model_params"]["batch_divisor"])
+
+            # your equalization logic
+            if cfg["model_params"]["partition_id"] > cfg["model_params"]["num_partitions"]:
+                raise ValueError("partition_id must be <= num_partitions.")
+
+            if cfg.get("federated", {}).get("federated_enabled", False):
+                fed = cfg["federated"]
+                print(f"Normalizing min_available_clients, min_evaluate_clients, and min_fit_clients to their minimum value.")
+                if not (fed["min_available_clients"] == fed["min_evaluate_clients"] == fed["min_fit_clients"]):
+                    min_val = min(fed["min_available_clients"], fed["min_evaluate_clients"], fed["min_fit_clients"])
+                    fed["min_available_clients"] = min_val
+                    fed["min_evaluate_clients"] = min_val
+                    fed["min_fit_clients"] = min_val
+
+                if fed["min_fit_clients"] > cfg["model_params"]["num_partitions"]:
+                    raise ValueError("min_*_clients must be <= num_partitions.")
+
+            if cfg.get("dp", {}).get("dp_enabled", False) and cfg["dp"].get("opacus_secure_mode", False):
+                cfg["dp"]["opacus_secure_mode"] = False
+        except UnknownParameterError as e:
+            print(e)
+            for elem in e.parameters:
+                name = elem[2:] if elem.startswith("--") else elem
+                name = name.split("=", 1)[0]
+                name = name.split(".")[-1]
+                print(f"{name}\t", end="")
+            print()
+            exit(1)
+        except FileNotFoundError as e:
+            print(e)
+            exit(1)
+        except json.JSONDecodeError as e:
+            print(f"An error occured while parsing the config file.", end = "")
+            print(f"Please check the following issue(s): {e.message}.")
+            exit(1)
+        except ValueError as e:
+            print(e)
+            exit(1)
         
-        validate_dir_path([parser.data_dir, parser.output_dir])
-        print("Data input and output directory successfully validated")
 
-        if not (parser.min_available_clients == parser.min_evaluate_clients and 
-                parser.min_fit_clients == parser.min_evaluate_clients):
-            print(f"min_available_clients, min_evaluate_clients, and min_fit_clients must all be equal to run the testbed. Equalizing values")
-            min_val = min(parser.min_available_clients, parser.min_evaluate_clients, parser.min_fit_clients)
-            parser.min_available_clients=min_val
-            parser.min_evaluate_clients=min_val
-            parser.min_fit_clients=min_val
-
-        if parser.min_fit_clients > parser.num_partitions:
-            raise ValueError("min_available_clients, min_evaluate_clients, and min_fit_clients must all have the same value that is less than or equal to num_partitions.")
-
-        ## Handles a current issue with opacus_secure_mode
-        if parser.opacus_secure_mode:
-            print("Warning: \"opacus_secure_mode\" not behaving as expected. Reverting back to opacus_secure_mode=false.")
-            parser.opacus_secure_mode=False
-            #Needs the torchcsprng package, but there are issues installing that for python3.10.
-            #To do: investigate further
-        print()
-
-    except ValidationError as e:
-        print(f"Configuration parameters failed validation. This could be due to a missing parameter or out-of-bounds value.")
-        print(e.message)
-        exit(1)
-    except UnknownParameterError as e:
-        print(f"An unknown parameter was encountered in the command line. Please check the spelling and try again for:")
-        for elem in e.parameters:
-            if "--" in elem:
-                print(f"{elem}\t", end="")
-        print()
-        exit(1)
-    except FileNotFoundError as e:
-        print(e)
-        exit(1)
-    except ValueError as e:
-        print(f"Parameter value error occured. Please check the following issue and try again.\n{e}")
-        exit(1)
-    except argparse.ArgumentError as e:
-        print(f"Configuration parameters failed validation. Please check the following issue and try again.\n{e}")
-        exit(1)
-    except SystemExit as e:
-        print(f"An error occured, likely related to command line inputs. Please check the spelling of the inputs above and try again.")
-        exit(1)
-    except OSError as e:
-        print(f"Ran in to an unexpected error. Please try again.\n{e.message}")
-        exit(1)
-    return parser
+        self.args = ConfigArgs(schema=effective_schema, **cfg)
+        return self.args

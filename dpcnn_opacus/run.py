@@ -3,17 +3,18 @@ import os
 # Stop de-duplicating logs in Ray
 os.environ["RAY_DEDUP_LOGS"] = "0"
 import re
+from typing import Dict
 from pathlib import Path
 import numpy as np
 from flwr.simulation import run_simulation
 from flwr.client import ClientApp
 from flwr.server import ServerApp, ServerConfig, ServerAppComponents
 from flwr.common import Context
+from datetime import datetime
 
 from client import FlowerClient
 from server import create_strategy
-from utils import flower_args_parser, json_args_parser, get_device
-from datetime import datetime
+from utils import get_device, ConfigPipeline
 
 
 # Parse arguments for flower server and client
@@ -24,42 +25,45 @@ ORIGINAL CODE:
 
 RECOMMENDED CODE:
 '''
+pipeline = ConfigPipeline()
+args = pipeline.parse()
+print("Parameter values:\n")
+args.print()
 
-args = json_args_parser()
 if args.check_only:
-    print("Parameter values:")
-    for elem in vars(args):
-        print(f"\t{elem}={getattr(args, elem)}")
     print("Parameters validated. Ending script")
     exit()
 
+if args.model_type != "dpcnn":
+    print("That functionality has not been implemented yet. Terminating process.")
+    exit(0)
+    
 '''
 INTENDED ACTION: Modify
 
 JUSTIFICAITON: Testing new parameterization methods
 '''
 
-print(f"flower args: {args}")
 # server arguments
-num_rounds = args.num_rounds
-min_fit_clients = args.min_fit_clients
-min_evaluate_clients = args.min_evaluate_clients
-min_available_clients = args.min_available_clients
+num_rounds = args.federated["num_rounds"]
+min_fit_clients = args.federated["min_fit_clients"]
+min_evaluate_clients = args.federated["min_evaluate_clients"]
+min_available_clients = args.federated["min_available_clients"]
 
 # client arguments
-partitioner_type = args.partitioner_type
-num_partitions = args.num_partitions
-batch_divisor = args.batch_divisor
-learning_rate = args.learning_rate
-weight_decay = args.weight_decay
-seed = args.seed
-test_fraction = args.test_frac
-epochs = args.epochs
-accuracy_tolerance = args.accuracy_tolerance
-data_partitions_file = args.data_partitions_file
-'''
-ORIGINAL CODE:
+partitioner_type = args.model_params["partitioner_type"]
+num_partitions = args.model_params["num_partitions"]
+batch_divisor = args.model_params["batch_divisor"]
+learning_rate = args.model_params["learning_rate"]
+weight_decay = args.model_params["weight_decay"]
+seed = args.model_params["seed"]
+test_fraction = args.model_params["test_fraction"]
+epochs = args.model_params["epochs"]
+accuracy_tolerance = args.model_params["accuracy_tolerance"]
+data_partitions_file = args.model_params["data_partitions_file"]
 out_dir = args.output_dir
+
+'''
 RECOMMENDED CODE:
 '''
 out_dir = os.path.join(args.output_dir, datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))
@@ -68,13 +72,13 @@ INTENDED ACTION: Modify
 JUSTIFICATION: Creates a datetime folder on a run on top of the previously assigned directory. Provides additional separation for runs by default
 '''
 data_dir = args.data_dir
-optimizer_name = args.optimizer
+optimizer_name = args.model_params["optimizer"]
 
 # Privacy arguments
-epsilon = args.epsilon  # Target privacy budget (epsilon)
-delta = args.delta  # Target delta
-max_grad_norm = args.max_grad_norm  # param to clip the gradients
-opacus_secure_mode = args.opacus_secure_mode  # Use Opacus secure mode
+epsilon = args.dp["epsilon"]  # Target privacy budget (epsilon)
+delta = args.dp["delta"]  # Target delta
+max_grad_norm = args.dp["max_grad_norm"]  # param to clip the gradients
+opacus_secure_mode = args.dp["opacus_secure_mode"]  # Use Opacus secure mode
 
 # Get number of partitions from data_partitions_file
 # if it exists and is not None
