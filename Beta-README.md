@@ -9,8 +9,7 @@ Welcome to the NIST genomics PETs testbed (beta version). This testbed aims to p
 4. [Running the Testbed](#running)
 5. [Modifying the Parameters](#params)
 6. [Output](#output)
-7. [Running Regression Tests](#regression)
-8. [References](#refs)
+7. [References](#refs)
 
 ## Currently Supported Capabilities <a name="current"></a>
 
@@ -29,7 +28,7 @@ Throughout the beta development process, these capabilities are expected to expa
 - Modifying model and privacy parameters through command-line arguments
 - Validation of provided parameters against the provided JSON schema
 - Validation of provided file paths against the currently visible directory
-- Generation of machine-readable reports, with some values printed to the terminal
+- Generation of machine-readable and JSON reports, with some values printed out to the terminal, in timestamped directories
 
 _*Please note that bring-your-own-data partition files have not been tested yet. There may be unexpected behaviors. Also note that users are expected to have already preprocessed their data prior to uploading it to the `data/` folder.*_
 
@@ -178,7 +177,53 @@ There is currently no way to fully turn off DP. This will be added in a later be
 
 ## Understanding the Output <a name="output"></a>
 
-There are two types of output files: `.npz` files and `.torch` files. The `.npz` files contain metadata on the model's global and round-based performance. The `.torch` files contain model weights that can be loaded for further inference with the trained model. A human-readable output file is currently being developed.
+### Files
+There are three types of output files: `.npz` files, `.json` files, and `.torch` files. Within the `.npz` files, there is metadata on the model's global and client/round based performance. This is captured in the `.json` file format as well for human-readable purposes. Schemas can be found for this in the [reports/SampleReports](reports/SampleReports) directory. In the .torch files, there are model weights that can be loaded for further inference with the trained model.
+
+### Metric Definitions
+
+#### Client/Round
+| Metric | Description | Type | 
+|---|---|---|
+| `created on` | The datetime that the report was generated | string |
+| `model id` | The id of the model being developed | integer |
+| `partitions file` | The file used to partition the data for training | string |
+| `train accuracy` | Training accuracy for this client and round | number |
+| `test accuracy` | Test accuracy for this client and round | number |
+| `train mean squared error` | Train MSE for this client and round | number |
+| `test mean squared error` | Test MSE for this client and round | number |
+| `train loss` | Train loss for this client and round | number |
+| `test loss` | Test loss for this client and round | number |
+| `train indices` | Indices used for training | integer array |
+| `test indices` | Indices used for testing | integer array |
+| `train accuracy per epoch` | Accuracy over epochs for training | number array |
+| `test accuracy per epoch` | Accuracy over epochs for testing | number array |
+| `train mse per epoch` | MSE over epochs for training | number array |
+| `test mse per epoch` | MSE over epochs for testing | number array |
+| `losses per epoch` | Loss values for each epoch in this client round | number array |
+| `epsilon per epoch` | The epsilon values for each epoch in this client round | number array |
+| `train predictions` | The predicted values for the training set | number array |
+| `test predictions` | The predicted values for the test set | number array |
+| `hyperparameters` | The hyperparameters the client used during its training process | object of the following properties: |
+| `hyperparameters.learning rate` | Sets the model’s learning rate. This defines how much a model changes at each iteration | number | 
+| `hyperparameters.weight decay` | Sets the model’s weight decay. This is a regularization method that penalizes high weights | number | 
+| `hyperparameters.batch divisor` | The divisor to determine the number of batches (num_batches = dataset_size/batch_divisor) | integer |
+| `hyperparameters.epochs` | The number of model training epochs. An epoch is one full pass through a training dataset | integer |
+| `hyperparameters.seed` | The seed used to randomize training/testing | integer | 
+| `hyperparameters.test fraction` | The fraction of the data set to set aside for testing | number |
+| `hyperparameters.accuracy tolerance` | Error tolerance to declare prediction as correct | number |
+| `hyperparameters.optimizer` | The optimizer is responsible for adjusting model parameters based on the value of the loss function | string |
+| `hyperparameters.epsilon` | Determines the amount of privacy added to the data. | number |
+| `hyperparameters.delta` | Measures the chance of a data breach. It defines the probability of the noise not adding sufficient privacy | number |
+| `hyperparameters.max grad norm` | Clips the gradients to be under this maximum before adding noise | number |
+
+#### Global
+| Metric | Description | Type | 
+|---|---|---|
+| `created on` | The datetime that the report was generated | string |
+| `loss per round` | Loss values across rounds | number array |
+| `accuracy per round` | Accuracy values across rounds | number array |
+| `mse per round` | MSE values across rounds | number array |
 
 ## References <a name="refs"></a>
 
