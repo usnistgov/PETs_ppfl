@@ -178,11 +178,11 @@ There is currently no way to fully turn off DP. This will be added in a later be
 ## Understanding the Output <a name="output"></a>
 
 ### Files
-There are three types of output files: `.npz` files, `.json` files, and `.torch` files. Within the `.npz` files, there is metadata on the model's global and client/round based performance. This is captured in the `.json` file format as well for human-readable purposes. Schemas can be found for this in the [reports/SampleReports](reports/SampleReports) directory. In the .torch files, there are model weights that can be loaded for further inference with the trained model.
+There are three types of output files: `.npz` files, `.json` files, and `.torch` files. Within the `.npz` files, there is metadata on the model's global and client/round based performance. This is captured in the `.json` file format as well for human-readable purposes. Schemas can be found for this in the [schemas](schemas) directory, and sample outputs can be found in the [sampleReports](sampleReports) directory. Additionally in the `.json` file format is a file containing the input parameters used for a run, following the `configuration-schema.json` file, located at [dpcnn_opacus/configuration-schema.json](dpcnn_opacus/configuration-schema.json) at the time of writing. In the .torch files, there are model weights that can be loaded for further inference with the trained model.
 
 ### Metric Definitions
 
-#### Client/Round
+#### Client/Round Outputs
 | Metric | Description | Type | 
 |---|---|---|
 | `created on` | The datetime that the report was generated | string |
@@ -218,7 +218,7 @@ There are three types of output files: `.npz` files, `.json` files, and `.torch`
 | `hyperparameters.delta` | Measures the chance of a data breach. It defines the probability of the noise not adding sufficient privacy | number |
 | `hyperparameters.max grad norm` | Clips the gradients to be under this maximum before adding noise | number |
 
-#### Global
+#### Global Outputs
 | Metric | Description | Type | 
 |---|---|---|
 | `created on` | The datetime that the report was generated | string |
