@@ -16,7 +16,6 @@ from client import FlowerClient
 from server import create_strategy
 from utils import get_device, ConfigPipeline
 from report import Report
-from dataclasses import asdict
 
 
 # Parse arguments for flower server and client
