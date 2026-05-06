@@ -91,6 +91,8 @@ if not out_dir.exists():
 
 # Save these parameters into a json report
 arg_dictionary = vars(args)
+# remove unneeded "_print_schema" field from input parameters report
+arg_dictionary.pop("_print_schema")
 parameter_report = Report(arg_dictionary)
 parameter_path = Path(out_dir, f"input_parameters.json")
 parameter_report.save_to_file(parameter_path)
