@@ -656,8 +656,8 @@ class ConfigPipeline:
 
             if cfg.get("federated", {}).get("federated_enabled", False):
                 fed = cfg["federated"]
-                print(f"Normalizing min_available_clients, min_evaluate_clients, and min_fit_clients to their minimum value.")
                 if not (fed["min_available_clients"] == fed["min_evaluate_clients"] == fed["min_fit_clients"]):
+                    print(f"Normalizing min_available_clients, min_evaluate_clients, and min_fit_clients to their minimum value.")
                     min_val = min(fed["min_available_clients"], fed["min_evaluate_clients"], fed["min_fit_clients"])
                     fed["min_available_clients"] = min_val
                     fed["min_evaluate_clients"] = min_val
