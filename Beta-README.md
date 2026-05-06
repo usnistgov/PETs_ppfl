@@ -187,6 +187,7 @@ There are three types of output files: `.npz` files, `.json` files, and `.torch`
 |---|---|---|
 | `created on` | The datetime that the report was generated | string |
 | `model id` | The id of the model being developed | integer |
+| `round numer` | The current round that the metrics are reporting on | integer |
 | `partitions file` | The file used to partition the data for training | string |
 | `train accuracy` | Training accuracy for this client and round | number |
 | `test accuracy` | Test accuracy for this client and round | number |
