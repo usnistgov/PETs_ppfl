@@ -383,7 +383,8 @@ def _print_config_by_schema(data: Dict[str, Any], schema: Dict[str, Any], indent
     dict_keys = [key for key in ordered_keys if key in data and isinstance(data[key], dict)]
 
     for key in non_dict_keys:
-        print(f"{pad}{key}={data[key]}")
+        if not "_enabled" in key:
+            print(f"{pad}{key}={data[key]}")
 
     if indent == 0 and dict_keys:
         print()
