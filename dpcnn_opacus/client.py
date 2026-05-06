@@ -146,6 +146,7 @@ def save_client(
     metadata = {
         "created on": str(datetime.now()),
         "model id": client_id,
+        "round number": federated_round,
         "partitions file": partitions_path,
         "train accuracy": float(train_metrics["accuracy"]),
         "test accuracy": float(test_metrics["accuracy"]),
@@ -163,7 +164,7 @@ def save_client(
         "epsilon per epoch": np.array(per_epoch_metrics["eps_spent"]),
         "train predictions": np.array(predictions["train"]),
         "test predictions": np.array(predictions["test"]),
-        "hyperparameters": json.dumps(hyperparams),
+        "hyperparameters": hyperparams
     }
 
     filename = f'dpcnn{hyperparams["epsilon"]}_opacus_oil_{client_id}'
