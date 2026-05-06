@@ -344,8 +344,6 @@ def save_cnn(
         out_dir = Path(__file__).parent
     else:
         out_dir = Path(output_dir).absolute()
-    if not out_dir.exists():
-        out_dir.mkdir(parents=True)
 
     out_name = (
         f"{name}_round_{round_number}" if round_number is not None else name

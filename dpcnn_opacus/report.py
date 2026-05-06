@@ -13,17 +13,6 @@ class Report:
             raise TypeError("Input must be a dictionary object.")
         self.data = data
 
-    def to_json_string(self, indent: int = 4) -> str:
-        """
-        Converts the dictionary to a JSON formatted string.
-        :param indent: Number of spaces for indentation (default 4).
-        :return: JSON string.
-        """
-        try:
-            return json.dumps(self.data, indent=indent, cls=NumpyEncoder)
-        except (TypeError, ValueError) as e:
-            return f"Error encoding JSON: {e}"
-
     def save_to_file(self, filename: str):
         """
         Saves the dictionary to a .json file.

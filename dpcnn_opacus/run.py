@@ -15,6 +15,8 @@ from datetime import datetime
 from client import FlowerClient
 from server import create_strategy
 from utils import get_device, ConfigPipeline
+from report import Report
+from dataclasses import asdict
 
 
 # Parse arguments for flower server and client
@@ -79,6 +81,21 @@ epsilon = args.dp["epsilon"]  # Target privacy budget (epsilon)
 delta = args.dp["delta"]  # Target delta
 max_grad_norm = args.dp["max_grad_norm"]  # param to clip the gradients
 opacus_secure_mode = args.dp["opacus_secure_mode"]  # Use Opacus secure mode
+
+# Create output directory
+if out_dir is None:
+    out_dir = Path(__file__).parent
+else:
+    out_dir = Path(out_dir).absolute()
+if not out_dir.exists():
+    out_dir.mkdir(parents=True)
+
+# Save these parameters into a json report
+arg_dictionary = vars(args)
+parameter_report = Report(arg_dictionary)
+parameter_path = Path(out_dir, f"input_parameters.json")
+parameter_report.save_to_file(parameter_path)
+print(f"Input parameters saved to {parameter_path}")
 
 # Get number of partitions from data_partitions_file
 # if it exists and is not None
