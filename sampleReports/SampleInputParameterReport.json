@@ -1,0 +1,38 @@
+{
+    "model_params": {
+        "epochs": 1,
+        "data_partitions_file": "",
+        "partitioner_type": "uniform",
+        "num_partitions": 2,
+        "partition_id": 0,
+        "client_id": 0,
+        "seed": 42,
+        "batch_divisor": 5,
+        "test_fraction": 0.2,
+        "learning_rate": 0.003,
+        "weight_decay": 0.0001,
+        "optimizer": "sgd",
+        "accuracy_tolerance": 0.1
+    },
+    "federated": {
+        "num_rounds": 1,
+        "federated_enabled": true,
+        "min_fit_clients": 2,
+        "n_models": 1,
+        "min_available_clients": 2,
+        "min_evaluate_clients": 2
+    },
+    "dp": {
+        "dp_enabled": false,
+        "opacus_secure_mode": false,
+        "epsilon": 1,
+        "delta": 1e-05,
+        "max_grad_norm": 1
+    },
+    "model_type": "dpcnn",
+    "check_only": false,
+    "num_cpus": 2,
+    "num_gpus": 0,
+    "output_dir": "../reports",
+    "data_dir": "../data/Oil_binned5"
+}
