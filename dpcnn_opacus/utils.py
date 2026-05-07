@@ -644,7 +644,7 @@ class ConfigPipeline:
             # path checks / postprocessing (same logic you already had)
             if cfg.get("model_params", {}).get("data_partitions_file", "") not in ("", None):
                 validate_file_path(cfg["model_params"]["data_partitions_file"])
-            validate_dir_path(cfg["output_dir"])
+            #validate_dir_path(cfg["output_dir"])
             validate_dir_path(cfg["data_dir"])
 
             # ensure batch_divisor size aligns with data size
