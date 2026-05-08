@@ -139,6 +139,7 @@ Regardless of how the parameter values are input, the values will be validated a
 | `check_only` | A flag to turn on the check-only feature, which ensures all parameter values are within the appropriate range and have the correct type. When `true`, the testbed will not run. Execution will stop after the parameters are validated. | boolean | — |
 | `config` | A way to specify a different configuration file path | string | — |
 | `data_dir` | The path to the intended data files to run the testbed on | string | — |
+| `output_dir` | The path to the intended report directory. | string | - |
 | `train_method` | The XGBoost training method | string | `"bagging"`, `"cyclic"` |
 | `centralised_eval` | Whether centralized evaluation is enabled for XGBoost | boolean | — |
 | `scaled_lr` | Whether scaled learning rate behavior is enabled for XGBoost | boolean | — |
