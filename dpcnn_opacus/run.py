@@ -12,8 +12,10 @@ from flwr.simulation import run_simulation
 from flwr.client import ClientApp
 from flwr.server import ServerApp, ServerConfig, ServerAppComponents
 from flwr.common import Context
+from datetime import datetime
 
 from utils import get_device, ConfigPipeline
+from report import Report
 
 # Parse arguments for flower server and client
 '''
@@ -25,6 +27,8 @@ RECOMMENDED CODE:
 '''
 pipeline = ConfigPipeline()
 args = pipeline.parse()
+print("Parameter values:\n")
+args.print()
 
 print("Parameter values:\n")
 args.print()
@@ -32,6 +36,11 @@ args.print()
 if args.check_only:
     print("Parameters validated. Ending script")
     exit()
+
+if args.model_type == "xgboost":
+    print("That functionality has not been implemented yet. Terminating process.")
+    exit(0)
+    
 '''
 INTENDED ACTION: Modify
 
@@ -109,10 +118,33 @@ epochs = args.model_params["epochs"]
 accuracy_tolerance = args.model_params["accuracy_tolerance"]
 data_partitions_file = args.model_params["data_partitions_file"]
 out_dir = args.output_dir
+
+RECOMMENDED CODE:
+'''
+out_dir = os.path.join(args.output_dir, datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))
+'''
+INTENDED ACTION: Modify
+JUSTIFICATION: Creates a datetime folder on a run on top of the previously assigned directory. Provides additional separation for runs by default
+'''
 data_dir = args.data_dir
 optimizer_name = args.model_params["optimizer"]
 
-'''
+# Create output directory
+if out_dir is None:
+    out_dir = Path(__file__).parent
+else:
+    out_dir = Path(out_dir).absolute()
+if not out_dir.exists():
+    out_dir.mkdir(parents=True)
+
+# Save these parameters into a json report
+arg_dictionary = vars(args)
+# remove unneeded "_print_schema" field from input parameters report
+arg_dictionary.pop("_print_schema")
+parameter_report = Report(arg_dictionary)
+parameter_path = Path(out_dir, f"input_parameters.json")
+parameter_report.save_to_file(parameter_path)
+print(f"Input parameters saved to {parameter_path}")
 
 # Get number of partitions from data_partitions_file
 # if it exists and is not None
