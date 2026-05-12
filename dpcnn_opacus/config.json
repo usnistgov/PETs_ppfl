@@ -1,3 +1,26 @@
 {
-  "model_type":"dpcnn"
+  "model_type": "dpcnn",
+  "num_partitions": 1,
+  "partition_id": 0,
+  "client_id": 0,
+  "min_fit_clients": 1,
+  "min_available_clients": 1,
+  "min_evaluate_clients": 1,
+  "n_models": 1,
+  "num_rounds": 1,
+  "num_cpus": 12,
+  "seed": 673 ,
+  "test_fraction": 0.3, 
+  "epochs": 100, 
+  "learning_rate": 0.01, 
+  "batch_divisor": 5, 
+  "weight_decay": 0.0001, 
+  "optimizer": "sgd", 
+  "opacus_secure_mode": false, 
+  "epsilon": 0.2, 
+  "delta": 1e-05, 
+  "max_grad_norm":1.0,
+  "data_dir":"../data/gpd_scc",
+  "data_partitions_file":"../data/ppfl_SCC_c4c5_5clients_2025_01_14.npz",
+  "output_dir": "reports/gpd_scc_reports"
 }
