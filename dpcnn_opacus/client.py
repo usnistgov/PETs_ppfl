@@ -36,7 +36,7 @@ def create_dataloaders(
     seed,
     batch_divisor,
 ):
-    ohe, tt_vcf, tt_pheno = load_pickle_data(data_directory)
+    _, tt_vcf, tt_pheno = load_pickle_data(data_directory)
     num_data_features = tt_vcf.shape[1]
     combined_dataset = np.concatenate((tt_vcf, tt_pheno), axis=1)
     batch_size = max(1, tt_vcf.shape[0] // batch_divisor)
@@ -100,7 +100,6 @@ def init_model(
     opacus_params,
 ):
     model = Net(num_data_features).to(DEVICE)
-    #criterion = nn.CrossEntropyLoss()
     criterion = nn.MSELoss()
     if optimizer_name == "sgd":
         optimizer = optim.SGD(

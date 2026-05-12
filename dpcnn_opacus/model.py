@@ -129,9 +129,6 @@ def train_cnn(
             total_train += len(labels)
 
             # Compare against new_model.py-style rounded-class accuracy
-            tolerance_correct = torch.abs(outputs - labels.float()) <= (
-                tolerance * labels + tol_offset
-            )
             rounded_preds = torch.round(outputs).clamp(0, 3)
             rounded_correct = rounded_preds == labels
             rounded_correct_train += rounded_correct.sum().item()
@@ -141,8 +138,8 @@ def train_cnn(
             total_mse += torch.sum((outputs - labels.float()) ** 2).item()
 
         # Compute training accuracy per epoch
-        train_accuracy = correct_train / total_train
         rounded_train_accuracy = rounded_correct_train / total_train
+        train_accuracy = rounded_train_accuracy # PLACEHOLDER; NOT USED BUT RETAINED IN CASE WE WANT TO ALLOW BOTH ACCURACIES
         mae = total_mae / total_train
         mse = total_mse / total_train
         rmse = mse**0.5
@@ -153,7 +150,6 @@ def train_cnn(
             epoch_test_mse,
             epoch_test_acc,
             _,
-            epoch_rounded_test_acc,
         ) = compute_test_mse(model, test_loader, criterion, tolerance, device)
         model.train()
         epsilon_spent, _ = privacy_engine.accountant.get_privacy_spent(
@@ -169,9 +165,7 @@ def train_cnn(
             f"Model {model_id} | "
             f"Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}, "
             f"Train Acc: {train_accuracy:.2f}, "
-            f"Rounded Train Acc: {rounded_train_accuracy:.2f}, "
             f"Test Acc: {epoch_test_acc:.2f}, "
-            f"Rounded Test Acc: {epoch_rounded_test_acc:.2f}, "
             f"Train MSE: {mse:.4f}, Test MSE: {epoch_test_mse:.4f}, "
             f"MAE: {mae:.4f}, RMSE: {rmse:.4f}, "
             f"ε: {epsilon_spent:.2f}"
@@ -220,11 +214,11 @@ def compute_test_mse(
             all_labels.extend(labels.cpu().numpy())
 
     # Compute training accuracy per epoch
-    accuracy = correct / total
     rounded_accuracy = rounded_correct / total
+    accuracy = rounded_accuracy # PLACEHOLDER; NOT USED BUT RETAINED IN CASE WE WANT TO ALLOW BOTH ACCURACIES
     average_loss = total_loss / len(test_loader)
     mse = total_mse / total
-    return mse, accuracy, average_loss, rounded_accuracy
+    return mse, accuracy, average_loss
 
 
 def eval_cnn(
@@ -237,6 +231,7 @@ def eval_cnn(
         total_mse = 0
         correct = 0
         total = 0
+        rounded_correct = 0
         all_preds, all_labels = [], []
 
         with torch.no_grad():
@@ -258,12 +253,17 @@ def eval_cnn(
                 ).item()
                 total += labels.size(0)
 
+                rounded_preds = torch.round(outputs).clamp(0, 3)
+                rounded_matches = rounded_preds == labels
+                rounded_correct += rounded_matches.sum().item()
+
                 # Store predictions and labels for evaluation
                 all_preds.extend(outputs.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
 
         # Compute training accuracy per epoch
-        accuracy = correct / total
+        rounded_accuracy = rounded_correct / total
+        accuracy = rounded_accuracy # PLACEHOLDER; NOT USED BUT RETAINED IN CASE WE WANT TO ALLOW BOTH ACCURACIES
         average_loss = total_loss / len(loader)
         mae = total_mae / total
         mse = total_mse / total
