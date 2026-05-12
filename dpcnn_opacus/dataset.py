@@ -18,6 +18,21 @@ from flwr_datasets.partitioner import (
 )
 from utils import print_binned_counts
 
+import torch
+from torch.utils.data import Dataset as TorchDataset
+
+class IndexedArrayDataset(TorchDataset):
+    def __init__(self, features, labels, indices):
+        self.features = features
+        self.labels = labels
+        self.indices = np.asarray(indices)
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        row_idx = self.indices[idx]
+        return self.features[row_idx], self.labels[row_idx]
 
 CORRELATION_TO_PARTITIONER = {
     "uniform": IidPartitioner,
@@ -156,8 +171,9 @@ def train_test_indices_split(
 
 
 def load_random_partitions(
-    data_partition_id: int,
-    combined_dataset: np.ndarray,
+    data_partition_id: int, 
+    features, 
+    labels,
     batch_size: int,
     test_fraction: float,
     seed: int,
@@ -185,14 +201,15 @@ def load_random_partitions(
     test_indices = test_indices.to_pandas().to_numpy().flatten().tolist()
 
     # Split into train and test based on the indices
-    train_data = combined_dataset[train_indices]
-    test_data = combined_dataset[test_indices]
+    train_data = IndexedArrayDataset(features, labels, train_indices)
+    test_data = IndexedArrayDataset(features, labels, test_indices)
 
     # count labels in train and test set
+    label_only_dataset = labels.reshape(-1, 1)
     print('Train dataset binned label counts')
-    print_binned_counts(combined_dataset, train_indices)
+    print_binned_counts(label_only_dataset, train_indices)
     print('Test dataset binned label counts')
-    print_binned_counts(combined_dataset, test_indices)
+    print_binned_counts(label_only_dataset, test_indices)
 
     # create data loaders
     train_data_loader = DataLoader(
@@ -206,8 +223,9 @@ def load_random_partitions(
 
 
 def load_custom_partitions(
-    data_partition_id: int,
-    combined_dataset: np.ndarray,
+    data_partition_id: int, 
+    features, 
+    labels,
     data_partitions: dict,
     batch_size: int,
     test_fraction: float,
@@ -234,21 +252,22 @@ def load_custom_partitions(
     )
 
     # Split into train and test based on the indices
-    train_dataset = combined_dataset[train_indices]
-    test_dataset = combined_dataset[test_indices]
+    train_data = IndexedArrayDataset(features, labels, train_indices)
+    test_data = IndexedArrayDataset(features, labels, test_indices)
 
     # count labels in train and test set
+    label_only_dataset = labels.reshape(-1, 1)
     print('Train dataset binned label counts')
-    print_binned_counts(combined_dataset, train_indices)
+    print_binned_counts(label_only_dataset, train_indices)
     print('Test dataset binned label counts')
-    print_binned_counts(combined_dataset, test_indices)
+    print_binned_counts(label_only_dataset, test_indices)
 
     # create dataloaders
     train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True
+        train_data, batch_size=batch_size, shuffle=True
     )
     test_loader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False
+        test_data, batch_size=batch_size, shuffle=False
     )
 
     return train_loader, test_loader, train_indices, test_indices

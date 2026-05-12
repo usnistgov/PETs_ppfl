@@ -36,9 +36,11 @@ def create_dataloaders(
     seed,
     batch_divisor,
 ):
-    ohe, tt_vcf, tt_pheno = load_pickle_data(data_directory)
+    _, tt_vcf, tt_pheno = load_pickle_data(data_directory)
+    tt_vcf = tt_vcf.astype(np.float32, copy=False)
+    tt_pheno = tt_pheno.astype(np.float32, copy=False).reshape(-1)
+
     num_data_features = tt_vcf.shape[1]
-    combined_dataset = np.concatenate((tt_vcf, tt_pheno), axis=1)
     batch_size = max(1, tt_vcf.shape[0] // batch_divisor)
 
     # Check if data partitions file is provided and exists
@@ -56,8 +58,9 @@ def create_dataloaders(
         # if data partitions available, train a model for each data partition
         train_loader, test_loader, train_indices, test_indices = (
             load_custom_partitions(
-                client_id,
-                combined_dataset,
+                client_id, 
+                tt_vcf, 
+                tt_pheno,
                 data_partitions,
                 batch_size,
                 test_fraction,
@@ -68,8 +71,9 @@ def create_dataloaders(
         # Partition data into n_models randomly to train N client models
         train_loader, test_loader, train_indices, test_indices = (
             load_random_partitions(
-                client_id,
-                combined_dataset,
+                client_id, 
+                tt_vcf, 
+                tt_pheno,
                 batch_size,
                 test_fraction,
                 seed,
