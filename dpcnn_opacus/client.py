@@ -16,6 +16,7 @@ from dataset import (
     load_pickle_data,
     load_random_partitions,
     load_custom_partitions,
+    load_npy_feature_label_data,
 )
 
 from model import Net, eval_cnn, save_cnn, train_cnn
@@ -36,10 +37,7 @@ def create_dataloaders(
     seed,
     batch_divisor,
 ):
-    _, tt_vcf, tt_pheno = load_pickle_data(data_directory)
-    tt_vcf = tt_vcf.astype(np.float32, copy=False)
-    tt_pheno = tt_pheno.astype(np.float32, copy=False).reshape(-1)
-
+    tt_vcf, tt_pheno = load_npy_feature_label_data(data_directory)
     num_data_features = tt_vcf.shape[1]
     batch_size = max(1, tt_vcf.shape[0] // batch_divisor)
 
@@ -84,7 +82,7 @@ def create_dataloaders(
         )
 
     partitions_path = (
-        Path(data_partitions_file).name if data_partitions else 'none'
+        Path(data_partitions_file).name if data_partitions is not None else 'none'
     )
     return (
         num_data_features,

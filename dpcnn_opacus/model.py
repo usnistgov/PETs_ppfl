@@ -127,9 +127,6 @@ def train_cnn(
             if inputs.shape[0] < 2:
                 continue
             
-            inputs, labels = data
-            inputs = inputs.float().to(device)
-            labels = labels.float().to(device)
             optimizer.zero_grad()
             outputs = model(inputs).squeeze()
             loss = criterion(outputs, labels.float())
@@ -197,9 +194,6 @@ def compute_test_mse(
             if inputs.shape[0] < 2:
                 continue
 
-            inputs, labels = data
-            inputs = inputs.float().to(device)
-            labels = labels.float().to(device)
             outputs = model(inputs).squeeze()
             loss = criterion(outputs, labels.float())
             total_loss += loss.item()
@@ -239,9 +233,6 @@ def eval_cnn(
                 if inputs.shape[0] < 2:
                     continue
 
-                inputs, labels = data
-                inputs = inputs.float().to(device)
-                labels = labels.float().to(device)
                 outputs = model(inputs).squeeze()
                 loss = criterion(outputs, labels.float())
                 total_loss += loss.item()

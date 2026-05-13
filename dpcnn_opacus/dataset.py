@@ -8,6 +8,7 @@ import pandas as pd
 from collections import Counter
 from datasets import Dataset
 from sklearn.model_selection import StratifiedShuffleSplit
+from pathlib import Path
 
 from torch.utils.data import DataLoader
 from flwr_datasets.partitioner import (
@@ -82,15 +83,28 @@ def load_pickle_data(data_path):
     return ohe, vcf, pheno
 
 
-def instantiate_partitioner(partitioner_type: str, num_partitions: int, data_dir: str):
-    """Initialise partitioner based on selected partitioner type
-    and number of partitions"""
-    _, vcf, pheno = load_pickle_data(data_dir)
+def load_npy_feature_label_data(data_path):
+    data_dir = Path(data_path)
 
-    concat_dataset = np.concatenate((vcf, pheno), axis=1)
-    indices = np.arange(len(concat_dataset))
+    def load_one(suffix):
+        matches = list(data_dir.glob(f"*{suffix}.npy"))
+        if not matches:
+            raise FileNotFoundError(f"No .npy file found in {data_dir} matching *{suffix}.npy")
+        if len(matches) > 1:
+            raise ValueError(f"Multiple .npy files found for {suffix}: {matches}")
+        return np.load(matches[0], mmap_mode="r")
 
-    # Dataset class works with Pandas dataframes, but not Numpy arrays
+    tt_vcf = load_one("_tt_vcf")
+    tt_pheno = load_one("_tt_pheno")
+
+    return tt_vcf, tt_pheno.reshape(-1)
+
+def instantiate_partitioner(partitioner_type, num_partitions, data_dir, num_rows=None):
+    if num_rows is None:
+        features, _ = load_npy_feature_label_data(data_dir)
+        num_rows = len(features)
+
+    indices = np.arange(num_rows)
     partitioner = CORRELATION_TO_PARTITIONER[partitioner_type](
         num_partitions=num_partitions
     )
@@ -186,7 +200,10 @@ def load_random_partitions(
     """
     # initialize and get data partition
     partitioner = instantiate_partitioner(
-        partitioner_type=partitioner_type, num_partitions=num_partitions, data_dir=data_directory
+    partitioner_type=partitioner_type,
+    num_partitions=num_partitions,
+    data_dir=data_directory,
+    num_rows=len(features),
     )
     partition = partitioner.load_partition(data_partition_id)
     train_indices, test_indices, num_train, num_test = (
@@ -231,6 +248,13 @@ def load_custom_partitions(
     test_fraction: float,
     seed: int,
 ) -> Tuple[DataLoader, DataLoader, List[int], List[int]]:
+
+    def train_test_label_indices_split(labels, indices, test_frac, seed):
+        label_only_dataset = labels.reshape(-1, 1)
+        return train_test_indices_split(
+            label_only_dataset, indices, test_frac, seed
+        )
+
     # Check if data partition id is available in the data partitions
     data_partition_ids = sorted(
         [k for k in data_partitions.keys() if re.match(r'client_\d+', k)]
@@ -247,9 +271,8 @@ def load_custom_partitions(
     data_partition_str_id = data_partition_ids[data_partition_id]
     partition_indices = data_partitions[data_partition_str_id]
 
-    train_indices, test_indices = train_test_indices_split(
-        combined_dataset, partition_indices, test_fraction, seed
-    )
+    train_indices, test_indices = train_test_label_indices_split(
+        labels, partition_indices, test_fraction, seed)
 
     # Split into train and test based on the indices
     train_data = IndexedArrayDataset(features, labels, train_indices)
