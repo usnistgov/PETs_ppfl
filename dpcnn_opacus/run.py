@@ -16,6 +16,7 @@ from client import FlowerClient
 from server import create_strategy
 from utils import get_device, ConfigPipeline
 from report import Report
+from dataset import ensure_npy_feature_label_files
 
 
 # Parse arguments for flower server and client
@@ -73,6 +74,7 @@ INTENDED ACTION: Modify
 JUSTIFICATION: Creates a datetime folder on a run on top of the previously assigned directory. Provides additional separation for runs by default
 '''
 data_dir = args.data_dir
+ensure_npy_feature_label_files(data_dir)
 optimizer_name = args.model_params["optimizer"]
 
 # Privacy arguments
@@ -133,7 +135,7 @@ client_params = {
     # partitioner_type ->  uniform, linear, square, exponential
     'partitioner_type': partitioner_type,
     'num_partitions': num_partitions,
-    'batch_division': batch_divisor,
+    'batch_divisor': batch_divisor,
     'learning_rate': learning_rate,
     'weight_decay': weight_decay,
     'epochs': epochs,

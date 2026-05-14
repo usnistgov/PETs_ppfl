@@ -13,7 +13,6 @@ import torch.optim as optim
 from opacus import PrivacyEngine
 
 from dataset import (
-    load_pickle_data,
     load_random_partitions,
     load_custom_partitions,
     load_npy_feature_label_data,
@@ -37,9 +36,10 @@ def create_dataloaders(
     seed,
     batch_divisor,
 ):
-    tt_vcf, tt_pheno = load_npy_feature_label_data(data_directory)
+    tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(data_directory)
     num_data_features = tt_vcf.shape[1]
-    batch_size = max(1, tt_vcf.shape[0] // batch_divisor)
+    total_rows = len(tt_vcf) + len(ho_vcf)
+    batch_size = max(1, total_rows // batch_divisor)
 
     # Check if data partitions file is provided and exists
     data_partitions = None
@@ -56,9 +56,11 @@ def create_dataloaders(
         # if data partitions available, train a model for each data partition
         train_loader, test_loader, train_indices, test_indices = (
             load_custom_partitions(
-                client_id, 
-                tt_vcf, 
+                client_id,
+                tt_vcf,
                 tt_pheno,
+                ho_vcf,
+                ho_pheno,
                 data_partitions,
                 batch_size,
                 test_fraction,
@@ -69,9 +71,11 @@ def create_dataloaders(
         # Partition data into n_models randomly to train N client models
         train_loader, test_loader, train_indices, test_indices = (
             load_random_partitions(
-                client_id, 
-                tt_vcf, 
+                client_id,
+                tt_vcf,
                 tt_pheno,
+                ho_vcf,
+                ho_pheno,
                 batch_size,
                 test_fraction,
                 seed,
