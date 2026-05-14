@@ -27,6 +27,7 @@ def eval_model(model, test_loader, accuracy_tolerance):
     total = 0
     test_loss = 0
     total_mse = 0
+    pred_correct_test = 0
     criterion = nn.MSELoss()
 
     with torch.no_grad():
@@ -40,15 +41,14 @@ def eval_model(model, test_loader, accuracy_tolerance):
             outputs = model(inputs).squeeze()
             loss = criterion(outputs, labels)
             test_loss += loss.item()
+            pred_classes = torch.round(outputs).clamp(0,3)
+            pred_correct = pred_classes == labels
+            pred_correct_test += pred_correct.sum().item()
             total += labels.size(0)
-            correct += torch.sum(
-                torch.abs(outputs - labels.float())
-                <= accuracy_tolerance * labels + tol_offset
-            ).item()
-            total_mse += torch.sum(torch.abs(outputs - labels)).item()
+            total_mse += torch.sum((outputs - labels.float()) ** 2).item()
 
     test_loss = test_loss / len(test_loader)
-    test_accuracy = correct / total
+    test_accuracy = pred_correct_test / total
     test_mse = total_mse / total
 
     return test_loss, test_mse, test_accuracy

@@ -135,7 +135,7 @@ Regardless of how the parameter values are input, the values will be validated a
 | `epsilon` | Determines the amount of privacy added to the data | number | exclusive min: 0, exclusive max: 50 |
 | `delta` | Measures the chance of a data breach. It defines the probability that the noise does not add sufficient privacy. | number | min: 0, max: 1 |
 | `max_grad_norm` | Clips the gradients to be under this maximum before adding noise | number | min: 0, max: 100 |
-| `accuracy_tolerance` | Error tolerance used to declare a prediction correct | number | min: 0, max: 1 |
+| `accuracy_tolerance` | Legacy parameter retained for compatibility. Current DPCNN accuracy uses rounded scalar predictions clamped to the valid class range. | number | min: 0, max: 1 |
 | `check_only` | A flag to turn on the check-only feature, which ensures all parameter values are within the appropriate range and have the correct type. When `true`, the testbed will not run. Execution will stop after the parameters are validated. | boolean | — |
 | `config` | A way to specify a different configuration file path | string | — |
 | `data_dir` | The path to the intended data files to run the testbed on | string | — |
@@ -145,33 +145,57 @@ Regardless of how the parameter values are input, the values will be validated a
 | `scaled_lr` | Whether scaled learning rate behavior is enabled for XGBoost | boolean | — |
 
 ### Parameter settings
-To run centralized training from `run.py` (`centralized_train.py` may also be used directly, but note that the configuration file will not be read in that case), you should be able to use the following parameter values. Please note that the output may still look like federated learning training rounds, even though it is only one client, one round, and one data partition:
+To approximate centralized training from `run.py`, you should be able to use the following parameter values. Please note that the output may still look like federated learning training rounds, even though it is only one client, one round, and one data partition:
 
 | Parameter | Value |
 |---|---|
-| `num_partitions` | 1 |
-| `partition_id` | 0 |
-| `client_id` | 0 |
-| `min_fit_clients` | 1 |
-| `min_available_clients` | 1 |
-| `min_evaluate_clients` | 1 |
-| `n_models` | 1 |
-| `num_rounds` | 1 |
+| `model_type` | `"dpcnn"` |
+| `num_partitions` | `1` |
+| `partition_id` | `0` |
+| `client_id` | `0` |
+| `min_fit_clients` | `1` |
+| `min_available_clients` | `1` |
+| `min_evaluate_clients` | `1` |
+| `n_models` | `1` |
+| `num_rounds` | `1` |
+| `num_cpus` | `4` |
+| `seed` | `673` |
+| `test_fraction` | `0.3` |
+| `epochs` | `100` |
+| `learning_rate` | `0.01` |
+| `batch_divisor` | `5` |
+| `weight_decay` | `0.0001` |
+| `optimizer` | `"sgd"` |
+| `opacus_secure_mode` | `false` |
+| `epsilon` | `0.2` |
+| `delta` | `1e-05` |
+| `max_grad_norm` | `1.0` |
 
 Example `config.json`:
 
 ```json
 {
-  "model_type": "dpcnn",
-  "num_partitions": 1,
-  "partition_id": 0,
-  "client_id": 0,
-  "min_fit_clients": 1,
-  "min_available_clients": 1,
-  "min_evaluate_clients": 1,
-  "n_models": 1,
-  "num_rounds": 1,
-  "num_cpus": 12
+    "model_type": "dpcnn",
+   "num_partitions": 1,
+   "partition_id": 0,
+   "client_id": 0,
+   "min_fit_clients": 1,
+   "min_available_clients": 1,
+   "min_evaluate_clients": 1,
+   "n_models": 1,
+   "num_rounds": 1,
+   "num_cpus": 4,
+   "seed": 673 ,
+   "test_fraction": 0.3, 
+   "epochs": 100, 
+   "learning_rate": 0.01, 
+   "batch_divisor": 5, 
+   "weight_decay": 0.0001, 
+   "optimizer": "sgd", 
+   "opacus_secure_mode": false, 
+   "epsilon": 0.2, 
+   "delta": 1e-05, 
+   "max_grad_norm":1.0
 }
 ```
 
@@ -189,18 +213,18 @@ There are three types of output files: `.npz` files, `.json` files, and `.torch`
 |---|---|---|
 | `created on` | The datetime that the report was generated | string |
 | `model id` | The id of the model being developed | integer |
-| `round numer` | The current round that the metrics are reporting on | integer |
+| `round number` | The current round that the metrics are reporting on | integer |
 | `partitions file` | The file used to partition the data for training | string |
-| `train accuracy` | Training accuracy for this client and round | number |
-| `test accuracy` | Test accuracy for this client and round | number |
+| `train accuracy` | Rounded-class training accuracy for this client and round. The scalar model output is rounded and clamped to the valid class range before comparison to the label. | number |
+| `test accuracy` | Rounded-class test accuracy for this client and round. The scalar model output is rounded and clamped to the valid class range before comparison to the label. | number |
 | `train mean squared error` | Train MSE for this client and round | number |
 | `test mean squared error` | Test MSE for this client and round | number |
 | `train loss` | Train loss for this client and round | number |
 | `test loss` | Test loss for this client and round | number |
 | `train indices` | Indices used for training | integer array |
 | `test indices` | Indices used for testing | integer array |
-| `train accuracy per epoch` | Accuracy over epochs for training | number array |
-| `test accuracy per epoch` | Accuracy over epochs for testing | number array |
+| `train accuracy per epoch` | Rounded-class training accuracy over epochs | number array |
+| `test accuracy per epoch` | Rounded-class test accuracy over epochs | number array |
 | `train mse per epoch` | MSE over epochs for training | number array |
 | `test mse per epoch` | MSE over epochs for testing | number array |
 | `losses per epoch` | Loss values for each epoch in this client round | number array |
@@ -214,7 +238,7 @@ There are three types of output files: `.npz` files, `.json` files, and `.torch`
 | `hyperparameters.epochs` | The number of model training epochs. An epoch is one full pass through a training dataset | integer |
 | `hyperparameters.seed` | The seed used to randomize training/testing | integer | 
 | `hyperparameters.test fraction` | The fraction of the data set to set aside for testing | number |
-| `hyperparameters.accuracy tolerance` | Error tolerance to declare prediction as correct | number |
+| `hyperparameters.accuracy tolerance` | Legacy parameter retained for compatibility. Current DPCNN accuracy uses rounded scalar predictions clamped to the valid class range. | number |
 | `hyperparameters.optimizer` | The optimizer is responsible for adjusting model parameters based on the value of the loss function | string |
 | `hyperparameters.epsilon` | Determines the amount of privacy added to the data. | number |
 | `hyperparameters.delta` | Measures the chance of a data breach. It defines the probability of the noise not adding sufficient privacy | number |
@@ -225,7 +249,7 @@ There are three types of output files: `.npz` files, `.json` files, and `.torch`
 |---|---|---|
 | `created on` | The datetime that the report was generated | string |
 | `loss per round` | Loss values across rounds | number array |
-| `accuracy per round` | Accuracy values across rounds | number array |
+| `accuracy per round` | Rounded-class accuracy values across rounds | number array |
 | `mse per round` | MSE values across rounds | number array |
 
 ## Regression Testing <a name="regression"></a>
