@@ -10,8 +10,8 @@ import flwr as fl
 from flwr.common import Metrics
 from flwr.common import ndarrays_to_parameters
 
-from dataset import load_pickle_data
-from model import Net
+from dataset import IndexedArrayDataset, load_npy_feature_label_data
+from model import Net, unpack_batch
 from report import Report
 
 
@@ -32,12 +32,11 @@ def eval_model(model, test_loader, accuracy_tolerance):
 
     with torch.no_grad():
         for data in test_loader:
+            inputs, labels = unpack_batch(data)
             # data should have at least 2 samples, otherwise
             # it will fail at batch normalization layer
-            if data.shape[0] < 2:
+            if inputs.shape[0] < 2:
                 continue
-            inputs = data[:, :-1]
-            labels = data[:, -1]
             outputs = model(inputs).squeeze()
             loss = criterion(outputs, labels)
             test_loss += loss.item()
@@ -142,10 +141,15 @@ def get_parameters(net) -> List[np.ndarray]:
 
 
 def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
-    ohe, vcf, pheno = load_pickle_data(strategy_params['data_dir'])
-    combined_dataset = np.concatenate((vcf, pheno), axis=1)
-    num_data_features = vcf.shape[1]
-    test_loader = DataLoader(combined_dataset, batch_size=64, shuffle=False)
+    tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(
+        strategy_params['data_dir']
+    )
+    num_data_features = tt_vcf.shape[1]
+    all_indices = np.arange(len(tt_vcf) + len(ho_vcf))
+    test_dataset = IndexedArrayDataset(
+        tt_vcf, tt_pheno, ho_vcf, ho_pheno, all_indices
+    )
+    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
     params = get_parameters(Net(num_data_features))
 

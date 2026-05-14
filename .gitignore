@@ -8,6 +8,7 @@ OIL_QTL_ho_pheno.dat
 .venv/*
 .venv
 *.dat
+*.npy
 reports/*
 reports
 inputs.py

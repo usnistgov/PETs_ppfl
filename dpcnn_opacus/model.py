@@ -9,6 +9,21 @@ from sklearn.metrics import mean_squared_error, r2_score
 from math import sqrt
 from report import Report
 
+def unpack_batch(data, device=None):
+    if isinstance(data, (tuple, list)):
+        inputs, labels = data
+    else:
+        inputs = data[:, :-1]
+        labels = data[:, -1]
+
+    inputs = inputs.float()
+    labels = labels.float()
+
+    if device is not None:
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+
+    return inputs, labels
 
 class Net(nn.Module):
     def __init__(self, features: int):
@@ -108,12 +123,10 @@ def train_cnn(
         total_mae, total_mse = 0, 0
         correct_train, pred_correct_train, total_train = 0, 0, 0
         for i, data in enumerate(train_loader):
-            # data should have at least 2 samples, otherwise
-            # it will fail at batch normalization layer
-            if data.shape[0] < 2:
+            inputs, labels = unpack_batch(data, device)
+            if inputs.shape[0] < 2:
                 continue
-            inputs = data[:, :-1].float().to(device)
-            labels = data[:, -1].float().to(device)
+            
             optimizer.zero_grad()
             outputs = model(inputs).squeeze()
             loss = criterion(outputs, labels.float())
@@ -179,12 +192,10 @@ def compute_test_mse(
 
     with torch.no_grad():
         for data in test_loader:
-            # data should have at least 2 samples, otherwise
-            # it will fail at batch normalization layer
-            if data.shape[0] < 2:
+            inputs, labels = unpack_batch(data, device)
+            if inputs.shape[0] < 2:
                 continue
-            inputs = data[:, :-1].float().to(device)
-            labels = data[:, -1].float().to(device)
+
             outputs = model(inputs).squeeze()
             loss = criterion(outputs, labels.float())
             total_loss += loss.item()
@@ -221,12 +232,10 @@ def eval_cnn(
 
         with torch.no_grad():
             for data in loader:
-                # data should have at least 2 samples, otherwise
-                # it will fail at batch normalization layer
-                if data.shape[0] < 2:
+                inputs, labels = unpack_batch(data)
+                if inputs.shape[0] < 2:
                     continue
-                inputs = data[:, :-1]
-                labels = data[:, -1]
+
                 outputs = model(inputs).squeeze()
                 loss = criterion(outputs, labels.float())
                 total_loss += loss.item()

@@ -341,3 +341,102 @@ Dataset host site: https://data.pawsey.org.au/projects/
 Unfortunately, you cannot share a link that goes directly to the folders containing the dataset CSV files, so you will have to navigate through the UI's folder structure to `/NGS Analysis Results/shortTerm/mgill/DL/holdout_and_equivalent_merged_1pcnt_removed`.
 
 In that folder, you will see the `holdout` and `train_test` datasets named with the feature as a prefix, for example `"FlC_"` for flower color.
+
+## Flower/Ray client, model, and logging behavior
+
+This codebase currently follows the standard Flower simulation pattern:
+
+- One data partition corresponds to one Flower client.
+- One Flower client trains one local model update per federated round.
+- The text currently printed as `Model 0`, `Model 1`, etc. refers to the Flower client/partition id, not multiple models trained inside a single client.
+- For example, seeing `Model 0` through `Model 4` means five clients/partitions are participating in that round, each training one local model update.
+
+### Parameters that affect how many clients train
+
+- `model_params.num_partitions` controls how many simulated client partitions are available when random partitioning is used.
+- When `model_params.data_partitions_file` is provided, the code reads the number of `client_*` entries in that file and uses those as the available client partitions.
+- `federated.min_fit_clients`, `federated.min_evaluate_clients`, and `federated.min_available_clients` control how many clients Flower requires for fit/evaluate rounds.
+- `federated.n_models` exists in the schema, but the current implementation does not train multiple inner models per client. Going forward, this should either be renamed/documented as a client-count control or wired explicitly if repeated local models are desired.
+
+### Parameters that affect concurrency
+
+- `num_cpus` does not directly control how many models are trained.
+- In Ray, `num_cpus` is a per-client resource reservation.
+- Lowering `num_cpus` can allow more Flower clients to run at the same time, so logs from multiple clients may appear interleaved.
+- Increasing `num_cpus` can force more sequential execution by making each client reserve more of the machine.
+
+### Interpreting output
+
+Current output may look like:
+
+```
+Model 0 | Epoch 1/100 | ...
+Model 3 | Epoch 1/100 | ...
+Model 1 | Epoch 1/100 | ...
+```
+
+This does not mean one client is training multiple models. It means multiple client processes are training concurrently, and Ray prints logs as each process emits them. The order is based on scheduling/runtime progress, not client id order.
+
+### Planned cleanup
+
+To reduce confusion in a future non-hotfix change:
+
+- Rename log text from `Model {id}` to `Client {id}` or `Client/Partition {id}`.
+- Clarify `n_models` in the configuration schema, or replace it with a parameter name that reflects current behavior.
+- Document the relationship between partition files, Flower clients, and federated rounds directly in the configuration docs.
+- Keep memory-related changes separate from naming/logging cleanup to avoid expanding the current hotfix scope.
+
+## Memory-mapped data loading
+
+The Flower simulation path uses memory-mapped `.npy` files for the DPCNN data arrays. This was added to reduce Ray out-of-memory failures caused by each client process loading and copying large genomics arrays.
+
+### Previous behavior
+
+The original Flower/Ray path loaded pickled `.dat` arrays inside each client process. It then built additional NumPy arrays such as:
+
+- `vcf = np.concatenate((tt_vcf, ho_vcf), axis=0)`
+- `pheno = np.concatenate((tt_pheno, ho_pheno), axis=0)`
+- `combined_dataset = np.concatenate((vcf, pheno), axis=1)`
+- client train/test slices such as `combined_dataset[train_indices]`
+
+Those operations create full in-memory copies. With multiple Ray clients, the same large dataset could be loaded and copied several times at once.
+
+### Current behavior
+
+The federated client/server path now uses `load_npy_feature_label_data`, which:
+
+- checks for required `.npy` files matching `_tt_vcf`, `_tt_pheno`, `_ho_vcf`, and `_ho_pheno`
+- automatically converts missing `.npy` files from the matching `.dat` files
+- opens the `.npy` arrays with `np.load(..., mmap_mode="r")`
+- keeps the arrays file-backed instead of eagerly loading each full array into every Ray process
+
+Using `mmap_mode="r"` means NumPy creates an array-like view over the `.npy` file instead of immediately copying the whole file into process memory. The operating system loads pages from the file only as rows are accessed. Since Ray runs clients in separate worker processes, this is important: multiple workers can map the same read-only data files without each worker eagerly owning a separate full private copy of every array.
+
+This does not make the dataset free. Rows that are actively read still occupy memory, and PyTorch/Opacus still allocate tensors, gradients, optimizer state, and batch data during training. The benefit is that baseline dataset storage is file-backed and shared more efficiently by the OS, so memory usage is driven more by active training work and less by repeated full dataset copies in each Ray client.
+
+The large `tt` and `ho` feature/label arrays stay physically separate:
+
+- `tt_vcf`
+- `tt_pheno`
+- `ho_vcf`
+- `ho_pheno`
+
+The `IndexedArrayDataset` class treats those separate arrays as one logical `tt + ho` dataset. Global row indices keep their original meaning: rows `0..len(tt)-1` refer to `tt`, and later rows refer to `ho` after subtracting `len(tt)`.
+
+This preserves the original partition-file behavior without building large concatenated arrays.
+
+### Automatic conversion
+
+If one or more required `.npy` files are missing, `dataset.py` calls `convert_dat_to_npy.convert_dat_to_npy(data_dir)` automatically. Existing `.npy` files are left in place, so conversion should only happen when needed.
+
+The converter only converts `.dat` files that contain NumPy arrays. Non-array pickle files are skipped.
+
+### Expected memory behavior
+
+This change reduces memory by avoiding repeated full dataset copies across Ray client workers. It does not eliminate all memory use. Training can still use several GB of RAM because PyTorch, Opacus, Ray actors, optimizer state, gradients, and active batches all allocate memory.
+
+A moderate RAM peak during training is expected. The important improvement is that memory should no longer scale as badly with repeated dataset copies per client. If running into OOM issues, try increasing the number of cpus allocated for each Ray/Flwr client (increase the num_cpus parameter from the command line or config.json). This will reduce the number of clients running at any given time and therefore reduce the overall RAM usage.
+
+### Legacy path
+
+The legacy `load_pickle_data` function remains available for older scripts such as centralized training. The federated Flower client/server path should use the mmap-backed loader instead.
