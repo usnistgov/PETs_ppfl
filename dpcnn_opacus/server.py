@@ -40,7 +40,7 @@ def eval_model(model, test_loader, accuracy_tolerance):
             outputs = model(inputs).squeeze()
             loss = criterion(outputs, labels)
             test_loss += loss.item()
-            pred_classes = torch.round(outputs).clamp(0,3)
+            pred_classes = torch.round(outputs)
             pred_correct = pred_classes == labels
             pred_correct_test += pred_correct.sum().item()
             total += labels.size(0)

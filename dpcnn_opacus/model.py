@@ -135,7 +135,7 @@ def train_cnn(
             epoch_loss += loss.item()
 
             # Use rounded-class accuracy
-            pred_classes = torch.round(outputs).clamp(0,3)
+            pred_classes = torch.round(outputs)
             pred_correct = pred_classes == labels
             pred_correct_train += pred_correct.sum().item()
             total_train += len(labels)
@@ -201,7 +201,7 @@ def compute_test_mse(
             total_loss += loss.item()
             total_mse += torch.sum((outputs - labels.float()) ** 2).item()
             
-            pred_classes = torch.round(outputs).clamp(0, 3)
+            pred_classes = torch.round(outputs)
             pred_correct = pred_classes == labels
             pred_correct_test += pred_correct.sum().item()
             total += labels.size(0)
@@ -242,7 +242,7 @@ def eval_cnn(
                 total_mae += torch.sum(torch.abs(outputs - labels)).item()
                 total_mse += torch.sum((outputs - labels) ** 2).item()
 
-                pred_classes = torch.round(outputs).clamp(0,3)
+                pred_classes = torch.round(outputs)
                 pred_correct = pred_classes == labels
                 pred_correct_test += pred_correct.sum().item()
                 total += labels.size(0)
