@@ -149,7 +149,9 @@ def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
     test_dataset = IndexedArrayDataset(
         tt_vcf, tt_pheno, ho_vcf, ho_pheno, all_indices
     )
-    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+    total_rows = len(tt_vcf) + len(ho_vcf)
+    batch_size = max(1, total_rows // strategy_params['batch_divisor'])
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     params = get_parameters(Net(num_data_features))
 

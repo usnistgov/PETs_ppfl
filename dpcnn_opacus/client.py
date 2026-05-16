@@ -234,7 +234,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.partitions_type = params.get('partitions_type', 'uniform')
         self.num_partitions = params.get('num_partitions', 4)
         self.partition_id = params.get('partition_id', 0)
-        self.batch_divisor = params.get('batch_division', 40)
+        self.batch_divisor = params.get('batch_divisor', 40)
         self.learning_rate = params.get('learning_rate', 0.003)
         self.weight_decay = params.get('weight_decay', 0.0001)
         self.test_fraction = params.get('test_fraction', 0.2)

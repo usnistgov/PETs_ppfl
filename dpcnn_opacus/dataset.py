@@ -165,10 +165,10 @@ def load_npy_feature_label_data(data_path):
             raise FileNotFoundError(f"No .npy file found in {data_dir} matching *{suffix}.npy")
         return np.load(path, mmap_mode="r")
 
-    tt_vcf = load_one("_tt_vcf")
-    tt_pheno = load_one("_tt_pheno")
-    ho_vcf = load_one("_ho_vcf")
-    ho_pheno = load_one("_ho_pheno")
+    tt_vcf = load_one(NPY_SUFFIXES[0])
+    tt_pheno = load_one(NPY_SUFFIXES[1])
+    ho_vcf = load_one(NPY_SUFFIXES[2])
+    ho_pheno = load_one(NPY_SUFFIXES[3])
 
     return tt_vcf, tt_pheno.reshape(-1), ho_vcf, ho_pheno.reshape(-1)
 
@@ -304,7 +304,9 @@ def load_random_partitions(
     train_labels = get_split_labels(tt_labels, ho_labels, train_indices)
     test_labels = get_split_labels(tt_labels, ho_labels, test_indices)
 
+    print('Train dataset binned label counts')
     print_binned_counts(train_labels.reshape(-1, 1), np.arange(len(train_labels)))
+    print('Test dataset binned label counts')
     print_binned_counts(test_labels.reshape(-1, 1), np.arange(len(test_labels)))
 
     # create data loaders
@@ -364,7 +366,9 @@ def load_custom_partitions(
     train_labels = get_split_labels(tt_labels, ho_labels, train_indices)
     test_labels = get_split_labels(tt_labels, ho_labels, test_indices)
 
+    print('Train dataset binned label counts')
     print_binned_counts(train_labels.reshape(-1, 1), np.arange(len(train_labels)))
+    print('Test dataset binned label counts')
     print_binned_counts(test_labels.reshape(-1, 1), np.arange(len(test_labels)))
 
     # create dataloaders

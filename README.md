@@ -10,7 +10,9 @@ Welcome to the NIST genomics PETs testbed (beta version). This testbed aims to p
 5. [Modifying the Parameters](#params)
 6. [Output](#output)
 7. [Running Regression Tests](#regression)
-8. [References](#refs)
+8. [Data References](#refs)
+9. [Flower/Ray client, model, and logging behavior](#flwr)
+10. [Ray Memory Optimization](#mem)
 
 ## Currently Supported Capabilities <a name="current"></a>
 
@@ -41,7 +43,7 @@ _*Please note that bring-your-own-data partition files have not been tested yet.
 ## Setting Up the Testbed <a name="setup"></a>
 
 1. Download the zip file containing the data and code.
-   1. If using the provided test data, ensure the following files exist in the `data/Oil_binned5` directory:
+   1. If using the provided Oil_binned5 test data, ensure the following files exist in the `data/Oil_binned5` directory (and your data path matches):
       1. `Oil_QTL_ho_pheno.dat`
       2. `Oil_QTL_ho_vcf.dat`
       3. `Oil_QTL_ohe_map.dat`
@@ -49,8 +51,18 @@ _*Please note that bring-your-own-data partition files have not been tested yet.
       5. `Oil_QTL_pheno_bins.dat`
       6. `Oil_QTL_tt_pheno.dat`
       7. `Oil_QTL_tt_vcf.dat`
+   Or if using the provided SCC test data and partitions, ensure the following files exist in the `data/gpd_scc` (and your data path and partition paths matches). Only one data partition file will be used (you must specify which one):
+      1. `SCC_QTL_ho_pheno.dat`
+      2. `SCC_QTL_ho_vcf.dat`
+      3. `SCC_QTL_ohe_map.dat`
+      4. `SCC_QTL_ohe.dat`
+      5. `SCC_QTL_pheno_bins.dat`
+      6. `SCC_QTL_tt_pheno.dat`
+      7. `SCC_QTL_tt_vcf.dat`
+      8. `ppfl_SCC_c0c1_5clients_2025_01_14.npz`
+      9. `ppfl_SCC_c4c5_5clients_2025_01_14.npz`
    2. If using your own data:
-      - Please ensure that all data files are of type `.dat`. It is also expected that the endings of the data files match the provided test data. For example, this testbed assumes the data file endings are:
+      - Please ensure that all data files are of type `.dat` or `.npy`. It is also expected that the endings of the data files match the provided test data. For example, this testbed assumes the data file endings are:
          1. `_ho_pheno.dat`
          2. `_ho_vcf.dat`
          3. `_ohe.dat`
@@ -252,6 +264,28 @@ There are three types of output files: `.npz` files, `.json` files, and `.torch`
 | `accuracy per round` | Rounded-class accuracy values across rounds | number array |
 | `mse per round` | MSE values across rounds | number array |
 
+### Accuracy Calculations and Model Implications
+Currently, this codebase trains a regression model, then rounds the output to obtain integer labels. This implies the following assumptions:
+   - The dataset used to train the model has integer labels
+   - The user of the testbed is asking classification questions. 
+
+This modified the binning funcion previously found in the codebase, which was:
+```
+correct += torch.sum(
+                    torch.abs(outputs - labels)
+                    <= (tolerance * labels + tol_offset)).item()
+```
+Where outputs were the regression model outputs, labels were the integer true labels, tolerance was a modifiable parameter (mapped to accuracy_tolerance, default of 0.1), and tol_offset was a 0.01 offset. This previous function penalized classes with low integer labels, especially the 0 label, making accuracy appear to be very low. The new binning function is a simple rounding of the output:
+```
+pred_classes = torch.round(outputs)
+pred_correct = pred_classes == labels
+pred_correct_test += pred_correct.sum().item()
+#where pred_correct_[test, train] now replaces correct
+```
+This prevents bias towards higher-label classes and penalization of lower-label classes. This also ensures that the "accurate" range of each of the labels is consistent (not class dependent) for fair evaluation.
+
+In the future, this binning function will be re-evaluated, and the user-specified option to use the legacy binning function may be added in. Additionally, future work will look to exand the testbed to support both classification and regression based problems. 
+
 ## Regression Testing <a name="regression"></a>
 
 For regression testing, I am using a Python library called `pytest`. This helps automate the testing process. There are various test cases described in the `test_cli_config_regression.py` script. In this regression testing, it is only checking whether the parameter inputs are valid. To run the regression tests, ensure you are in the `dpcnn_opacus` folder, and if using a virtual environment, make sure it is active. Also ensure you have `pytest` installed in your environment; it is now listed in `requirements.txt`. Then, run:
@@ -326,7 +360,7 @@ pytest.param(
 )
 ```
 
-## References <a name="refs"></a>
+## Data References <a name="refs"></a>
 
 ### Soybean Trait Prediction Research
 
@@ -342,7 +376,7 @@ Unfortunately, you cannot share a link that goes directly to the folders contain
 
 In that folder, you will see the `holdout` and `train_test` datasets named with the feature as a prefix, for example `"FlC_"` for flower color.
 
-## Flower/Ray client, model, and logging behavior
+## Flower/Ray client, model, and logging behavior <a name="flwr"></a>
 
 This codebase currently follows the standard Flower simulation pattern:
 
@@ -386,7 +420,7 @@ To reduce confusion in a future non-hotfix change:
 - Document the relationship between partition files, Flower clients, and federated rounds directly in the configuration docs.
 - Keep memory-related changes separate from naming/logging cleanup to avoid expanding the current hotfix scope.
 
-## Memory-mapped data loading
+## Memory-mapped data loading <a name="mem"></a>
 
 The Flower simulation path uses memory-mapped `.npy` files for the DPCNN data arrays. This was added to reduce Ray out-of-memory failures caused by each client process loading and copying large genomics arrays.
 

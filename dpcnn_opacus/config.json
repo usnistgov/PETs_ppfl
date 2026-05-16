@@ -8,7 +8,7 @@
   "min_evaluate_clients": 1,
   "n_models": 1,
   "num_rounds": 1,
-  "num_cpus": 12,
+  "num_cpus": 4,
   "seed": 673 ,
   "test_fraction": 0.3, 
   "epochs": 100, 

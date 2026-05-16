@@ -168,7 +168,8 @@ def server_fn(context: Context) -> ServerAppComponents:
             'num_rounds': num_rounds,
             'accuracy_tolerance': accuracy_tolerance,
             'output_dir': out_dir,
-            'data_dir': data_dir
+            'data_dir': data_dir,
+            'batch_divisor': batch_divisor
         }
     )
     config = ServerConfig(num_rounds=num_rounds)

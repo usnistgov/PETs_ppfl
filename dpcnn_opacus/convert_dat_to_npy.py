@@ -3,18 +3,20 @@ import argparse
 import pickle
 import numpy as np
 
+"""
+This file convers .dat files into .npy files for more efficient loading into shared memory. This will not overwrite the .dat files.
+Instead, this will create new .npy files with the same file prefixes as the .dat files. 
+"""
 
 def convert_dat_to_npy(data_dir: Path) -> None:
-    if not data_dir.exists():
-        raise FileNotFoundError(f"Directory does not exist: {data_dir}")
-
     if not data_dir.is_dir():
         raise NotADirectoryError(f"Not a directory: {data_dir}")
 
     dat_files = sorted(data_dir.glob("*.dat"))
+    npy_files = sorted(data_dir.glob("*.npy"))
 
-    if not dat_files:
-        print(f"No .dat files found in {data_dir}")
+    if not dat_files and not npy_files:
+        print(f"No .dat files or .npy files found in {data_dir}. Please add in .dat data for conversions.")
         return
 
     for dat_path in dat_files:
