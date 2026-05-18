@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 
 """
-This file convers .dat files into .npy files for more efficient loading into shared memory. This will not overwrite the .dat files.
+This file converts .dat files into .npy files for more efficient loading into shared memory. This will not overwrite the .dat files.
 Instead, this will create new .npy files with the same file prefixes as the .dat files. 
 """
 
