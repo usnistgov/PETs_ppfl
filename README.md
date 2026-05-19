@@ -10,7 +10,9 @@ Welcome to the NIST genomics PETs testbed (beta version). This testbed aims to p
 5. [Modifying the Parameters](#params)
 6. [Output](#output)
 7. [Running Regression Tests](#regression)
-8. [References](#refs)
+8. [Data References](#refs)
+9. [Flower/Ray client, model, and logging behavior](#flwr)
+10. [Ray Memory Optimization](#mem)
 
 ## Currently Supported Capabilities <a name="current"></a>
 
@@ -41,7 +43,7 @@ _*Please note that bring-your-own-data partition files have not been tested yet.
 ## Setting Up the Testbed <a name="setup"></a>
 
 1. Download the zip file containing the data and code.
-   1. If using the provided test data, ensure the following files exist in the `data/Oil_binned5` directory:
+   1. If using the provided Oil_binned5 test data, ensure the following files exist in the `data/Oil_binned5` directory (and your data path matches):
       1. `Oil_QTL_ho_pheno.dat`
       2. `Oil_QTL_ho_vcf.dat`
       3. `Oil_QTL_ohe_map.dat`
@@ -49,8 +51,18 @@ _*Please note that bring-your-own-data partition files have not been tested yet.
       5. `Oil_QTL_pheno_bins.dat`
       6. `Oil_QTL_tt_pheno.dat`
       7. `Oil_QTL_tt_vcf.dat`
+   Or if using the provided SCC test data and partitions, ensure the following files exist in the `data/gpd_scc` (and your data path and partition paths matches). Only one data partition file will be used (you must specify which one):
+      1. `SCC_QTL_ho_pheno.dat`
+      2. `SCC_QTL_ho_vcf.dat`
+      3. `SCC_QTL_ohe_map.dat`
+      4. `SCC_QTL_ohe.dat`
+      5. `SCC_QTL_pheno_bins.dat`
+      6. `SCC_QTL_tt_pheno.dat`
+      7. `SCC_QTL_tt_vcf.dat`
+      8. `ppfl_SCC_c0c1_5clients_2025_01_14.npz`
+      9. `ppfl_SCC_c4c5_5clients_2025_01_14.npz`
    2. If using your own data:
-      - Please ensure that all data files are of type `.dat`. It is also expected that the endings of the data files match the provided test data. For example, this testbed assumes the data file endings are:
+      - Please ensure that all data files are of type `.dat` or `.npy`. It is also expected that the endings of the data files match the provided test data. For example, this testbed assumes the data file endings are:
          1. `_ho_pheno.dat`
          2. `_ho_vcf.dat`
          3. `_ohe.dat`
@@ -135,7 +147,7 @@ Regardless of how the parameter values are input, the values will be validated a
 | `epsilon` | Determines the amount of privacy added to the data | number | exclusive min: 0, exclusive max: 50 |
 | `delta` | Measures the chance of a data breach. It defines the probability that the noise does not add sufficient privacy. | number | min: 0, max: 1 |
 | `max_grad_norm` | Clips the gradients to be under this maximum before adding noise | number | min: 0, max: 100 |
-| `accuracy_tolerance` | Error tolerance used to declare a prediction correct | number | min: 0, max: 1 |
+| `accuracy_tolerance` | Legacy parameter retained for compatibility. Current DPCNN accuracy uses rounded scalar predictions clamped to the valid class range. | number | min: 0, max: 1 |
 | `check_only` | A flag to turn on the check-only feature, which ensures all parameter values are within the appropriate range and have the correct type. When `true`, the testbed will not run. Execution will stop after the parameters are validated. | boolean | — |
 | `config` | A way to specify a different configuration file path | string | — |
 | `data_dir` | The path to the intended data files to run the testbed on | string | — |
@@ -145,33 +157,57 @@ Regardless of how the parameter values are input, the values will be validated a
 | `scaled_lr` | Whether scaled learning rate behavior is enabled for XGBoost | boolean | — |
 
 ### Parameter settings
-To run centralized training from `run.py` (`centralized_train.py` may also be used directly, but note that the configuration file will not be read in that case), you should be able to use the following parameter values. Please note that the output may still look like federated learning training rounds, even though it is only one client, one round, and one data partition:
+To approximate centralized training from `run.py`, you should be able to use the following parameter values. Please note that the output may still look like federated learning training rounds, even though it is only one client, one round, and one data partition:
 
 | Parameter | Value |
 |---|---|
-| `num_partitions` | 1 |
-| `partition_id` | 0 |
-| `client_id` | 0 |
-| `min_fit_clients` | 1 |
-| `min_available_clients` | 1 |
-| `min_evaluate_clients` | 1 |
-| `n_models` | 1 |
-| `num_rounds` | 1 |
+| `model_type` | `"dpcnn"` |
+| `num_partitions` | `1` |
+| `partition_id` | `0` |
+| `client_id` | `0` |
+| `min_fit_clients` | `1` |
+| `min_available_clients` | `1` |
+| `min_evaluate_clients` | `1` |
+| `n_models` | `1` |
+| `num_rounds` | `1` |
+| `num_cpus` | `4` |
+| `seed` | `673` |
+| `test_fraction` | `0.3` |
+| `epochs` | `100` |
+| `learning_rate` | `0.01` |
+| `batch_divisor` | `5` |
+| `weight_decay` | `0.0001` |
+| `optimizer` | `"sgd"` |
+| `opacus_secure_mode` | `false` |
+| `epsilon` | `0.2` |
+| `delta` | `1e-05` |
+| `max_grad_norm` | `1.0` |
 
 Example `config.json`:
 
 ```json
 {
-  "model_type": "dpcnn",
-  "num_partitions": 1,
-  "partition_id": 0,
-  "client_id": 0,
-  "min_fit_clients": 1,
-  "min_available_clients": 1,
-  "min_evaluate_clients": 1,
-  "n_models": 1,
-  "num_rounds": 1,
-  "num_cpus": 12
+    "model_type": "dpcnn",
+   "num_partitions": 1,
+   "partition_id": 0,
+   "client_id": 0,
+   "min_fit_clients": 1,
+   "min_available_clients": 1,
+   "min_evaluate_clients": 1,
+   "n_models": 1,
+   "num_rounds": 1,
+   "num_cpus": 4,
+   "seed": 673 ,
+   "test_fraction": 0.3, 
+   "epochs": 100, 
+   "learning_rate": 0.01, 
+   "batch_divisor": 5, 
+   "weight_decay": 0.0001, 
+   "optimizer": "sgd", 
+   "opacus_secure_mode": false, 
+   "epsilon": 0.2, 
+   "delta": 1e-05, 
+   "max_grad_norm":1.0
 }
 ```
 
@@ -189,18 +225,18 @@ There are three types of output files: `.npz` files, `.json` files, and `.torch`
 |---|---|---|
 | `created on` | The datetime that the report was generated | string |
 | `model id` | The id of the model being developed | integer |
-| `round numer` | The current round that the metrics are reporting on | integer |
+| `round number` | The current round that the metrics are reporting on | integer |
 | `partitions file` | The file used to partition the data for training | string |
-| `train accuracy` | Training accuracy for this client and round | number |
-| `test accuracy` | Test accuracy for this client and round | number |
+| `train accuracy` | Rounded-class training accuracy for this client and round. The scalar model output is rounded and clamped to the valid class range before comparison to the label. | number |
+| `test accuracy` | Rounded-class test accuracy for this client and round. The scalar model output is rounded and clamped to the valid class range before comparison to the label. | number |
 | `train mean squared error` | Train MSE for this client and round | number |
 | `test mean squared error` | Test MSE for this client and round | number |
 | `train loss` | Train loss for this client and round | number |
 | `test loss` | Test loss for this client and round | number |
 | `train indices` | Indices used for training | integer array |
 | `test indices` | Indices used for testing | integer array |
-| `train accuracy per epoch` | Accuracy over epochs for training | number array |
-| `test accuracy per epoch` | Accuracy over epochs for testing | number array |
+| `train accuracy per epoch` | Rounded-class training accuracy over epochs | number array |
+| `test accuracy per epoch` | Rounded-class test accuracy over epochs | number array |
 | `train mse per epoch` | MSE over epochs for training | number array |
 | `test mse per epoch` | MSE over epochs for testing | number array |
 | `losses per epoch` | Loss values for each epoch in this client round | number array |
@@ -214,7 +250,7 @@ There are three types of output files: `.npz` files, `.json` files, and `.torch`
 | `hyperparameters.epochs` | The number of model training epochs. An epoch is one full pass through a training dataset | integer |
 | `hyperparameters.seed` | The seed used to randomize training/testing | integer | 
 | `hyperparameters.test fraction` | The fraction of the data set to set aside for testing | number |
-| `hyperparameters.accuracy tolerance` | Error tolerance to declare prediction as correct | number |
+| `hyperparameters.accuracy tolerance` | Legacy parameter retained for compatibility. Current DPCNN accuracy uses rounded scalar predictions clamped to the valid class range. | number |
 | `hyperparameters.optimizer` | The optimizer is responsible for adjusting model parameters based on the value of the loss function | string |
 | `hyperparameters.epsilon` | Determines the amount of privacy added to the data. | number |
 | `hyperparameters.delta` | Measures the chance of a data breach. It defines the probability of the noise not adding sufficient privacy | number |
@@ -225,8 +261,30 @@ There are three types of output files: `.npz` files, `.json` files, and `.torch`
 |---|---|---|
 | `created on` | The datetime that the report was generated | string |
 | `loss per round` | Loss values across rounds | number array |
-| `accuracy per round` | Accuracy values across rounds | number array |
+| `accuracy per round` | Rounded-class accuracy values across rounds | number array |
 | `mse per round` | MSE values across rounds | number array |
+
+### Accuracy Calculations and Model Implications
+Currently, this codebase trains a regression model, then rounds the output to obtain integer labels. This implies the following assumptions:
+   - The dataset used to train the model has integer labels
+   - The user of the testbed is asking classification questions. 
+
+This modified the binning funcion previously found in the codebase, which was:
+```
+correct += torch.sum(
+                    torch.abs(outputs - labels)
+                    <= (tolerance * labels + tol_offset)).item()
+```
+Where outputs were the regression model outputs, labels were the integer true labels, tolerance was a modifiable parameter (mapped to accuracy_tolerance, default of 0.1), and tol_offset was a 0.01 offset. This previous function penalized classes with low integer labels, especially the 0 label, making accuracy appear to be very low. The new binning function is a simple rounding of the output:
+```
+pred_classes = torch.round(outputs)
+pred_correct = pred_classes == labels
+pred_correct_test += pred_correct.sum().item()
+#where pred_correct_[test, train] now replaces correct
+```
+This prevents bias towards higher-label classes and penalization of lower-label classes. This also ensures that the "accurate" range of each of the labels is consistent (not class dependent) for fair evaluation.
+
+In the future, this binning function will be re-evaluated, and the user-specified option to use the legacy binning function may be added in. Additionally, future work will look to exand the testbed to support both classification and regression based problems. 
 
 ## Regression Testing <a name="regression"></a>
 
@@ -302,7 +360,7 @@ pytest.param(
 )
 ```
 
-## References <a name="refs"></a>
+## Data References <a name="refs"></a>
 
 ### Soybean Trait Prediction Research
 
@@ -317,3 +375,102 @@ Dataset host site: https://data.pawsey.org.au/projects/
 Unfortunately, you cannot share a link that goes directly to the folders containing the dataset CSV files, so you will have to navigate through the UI's folder structure to `/NGS Analysis Results/shortTerm/mgill/DL/holdout_and_equivalent_merged_1pcnt_removed`.
 
 In that folder, you will see the `holdout` and `train_test` datasets named with the feature as a prefix, for example `"FlC_"` for flower color.
+
+## Flower/Ray client, model, and logging behavior <a name="flwr"></a>
+
+This codebase currently follows the standard Flower simulation pattern:
+
+- One data partition corresponds to one Flower client.
+- One Flower client trains one local model update per federated round.
+- The text currently printed as `Model 0`, `Model 1`, etc. refers to the Flower client/partition id, not multiple models trained inside a single client.
+- For example, seeing `Model 0` through `Model 4` means five clients/partitions are participating in that round, each training one local model update.
+
+### Parameters that affect how many clients train
+
+- `model_params.num_partitions` controls how many simulated client partitions are available when random partitioning is used.
+- When `model_params.data_partitions_file` is provided, the code reads the number of `client_*` entries in that file and uses those as the available client partitions.
+- `federated.min_fit_clients`, `federated.min_evaluate_clients`, and `federated.min_available_clients` control how many clients Flower requires for fit/evaluate rounds.
+- `federated.n_models` exists in the schema, but the current implementation does not train multiple inner models per client. Going forward, this should either be renamed/documented as a client-count control or wired explicitly if repeated local models are desired.
+
+### Parameters that affect concurrency
+
+- `num_cpus` does not directly control how many models are trained.
+- In Ray, `num_cpus` is a per-client resource reservation.
+- Lowering `num_cpus` can allow more Flower clients to run at the same time, so logs from multiple clients may appear interleaved.
+- Increasing `num_cpus` can force more sequential execution by making each client reserve more of the machine.
+
+### Interpreting output
+
+Current output may look like:
+
+```
+Model 0 | Epoch 1/100 | ...
+Model 3 | Epoch 1/100 | ...
+Model 1 | Epoch 1/100 | ...
+```
+
+This does not mean one client is training multiple models. It means multiple client processes are training concurrently, and Ray prints logs as each process emits them. The order is based on scheduling/runtime progress, not client id order.
+
+### Planned cleanup
+
+To reduce confusion in a future non-hotfix change:
+
+- Rename log text from `Model {id}` to `Client {id}` or `Client/Partition {id}`.
+- Clarify `n_models` in the configuration schema, or replace it with a parameter name that reflects current behavior.
+- Document the relationship between partition files, Flower clients, and federated rounds directly in the configuration docs.
+- Keep memory-related changes separate from naming/logging cleanup to avoid expanding the current hotfix scope.
+
+## Memory-mapped data loading <a name="mem"></a>
+
+The Flower simulation path uses memory-mapped `.npy` files for the DPCNN data arrays. This was added to reduce Ray out-of-memory failures caused by each client process loading and copying large genomics arrays.
+
+### Previous behavior
+
+The original Flower/Ray path loaded pickled `.dat` arrays inside each client process. It then built additional NumPy arrays such as:
+
+- `vcf = np.concatenate((tt_vcf, ho_vcf), axis=0)`
+- `pheno = np.concatenate((tt_pheno, ho_pheno), axis=0)`
+- `combined_dataset = np.concatenate((vcf, pheno), axis=1)`
+- client train/test slices such as `combined_dataset[train_indices]`
+
+Those operations create full in-memory copies. With multiple Ray clients, the same large dataset could be loaded and copied several times at once.
+
+### Current behavior
+
+The federated client/server path now uses `load_npy_feature_label_data`, which:
+
+- checks for required `.npy` files matching `_tt_vcf`, `_tt_pheno`, `_ho_vcf`, and `_ho_pheno`
+- automatically converts missing `.npy` files from the matching `.dat` files
+- opens the `.npy` arrays with `np.load(..., mmap_mode="r")`
+- keeps the arrays file-backed instead of eagerly loading each full array into every Ray process
+
+Using `mmap_mode="r"` means NumPy creates an array-like view over the `.npy` file instead of immediately copying the whole file into process memory. The operating system loads pages from the file only as rows are accessed. Since Ray runs clients in separate worker processes, this is important: multiple workers can map the same read-only data files without each worker eagerly owning a separate full private copy of every array.
+
+This does not make the dataset free. Rows that are actively read still occupy memory, and PyTorch/Opacus still allocate tensors, gradients, optimizer state, and batch data during training. The benefit is that baseline dataset storage is file-backed and shared more efficiently by the OS, so memory usage is driven more by active training work and less by repeated full dataset copies in each Ray client.
+
+The large `tt` and `ho` feature/label arrays stay physically separate:
+
+- `tt_vcf`
+- `tt_pheno`
+- `ho_vcf`
+- `ho_pheno`
+
+The `IndexedArrayDataset` class treats those separate arrays as one logical `tt + ho` dataset. Global row indices keep their original meaning: rows `0..len(tt)-1` refer to `tt`, and later rows refer to `ho` after subtracting `len(tt)`.
+
+This preserves the original partition-file behavior without building large concatenated arrays.
+
+### Automatic conversion
+
+If one or more required `.npy` files are missing, `dataset.py` calls `convert_dat_to_npy.convert_dat_to_npy(data_dir)` automatically. Existing `.npy` files are left in place, so conversion should only happen when needed.
+
+The converter only converts `.dat` files that contain NumPy arrays. Non-array pickle files are skipped.
+
+### Expected memory behavior
+
+This change reduces memory by avoiding repeated full dataset copies across Ray client workers. It does not eliminate all memory use. Training can still use several GB of RAM because PyTorch, Opacus, Ray actors, optimizer state, gradients, and active batches all allocate memory.
+
+A moderate RAM peak during training is expected. The important improvement is that memory should no longer scale as badly with repeated dataset copies per client. If running into OOM issues, try increasing the number of cpus allocated for each Ray/Flwr client (increase the num_cpus parameter from the command line or config.json). This will reduce the number of clients running at any given time and therefore reduce the overall RAM usage.
+
+### Legacy path
+
+The legacy `load_pickle_data` function remains available for older scripts such as centralized training. The federated Flower client/server path should use the mmap-backed loader instead.

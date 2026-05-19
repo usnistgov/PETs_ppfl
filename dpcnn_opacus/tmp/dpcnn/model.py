@@ -9,6 +9,21 @@ from sklearn.metrics import mean_squared_error, r2_score
 from math import sqrt
 from report import Report
 
+def unpack_batch(data, device=None):
+    if isinstance(data, (tuple, list)):
+        inputs, labels = data
+    else:
+        inputs = data[:, :-1]
+        labels = data[:, -1]
+
+    inputs = inputs.float()
+    labels = labels.float()
+
+    if device is not None:
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+
+    return inputs, labels
 
 class Net(nn.Module):
     def __init__(self, features: int):
@@ -106,26 +121,23 @@ def train_cnn(
     for epoch in range(epochs):
         epoch_loss = 0
         total_mae, total_mse = 0, 0
-        correct_train, total_train = 0, 0
+        correct_train, pred_correct_train, total_train = 0, 0, 0
         for i, data in enumerate(train_loader):
-            # data should have at least 2 samples, otherwise
-            # it will fail at batch normalization layer
-            if data.shape[0] < 2:
+            inputs, labels = unpack_batch(data, device)
+            if inputs.shape[0] < 2:
                 continue
-            inputs = data[:, :-1].float().to(device)
-            labels = data[:, -1].float().to(device)
+            
             optimizer.zero_grad()
             outputs = model(inputs).squeeze()
             loss = criterion(outputs, labels.float())
             loss.backward()
             optimizer.step()
-
-            # Compute training accuracy per batch using non-relative tolerance
             epoch_loss += loss.item()
-            correct_train += torch.sum(
-                torch.abs(outputs - labels.float())
-                <= tolerance * labels + tol_offset
-            ).item()
+
+            # Use rounded-class accuracy
+            pred_classes = torch.round(outputs)
+            pred_correct = pred_classes == labels
+            pred_correct_train += pred_correct.sum().item()
             total_train += len(labels)
 
             # Compute MAE and MSE per batch
@@ -133,16 +145,18 @@ def train_cnn(
             total_mse += torch.sum((outputs - labels.float()) ** 2).item()
 
         # Compute training accuracy per epoch
-        train_accuracy = correct_train / total_train
+        train_accuracy = pred_correct_train / total_train
         mae = total_mae / total_train
         mse = total_mse / total_train
         rmse = mse**0.5
 
         # Compute test MSE per epoch
         model.eval()
-        epoch_test_mse, epoch_test_acc, _ = compute_test_mse(
-            model, test_loader, criterion, tolerance, device
-        )
+        (
+            epoch_test_mse,
+            epoch_test_acc,
+            _,
+        ) = compute_test_mse(model, test_loader, criterion, tolerance, device)
         model.train()
         epsilon_spent, _ = privacy_engine.accountant.get_privacy_spent(
             delta=delta
@@ -173,32 +187,31 @@ def compute_test_mse(
     total_mse = 0
     correct = 0
     total = 0
+    pred_correct_test = 0
     all_preds, all_labels = [], []
 
     with torch.no_grad():
         for data in test_loader:
-            # data should have at least 2 samples, otherwise
-            # it will fail at batch normalization layer
-            if data.shape[0] < 2:
+            inputs, labels = unpack_batch(data, device)
+            if inputs.shape[0] < 2:
                 continue
-            inputs = data[:, :-1].float().to(device)
-            labels = data[:, -1].float().to(device)
+
             outputs = model(inputs).squeeze()
             loss = criterion(outputs, labels.float())
             total_loss += loss.item()
             total_mse += torch.sum((outputs - labels.float()) ** 2).item()
-            correct += torch.sum(
-                torch.abs(outputs - labels)
-                <= (tolerance * labels + tol_offset)
-            ).item()
+            
+            pred_classes = torch.round(outputs)
+            pred_correct = pred_classes == labels
+            pred_correct_test += pred_correct.sum().item()
             total += labels.size(0)
 
             # Store predictions and labels for evaluation
             all_preds.extend(outputs.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
 
-    # Compute training accuracy per epoch
-    accuracy = correct / total
+    # Compute testing accuracy per epoch
+    accuracy = pred_correct_test / total
     average_loss = total_loss / len(test_loader)
     mse = total_mse / total
     return mse, accuracy, average_loss
@@ -214,25 +227,24 @@ def eval_cnn(
         total_mse = 0
         correct = 0
         total = 0
+        pred_correct_test = 0
         all_preds, all_labels = [], []
 
         with torch.no_grad():
             for data in loader:
-                # data should have at least 2 samples, otherwise
-                # it will fail at batch normalization layer
-                if data.shape[0] < 2:
+                inputs, labels = unpack_batch(data)
+                if inputs.shape[0] < 2:
                     continue
-                inputs = data[:, :-1]
-                labels = data[:, -1]
+
                 outputs = model(inputs).squeeze()
                 loss = criterion(outputs, labels.float())
                 total_loss += loss.item()
                 total_mae += torch.sum(torch.abs(outputs - labels)).item()
                 total_mse += torch.sum((outputs - labels) ** 2).item()
-                correct += torch.sum(
-                    torch.abs(outputs - labels)
-                    <= (tolerance * labels + tol_offset)
-                ).item()
+
+                pred_classes = torch.round(outputs)
+                pred_correct = pred_classes == labels
+                pred_correct_test += pred_correct.sum().item()
                 total += labels.size(0)
 
                 # Store predictions and labels for evaluation
@@ -240,7 +252,7 @@ def eval_cnn(
                 all_labels.extend(labels.cpu().numpy())
 
         # Compute training accuracy per epoch
-        accuracy = correct / total
+        accuracy = pred_correct_test / total
         average_loss = total_loss / len(loader)
         mae = total_mae / total
         mse = total_mse / total

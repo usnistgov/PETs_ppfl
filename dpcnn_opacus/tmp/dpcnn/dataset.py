@@ -8,6 +8,7 @@ import pandas as pd
 from collections import Counter
 from datasets import Dataset
 from sklearn.model_selection import StratifiedShuffleSplit
+from pathlib import Path
 
 from torch.utils.data import DataLoader
 from flwr_datasets.partitioner import (
@@ -17,7 +18,38 @@ from flwr_datasets.partitioner import (
     ExponentialPartitioner,
 )
 from utils import print_binned_counts
+from convert_dat_to_npy import convert_dat_to_npy
+import torch
+from torch.utils.data import Dataset as TorchDataset
 
+NPY_SUFFIXES = ("_tt_vcf", "_tt_pheno", "_ho_vcf", "_ho_pheno")
+
+class IndexedArrayDataset(TorchDataset):
+    """Lazy row lookup over the old logical [tt; ho] dataset.
+
+    The backing arrays stay separate and mmap-backed. Global row indices keep
+    their historical meaning: first tt rows, then ho rows.
+    """
+
+    def __init__(self, tt_features, tt_labels, ho_features, ho_labels, indices):
+        self.tt_features = tt_features
+        self.tt_labels = tt_labels.reshape(-1)
+        self.ho_features = ho_features
+        self.ho_labels = ho_labels.reshape(-1)
+        self.tt_len = len(tt_features)
+        self.indices = np.asarray(indices)
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        row_idx = int(self.indices[idx])
+
+        if row_idx < self.tt_len:
+            return self.tt_features[row_idx], self.tt_labels[row_idx]
+
+        ho_idx = row_idx - self.tt_len
+        return self.ho_features[ho_idx], self.ho_labels[ho_idx]
 
 CORRELATION_TO_PARTITIONER = {
     "uniform": IidPartitioner,
@@ -28,24 +60,14 @@ CORRELATION_TO_PARTITIONER = {
 
 
 def load_pickle_data(data_path):
+    """Legacy pickle loader.
+
+    Kept for older scripts such as centralized_train.py. The Flower simulation
+    path should use load_npy_feature_label_data to avoid full in-memory copies.
+    """
     cur_path = os.path.dirname(__file__).split("/tmp/")[0]
     file_patterns = ["_ohe.dat", "_tt_vcf.dat", "_tt_pheno.dat", "_ho_vcf.dat", "_ho_pheno.dat"]
-
-    """
-    ORIGINAL CODE:
-
-        dir_path = os.path.join(cur_path, "../../..", "genetic_plant_data")
-
-    RECOMMENDED CODE:
-    """
-
     dir_path = os.path.join(cur_path, data_path)
-
-    """
-    INTENDED ACTION: Modify
-
-    JUSTIFICAITON: Fixing the reference
-    """
     def load_by_pattern(pattern):
             matches = [f for f in os.listdir(dir_path) if f.endswith(pattern)]
             if not matches:
@@ -67,15 +89,95 @@ def load_pickle_data(data_path):
     return ohe, vcf, pheno
 
 
-def instantiate_partitioner(partitioner_type: str, num_partitions: int, data_dir: str):
-    """Initialise partitioner based on selected partitioner type
-    and number of partitions"""
-    _, vcf, pheno = load_pickle_data(data_dir)
+def resolve_data_dir(data_path) -> Path:
+    data_dir = Path(data_path)
+    if not data_dir.is_absolute():
+        data_dir = Path(__file__).parent / data_dir
+    return data_dir.resolve()
 
-    concat_dataset = np.concatenate((vcf, pheno), axis=1)
-    indices = np.arange(len(concat_dataset))
+def find_single_npy(data_dir: Path, suffix: str) -> Path | None:
+    matches = list(data_dir.glob(f"*{suffix}.npy"))
+    if len(matches) > 1:
+        raise ValueError(f"Multiple .npy files found for {suffix}: {matches}")
+    return matches[0] if matches else None
 
-    # Dataset class works with Pandas dataframes, but not Numpy arrays
+def ensure_npy_feature_label_files(data_path) -> Path:
+    data_dir = resolve_data_dir(data_path)
+    missing = [suffix for suffix in NPY_SUFFIXES if find_single_npy(data_dir, suffix) is None]
+
+    if missing:
+        print(
+            "Missing required .npy data files "
+            f"({', '.join(missing)}). Converting .dat files in {data_dir}."
+        )
+        convert_dat_to_npy(data_dir)
+
+    still_missing = [
+        suffix for suffix in NPY_SUFFIXES if find_single_npy(data_dir, suffix) is None
+    ]
+    if still_missing:
+        raise FileNotFoundError(
+            "Missing required .npy files after conversion: "
+            f"{', '.join(still_missing)} in {data_dir}"
+        )
+
+    return data_dir
+
+def get_split_labels(tt_labels, ho_labels, indices):
+    indices = np.asarray(indices)
+    tt_len = len(tt_labels)
+    total_len = tt_len + len(ho_labels)
+    if len(indices) and (indices.min() < 0 or indices.max() >= total_len):
+        raise IndexError(
+            f"Partition index range [{indices.min()}, {indices.max()}] "
+            f"is outside logical dataset size {total_len}."
+        )
+
+    out = np.empty(len(indices), dtype=np.asarray(tt_labels).dtype)
+    tt_mask = indices < tt_len
+
+    out[tt_mask] = tt_labels[indices[tt_mask]]
+    out[~tt_mask] = ho_labels[indices[~tt_mask] - tt_len]
+
+    return out
+
+def train_test_split_backed_indices(tt_labels, ho_labels, indices, test_frac, seed):
+    selected_labels = get_split_labels(tt_labels, ho_labels, indices)
+    local_indices = np.arange(len(selected_labels))
+
+    local_train, local_test = train_test_indices_split(
+        selected_labels.reshape(-1, 1),
+        local_indices,
+        test_frac,
+        seed,
+    )
+
+    indices = np.asarray(indices)
+    return indices[local_train].tolist(), indices[local_test].tolist()
+
+def load_npy_feature_label_data(data_path):
+    """Load tt/ho feature and label arrays as read-only mmap-backed arrays."""
+    data_dir = resolve_data_dir(data_path)
+
+    def load_one(suffix):
+        path = find_single_npy(data_dir, suffix)
+        if path is None:
+            raise FileNotFoundError(f"No .npy file found in {data_dir} matching *{suffix}.npy")
+        return np.load(path, mmap_mode="r")
+
+    tt_vcf = load_one(NPY_SUFFIXES[0])
+    tt_pheno = load_one(NPY_SUFFIXES[1])
+    ho_vcf = load_one(NPY_SUFFIXES[2])
+    ho_pheno = load_one(NPY_SUFFIXES[3])
+
+    return tt_vcf, tt_pheno.reshape(-1), ho_vcf, ho_pheno.reshape(-1)
+
+def instantiate_partitioner(partitioner_type, num_partitions, data_dir, num_rows=None):
+    if num_rows is None:
+        tt_features, _, ho_features, _ = load_npy_feature_label_data(data_dir)
+        num_rows = len(tt_features) + len(ho_features)
+
+    indices = np.arange(num_rows)
     partitioner = CORRELATION_TO_PARTITIONER[partitioner_type](
         num_partitions=num_partitions
     )
@@ -156,21 +258,27 @@ def train_test_indices_split(
 
 
 def load_random_partitions(
-    data_partition_id: int,
-    combined_dataset: np.ndarray,
-    batch_size: int,
-    test_fraction: float,
-    seed: int,
-    num_partitions: int,
-    partitioner_type: str,
-    data_directory: str,
+    data_partition_id,
+    tt_features,
+    tt_labels,
+    ho_features,
+    ho_labels,
+    batch_size,
+    test_fraction,
+    seed,
+    num_partitions,
+    partitioner_type,
+    data_directory,
 ) -> Tuple[DataLoader, DataLoader, List[int], List[int]]:
     """
     Load data using flower dataset partitioner
     """
     # initialize and get data partition
     partitioner = instantiate_partitioner(
-        partitioner_type=partitioner_type, num_partitions=num_partitions, data_dir=data_directory
+        partitioner_type=partitioner_type,
+        num_partitions=num_partitions,
+        data_dir=data_directory,
+        num_rows=len(tt_features) + len(ho_features),
     )
     partition = partitioner.load_partition(data_partition_id)
     train_indices, test_indices, num_train, num_test = (
@@ -185,14 +293,21 @@ def load_random_partitions(
     test_indices = test_indices.to_pandas().to_numpy().flatten().tolist()
 
     # Split into train and test based on the indices
-    train_data = combined_dataset[train_indices]
-    test_data = combined_dataset[test_indices]
+    train_data = IndexedArrayDataset(
+        tt_features, tt_labels, ho_features, ho_labels, train_indices
+    )
+    test_data = IndexedArrayDataset(
+        tt_features, tt_labels, ho_features, ho_labels, test_indices
+    )
 
     # count labels in train and test set
+    train_labels = get_split_labels(tt_labels, ho_labels, train_indices)
+    test_labels = get_split_labels(tt_labels, ho_labels, test_indices)
+
     print('Train dataset binned label counts')
-    print_binned_counts(combined_dataset, train_indices)
+    print_binned_counts(train_labels.reshape(-1, 1), np.arange(len(train_labels)))
     print('Test dataset binned label counts')
-    print_binned_counts(combined_dataset, test_indices)
+    print_binned_counts(test_labels.reshape(-1, 1), np.arange(len(test_labels)))
 
     # create data loaders
     train_data_loader = DataLoader(
@@ -206,12 +321,15 @@ def load_random_partitions(
 
 
 def load_custom_partitions(
-    data_partition_id: int,
-    combined_dataset: np.ndarray,
-    data_partitions: dict,
-    batch_size: int,
-    test_fraction: float,
-    seed: int,
+    data_partition_id,
+    tt_features,
+    tt_labels,
+    ho_features,
+    ho_labels,
+    data_partitions,
+    batch_size,
+    test_fraction,
+    seed,
 ) -> Tuple[DataLoader, DataLoader, List[int], List[int]]:
     # Check if data partition id is available in the data partitions
     data_partition_ids = sorted(
@@ -229,26 +347,36 @@ def load_custom_partitions(
     data_partition_str_id = data_partition_ids[data_partition_id]
     partition_indices = data_partitions[data_partition_str_id]
 
-    train_indices, test_indices = train_test_indices_split(
-        combined_dataset, partition_indices, test_fraction, seed
+    train_indices, test_indices = train_test_split_backed_indices(
+        tt_labels,
+        ho_labels,
+        partition_indices,
+        test_fraction,
+        seed,
     )
 
-    # Split into train and test based on the indices
-    train_dataset = combined_dataset[train_indices]
-    test_dataset = combined_dataset[test_indices]
+    train_data = IndexedArrayDataset(
+        tt_features, tt_labels, ho_features, ho_labels, train_indices
+    )
+    test_data = IndexedArrayDataset(
+        tt_features, tt_labels, ho_features, ho_labels, test_indices
+    )
 
     # count labels in train and test set
+    train_labels = get_split_labels(tt_labels, ho_labels, train_indices)
+    test_labels = get_split_labels(tt_labels, ho_labels, test_indices)
+
     print('Train dataset binned label counts')
-    print_binned_counts(combined_dataset, train_indices)
+    print_binned_counts(train_labels.reshape(-1, 1), np.arange(len(train_labels)))
     print('Test dataset binned label counts')
-    print_binned_counts(combined_dataset, test_indices)
+    print_binned_counts(test_labels.reshape(-1, 1), np.arange(len(test_labels)))
 
     # create dataloaders
     train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True
+        train_data, batch_size=batch_size, shuffle=True
     )
     test_loader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False
+        test_data, batch_size=batch_size, shuffle=False
     )
 
     return train_loader, test_loader, train_indices, test_indices

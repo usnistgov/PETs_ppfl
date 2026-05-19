@@ -16,6 +16,7 @@ from datetime import datetime
 
 from utils import get_device, ConfigPipeline
 from report import Report
+from dataset import ensure_npy_feature_label_files
 
 # Parse arguments for flower server and client
 '''
@@ -127,6 +128,7 @@ INTENDED ACTION: Modify
 JUSTIFICATION: Creates a datetime folder on a run on top of the previously assigned directory. Provides additional separation for runs by default
 '''
 data_dir = args.data_dir
+ensure_npy_feature_label_files(data_dir)
 optimizer_name = args.model_params["optimizer"]
 
 # Create output directory
@@ -224,7 +226,8 @@ def server_fn(context: Context) -> ServerAppComponents:
             'num_rounds': num_rounds,
             'accuracy_tolerance': accuracy_tolerance,
             'output_dir': out_dir,
-            'data_dir': data_dir
+            'data_dir': data_dir,
+            'batch_divisor': batch_divisor
         }
     )
     config = ServerConfig(num_rounds=num_rounds)

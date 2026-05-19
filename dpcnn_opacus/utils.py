@@ -62,14 +62,16 @@ def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, nu
     labels = dataset[indices, -1]
     # Create bins for the selected labels
     bins = np.linspace(np.min(labels), np.max(labels), num_bins + 1)
-    binned_labels = np.digitize(labels, bins, right=True) - 1
-    binned_labels = np.clip(binned_labels, 0, num_bins - 1)
+    binned_labels = np.digitize(labels, bins) - 1
     # Count occurrences of each bin
     binned_counts = Counter(binned_labels)
     # Print binned label counts with ranges
-    for bin_idx in range(num_bins):
-        count = binned_counts.get(bin_idx, 0)
-        print(f"{bins[bin_idx]:.2f} - {bins[bin_idx + 1]:.2f}: {count} records")
+    for bin_idx, count in sorted(binned_counts.items()):
+        if bin_idx < len(bins) - 1:
+            print(
+                f"{bins[bin_idx]:.2f} - {bins[bin_idx + 1]:.2f}: "
+                f"{count} records"
+            )
 
 ###
 #   _is_object_schema(sch)
