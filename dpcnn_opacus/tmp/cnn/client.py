@@ -16,11 +16,11 @@ from torch.utils.data import DataLoader
 import torch.optim as optim
 
 from dataset import (
-    instantiate_partitioner,
-    train_test_partition_split,
-    load_pickle_data,
-    train_test_indices_split,
+    load_random_partitions,
+    load_custom_partitions,
+    load_npy_feature_label_data,
 )
+
 from model import Net, eval_cnn, save_cnn, train_cnn
 from utils import get_device
 
@@ -31,7 +31,7 @@ print('DEVICE: ', DEVICE)
 
 
 def create_dataloaders(
-    client_id,
+    client_id: int,
     data_partitions_file,
     data_directory,
     num_partitions,
@@ -40,53 +40,63 @@ def create_dataloaders(
     seed,
     batch_divisor,
 ):
-    _, tt_vcf, tt_pheno = load_pickle_data(data_directory)
-    combined_dataset = np.concatenate((tt_vcf, tt_pheno), axis=1)
-    batch_size = max(1, tt_vcf.shape[0] // batch_divisor)
+    tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(data_directory)
+    num_data_features = tt_vcf.shape[1]
+    total_rows = len(tt_vcf) + len(ho_vcf)
+    batch_size = max(1, total_rows // batch_divisor)
 
+    # Check if data partitions file is provided and exists
     data_partitions = None
     if data_partitions_file and Path(data_partitions_file).exists():
         data_partitions = np.load(data_partitions_file)
         print(f"Loaded data partitions from {data_partitions_file}")
+    else:
+        print(
+            f"Data partitions file not found at {data_partitions_file}. "
+            f"Using a random partition for client {client_id}"
+        )
 
     if data_partitions is not None:
-        data_partition_ids = sorted(
-            [k for k in data_partitions.keys() if re.match(r'client_\d+', k)]
-        )
-        numeric_id = [int(ci.split('_')[-1]) for ci in data_partition_ids]
-        if client_id not in numeric_id:
-            print(
-                f"Cannot use client {client_id} for training because it was "
-                f"not found in the data partitions."
+        # if data partitions available, train a model for each data partition
+        train_loader, test_loader, train_indices, test_indices = (
+            load_custom_partitions(
+                client_id,
+                tt_vcf,
+                tt_pheno,
+                ho_vcf,
+                ho_pheno,
+                data_partitions,
+                batch_size,
+                test_fraction,
+                seed,
             )
-            sys.exit(1)
-        partition_indices = data_partitions[data_partition_ids[client_id]]
-        train_indices, test_indices = train_test_indices_split(
-            combined_dataset, partition_indices, test_fraction, seed
         )
     else:
-        partitioner = instantiate_partitioner(
-            partitioner_type, num_partitions, data_directory
+        # Partition data into n_models randomly to train N client models
+        train_loader, test_loader, train_indices, test_indices = (
+            load_random_partitions(
+                client_id,
+                tt_vcf,
+                tt_pheno,
+                ho_vcf,
+                ho_pheno,
+                batch_size,
+                test_fraction,
+                seed,
+                num_partitions,
+                partitioner_type,
+                data_directory,
+            )
         )
-        partition = partitioner.load_partition(client_id)
-        train_indices, test_indices, _, _ = train_test_partition_split(
-            partition, test_fraction=test_fraction, seed=seed
-        )
-        train_indices = train_indices.to_pandas().to_numpy().flatten()
-        test_indices = test_indices.to_pandas().to_numpy().flatten()
 
-    train_data = combined_dataset[train_indices]
-    test_data = combined_dataset[test_indices]
-    print(
-        f"Train class counts: {Counter(train_data[:, -1])}, "
-        f"Test class counts: {Counter(test_data[:, -1])}"
+    partitions_path = (
+        Path(data_partitions_file).name if data_partitions is not None else 'none'
     )
-
     return (
-        tt_vcf.shape[1],
-        Path(data_partitions_file).name if data_partitions is not None else 'none',
-        DataLoader(train_data, batch_size=batch_size, shuffle=True),
-        DataLoader(test_data, batch_size=batch_size, shuffle=False),
+        num_data_features,
+        partitions_path,
+        train_loader,
+        test_loader,
         train_indices,
         test_indices,
     )
@@ -132,7 +142,7 @@ class FlowerClient(fl.client.NumPyClient):
             self.batch_divisor,
         )
         self.model = self._init_model()
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.MSELoss()
         self.optimizer = self._init_optimizer()
         self.train_acc_per_epoch = []
         self.test_acc_per_epoch = []
@@ -174,8 +184,9 @@ class FlowerClient(fl.client.NumPyClient):
     def fit(self, parameters, config):
         self.set_parameters(parameters)
         self.current_round = config.get('server_round', 1) - 1
-        self.train_acc_per_epoch, self.test_acc_per_epoch, self.losses = (
+        _, _, self.train_acc_per_epoch, self.test_acc_per_epoch, self.losses = (
             train_cnn(
+                self.client_id,
                 self.train_loader,
                 self.test_loader,
                 self.epochs,
@@ -193,13 +204,20 @@ class FlowerClient(fl.client.NumPyClient):
 
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)
-        train_acc, test_acc, train_loss, test_loss, predicted_labels = (
+        (
+            train_acc,
+            test_acc,
+            train_loss,
+            test_loss,
+            train_mse,
+            test_mse,
+            train_preds,
+            test_preds,
+        ) = (
             eval_cnn(
-                self.train_loader, self.test_loader, self.model, self.criterion
+                self.client_id, self.train_loader, self.test_loader, self.model, self.criterion
             )
         )
-        print(f"Client {self.client_id} predicted label counts: {predicted_labels}") # DEBUG
-        print(f"Client {self.client_id} test accuracy: {test_acc}") # DEBUG
         metadata = {
             'created on': str(datetime.now()),
             'model id': int(self.client_id),
@@ -213,7 +231,7 @@ class FlowerClient(fl.client.NumPyClient):
             "train accuracy per epoch": np.array(self.train_acc_per_epoch),
             "test accuracy per epoch": np.array(self.test_acc_per_epoch),
             "losses per epoch": np.array(self.losses),
-            "predicted labels": json.dumps(predicted_labels),
+            "predicted labels": test_preds,
             'hyperparameters': json.dumps({
                 'learning rate': float(self.learning_rate),
                 'weight decay': float(self.weight_decay),

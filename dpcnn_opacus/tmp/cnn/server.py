@@ -1,4 +1,5 @@
 from typing import List, Tuple
+from datetime import datetime
 from collections import OrderedDict
 import numpy as np
 import torch
@@ -9,63 +10,100 @@ from flwr.common import Metrics
 from flwr.common import ndarrays_to_parameters
 from pathlib import Path
 
-from dataset import load_pickle_data
-from model import Net
+from dataset import IndexedArrayDataset, load_npy_feature_label_data
+from tmp.cnn.model import Net, unpack_batch
+from report import Report
+
+loss_rounds = []  # loss per global round
+accuracy_rounds = []  # accuracy per global round
+mse_rounds = []  # mse per global round
 
 def eval_model(model, test_loader):
     correct = 0
     total = 0
     test_loss = 0
-    criterion = nn.CrossEntropyLoss()
+    total_mse = 0
+    pred_correct_test = 0
+    criterion = nn.MSELoss()
+
     with torch.no_grad():
         for data in test_loader:
+            inputs, labels = unpack_batch(data)
             # data should have at least 2 samples, otherwise
             # it will fail at batch normalization layer
-            if data.shape[0] < 2:
+            if inputs.shape[0] < 2:
                 continue
-            inputs = data[:, :-1]
-            labels = data[:, -1]
-            outputs = model(inputs)
-            loss = criterion(outputs, labels.long())
+            outputs = model(inputs).squeeze()
+            loss = criterion(outputs, labels)
             test_loss += loss.item()
-            _, predicted = torch.max(outputs, 1)
+            pred_classes = torch.round(outputs)
+            pred_correct = pred_classes == labels
+            pred_correct_test += pred_correct.sum().item()
             total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+            total_mse += torch.sum((outputs - labels.float()) ** 2).item()
+
     test_loss = test_loss / len(test_loader)
-    test_accuracy = (correct / total) * 100
-    return test_loss, test_accuracy
+    test_accuracy = pred_correct_test / total
+    test_mse = total_mse / total
+
+    return test_loss, test_mse, test_accuracy
 
 
-def get_evaluate_fn(num_data_features, num_rounds, test_loader, output_dir):
+def get_evaluate_fn(
+    num_data_features: int,
+    num_rounds: int,
+    test_loader: DataLoader,
+    output_dir: str,
+):
     """Return a function that can be called to do global evaluation."""
 
     def evaluate_fn(server_round: int, parameters, config):
         """Evaluate global model on the whole test set."""
         if server_round == 0:
-            return 0.0, {"accuracy": 0.0}
-
+            loss_rounds.append(0.0)
+            accuracy_rounds.append(0.0)
+            mse_rounds.append(0.0)
+            return 0.0, {"accuracy": 0.0, "mse": 0.0}
         model = Net(num_data_features)
-
-        state_dict = OrderedDict()
-        for (key, ref_tensor), value in zip(model.state_dict().items(), parameters):
-            state_dict[key] = torch.tensor(
-                value,
-                dtype=ref_tensor.dtype,
-                device=ref_tensor.device,
-            )
-
-        model.load_state_dict(state_dict, strict=True)
+        # set parameters to the model
+        keys = [k for k in model.state_dict().keys() if "batch_norm" not in k]
+        params_dict = zip(keys, parameters)
+        state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
+        model.load_state_dict(state_dict, strict=False)
         model.eval()
-
-        loss, accuracy = eval_model(model, test_loader)
-        print("GLOBAL ACCURACY:", accuracy)
-
+        loss, mse, accuracy = eval_model(model, test_loader)
+        loss_rounds.append(loss)
+        accuracy_rounds.append(accuracy)
+        mse_rounds.append(mse)
+        print(
+            'GLOBAL ACCURACY:',
+            accuracy,
+            'GLOBAL MSE:',
+            mse,
+            'SERVER ROUND:',
+            server_round,
+        )
         if server_round == num_rounds:
-            out_dir = Path(output_dir).absolute()
-            out_dir.mkdir(parents=True, exist_ok=True)
-            torch.save(model.state_dict(), Path(out_dir, "cnn_global.torch"))
-
-        return loss, {"accuracy": accuracy}
+            metadata = {
+                "created on": str(datetime.now()),
+                "loss per round": np.array(loss_rounds),
+                "accuracy per round": np.array(accuracy_rounds),
+                "mse per round": np.array(mse_rounds),
+            }
+            print('Loss per round:', loss_rounds)
+            print('Accuracy per round:', accuracy_rounds)
+            print('MSE per round:', mse_rounds)
+            np.savez(
+                Path(output_dir, "cnn_global_metadata.npz"),
+                **metadata
+            )
+            report = Report(metadata)
+            report.save_to_file(Path(output_dir, "cnn_global_metadata.json"))
+            torch.save(
+                model.state_dict(),
+                Path(output_dir, "cnn_global.torch"),
+            )
+        return loss, {"accuracy": accuracy, "mse": mse}
 
     return evaluate_fn
 
@@ -87,10 +125,14 @@ def get_parameters(net) -> List[np.ndarray]:
     return [val.cpu().numpy() for _, val in net.state_dict().items()]
 
 def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
-    _, vcf, pheno = load_pickle_data(strategy_params['data_dir'])
-    combined_dataset = np.concatenate((vcf, pheno), axis=1)
-    test_loader = DataLoader(combined_dataset, batch_size=64, shuffle=False)
-    num_data_features = vcf.shape[1]
+    tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(strategy_params['data_dir'])
+    num_data_features = tt_vcf.shape[1]
+    all_indices = np.arange(len(tt_vcf) + len(ho_vcf))
+    test_dataset = IndexedArrayDataset(tt_vcf, tt_pheno, ho_vcf, ho_pheno, all_indices)
+    total_rows = len(tt_vcf) + len(ho_vcf)
+    batch_size = max(1, total_rows // strategy_params['batch_divisor'])
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
     params = get_parameters(Net(num_data_features))
 
     strategy = fl.server.strategy.FedAvg(

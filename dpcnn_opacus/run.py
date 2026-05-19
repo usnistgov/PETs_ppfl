@@ -100,33 +100,7 @@ else:
     print("error - unhandled model type")
     exit(1)
 
-'''
-# server arguments
-num_rounds = args.federated["num_rounds"]
-min_fit_clients = args.federated["min_fit_clients"]
-min_evaluate_clients = args.federated["min_evaluate_clients"]
-min_available_clients = args.federated["min_available_clients"]
-
-# client arguments
-partitioner_type = args.model_params["partitioner_type"]
-num_partitions = args.model_params["num_partitions"]
-batch_divisor = args.model_params["batch_divisor"]
-learning_rate = args.model_params["learning_rate"]
-weight_decay = args.model_params["weight_decay"]
-seed = args.model_params["seed"]
-test_fraction = args.model_params["test_fraction"]
-epochs = args.model_params["epochs"]
-accuracy_tolerance = args.model_params["accuracy_tolerance"]
-data_partitions_file = args.model_params["data_partitions_file"]
-out_dir = args.output_dir
-
-RECOMMENDED CODE:
-'''
 out_dir = os.path.join(args.output_dir, datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))
-'''
-INTENDED ACTION: Modify
-JUSTIFICATION: Creates a datetime folder on a run on top of the previously assigned directory. Provides additional separation for runs by default
-'''
 data_dir = args.data_dir
 ensure_npy_feature_label_files(data_dir)
 optimizer_name = args.model_params["optimizer"]
@@ -158,30 +132,14 @@ if data_partitions_file and Path(data_partitions_file).exists():
     )
     num_partitions = len(data_partition_ids)
 
-    '''
-    ORIGINAL CODE:
-
-min_fit_clients = num_partitions
-min_evaluate_clients = num_partitions
-min_available_clients = num_partitions
-
-    RECOMMENDED CODE:
-    '''
-
     min_fit_clients = num_partitions
     min_evaluate_clients = num_partitions
     min_available_clients = num_partitions
 
-    '''
-    INTENDED ACTION: Modify
-
-    JUSTIFICAITON: Original code was outside intended if statement
-    '''
-
 #variable imports
 file_path = "tmp/" + args.model_type
 
-print(file_path)
+print(f"Using the file path: {file_path}")
 
 sys.path.append(file_path)
 

@@ -10,7 +10,7 @@ import flwr as fl
 from flwr.common import Metrics
 from flwr.common import ndarrays_to_parameters
 
-from tmp.dpcnn.dataset import IndexedArrayDataset, load_npy_feature_label_data
+from dataset import IndexedArrayDataset, load_npy_feature_label_data
 from tmp.dpcnn.model import Net, unpack_batch
 from report import Report
 
