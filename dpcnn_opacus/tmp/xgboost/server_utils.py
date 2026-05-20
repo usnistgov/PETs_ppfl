@@ -8,7 +8,16 @@ from flwr.server.client_manager import SimpleClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.criterion import Criterion
 
-from utils import BST_PARAMS
+BST_PARAMS = {
+    "objective": "reg:squarederror",
+    "eta": 0.1,
+    "max_depth": 8,
+    "eval_metric": "rmse",
+    "nthread": 16,
+    "num_parallel_tree": 1,
+    "subsample": 1,
+    "tree_method": "hist",
+}
 
 
 def eval_config(rnd: int) -> Dict[str, str]:
@@ -30,6 +39,8 @@ def fit_config(rnd: int) -> Dict[str, str]:
 def evaluate_metrics_aggregation(eval_metrics):
     """Return an aggregated metric (AUC) for evaluation."""
     total_num = sum([num for num, _ in eval_metrics])
+    if total_num == 0:
+        return {"AUC": 0.0}
     auc_aggregated = (
         sum([metrics["AUC"] * num for num, metrics in eval_metrics])
         / total_num

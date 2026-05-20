@@ -123,7 +123,7 @@
                   "test_fraction": { "description": "Fraction of dataset set aside for testing", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.2},
                   
                   "train_method": {"description": "The training method selected", "type": "string", "enum": ["bagging", "cyclic"], "default": "bagging"},
-                  "centralised_eval": { "type": "boolean", "default": true},
+                  "centralised_eval": { "type": "boolean", "default": false},
                   "scaled_lr": { "type": "boolean", "default": true}
                 }
               }

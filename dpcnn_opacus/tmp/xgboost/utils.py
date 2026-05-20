@@ -11,10 +11,10 @@ from xgboost import XGBClassifier, Booster
 # Hyper-parameters for xgboost training
 NUM_LOCAL_ROUND = 1
 BST_PARAMS = {
-    "objective": "binary:logistic",
+    "objective": "reg:squarederror",
     "eta": 0.1,  # Learning rate
     "max_depth": 8,
-    "eval_metric": "auc",
+    "eval_metric": "rmse",
     "nthread": 16,
     "num_parallel_tree": 1,
     "subsample": 1,

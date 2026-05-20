@@ -6,7 +6,8 @@ import json
 from copy import deepcopy
 from distutils.util import strtobool
 from pathlib import Path
-from typing import Any, Dict, Tuple, List, Set
+from typing import Any, Dict, Tuple, List, Set,  Union
+from xgboost import XGBClassifier, Booster
 import os
 import pickle
 import re
@@ -523,6 +524,26 @@ def _coerce_cli_value(raw_value: str, sch: Dict[str, Any]) -> Any:
                 return coerced
 
     return raw_value
+
+def save_xgb(
+    model: Union[XGBClassifier, Booster],
+    metadata: Dict[str, any],
+    name: str,
+    round_number: int | None = None,
+):
+    round_number = f"round_{round_number}" if round_number is not None else ''
+    parent_path = Path(__file__).parent
+    if round_number:
+        model_path = Path(parent_path, f"{name}_{round_number}.json")
+    else:
+        model_path = Path(parent_path, f"{name}.json")
+    model.save_model(model_path)
+    print(f"Model saved to {model_path}")
+    metadata_path_name = f"{name}_meta.npz"
+    metadata_path = Path(parent_path, metadata_path_name)
+    if not metadata_path.exists():
+        np.savez(metadata_path, **metadata)
+        print(f"Model metadata saved to {metadata_path}")
 
 class UnknownParameterError(ValueError):
     """Exception raised for unknown parameters."""

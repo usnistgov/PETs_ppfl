@@ -3,6 +3,7 @@ from pathlib import Path
 from datetime import datetime
 import json
 from logging import INFO
+import numpy as np
 import xgboost as xgb
 from xgboost.core import DMatrix
 from sklearn.metrics import accuracy_score
@@ -22,6 +23,36 @@ from flwr.common import (
 
 from utils import save_xgb
 
+
+def predict_labels(model, data):
+    predictions = model.predict(data)
+    if predictions.ndim == 2:
+        return np.argmax(predictions, axis=1)
+    if predictions.dtype.kind == "f" and predictions.min() >= 0 and predictions.max() <= 1:
+        return np.rint(predictions)
+    return np.rint(predictions)
+
+def configure_objective_from_labels(params, labels):
+    params = params.copy()
+    labels = np.asarray(labels)
+    unique_labels = np.unique(labels)
+    integer_labels = np.all(np.equal(labels, labels.astype(int)))
+    nonnegative_labels = np.all(labels >= 0)
+
+    if len(unique_labels) <= 2 and set(unique_labels.astype(int)) <= {0, 1}:
+        params.update({"objective": "reg:squarederror", "eval_metric": "rmse"})
+    elif integer_labels and nonnegative_labels:
+        params.update(
+            {
+                "objective": "reg:squarederror",
+                "eval_metric": "rmse",
+                "num_class": int(np.max(labels)) + 1,
+            }
+        )
+    else:
+        params.update({"objective": "reg:squarederror", "eval_metric": "rmse"})
+
+    return params
 
 class XgbClient(fl.client.Client):
     def __init__(
@@ -92,6 +123,13 @@ class XgbClient(fl.client.Client):
             )
         else:
             bst = xgb.Booster(params=self.params)
+            if not ins.parameters.tensors:
+                return self.fit(
+                    FitIns(
+                        parameters=Parameters(tensor_type="", tensors=[]),
+                        config={"global_round": "1"},
+                    )
+                )
             for item in ins.parameters.tensors:
                 global_model = bytearray(item)
 
@@ -106,12 +144,10 @@ class XgbClient(fl.client.Client):
         local_model_bytes = bytes(local_model)
 
         # Use model to find train and test data accuracy
-        y_train_pred = bst.predict(self.train_data)
-        predictions = [round(value) for value in y_train_pred]
+        predictions = predict_labels(bst, self.train_data)
         train_acc = accuracy_score(self.train_data.get_label(), predictions)
 
-        y_test_pred = bst.predict(self.test_data)
-        predictions = [round(value) for value in y_test_pred]
+        predictions = predict_labels(bst, self.test_data)
         test_acc = accuracy_score(self.test_data.get_label(), predictions)
 
         print(
@@ -157,6 +193,16 @@ class XgbClient(fl.client.Client):
     def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
         # Load global model
         bst = xgb.Booster(params=self.params)
+        if not ins.parameters.tensors:
+            return EvaluateRes(
+                status=Status(
+                    code=Code.OK,
+                    message="No model parameters available for evaluation.",
+                ),
+                loss=0.0,
+                num_examples=0,
+                metrics={"AUC": 0.0},
+            )
         for para in ins.parameters.tensors:
             para_b = bytearray(para)
         bst.load_model(para_b)

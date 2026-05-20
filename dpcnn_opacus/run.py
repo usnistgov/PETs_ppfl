@@ -31,16 +31,9 @@ args = pipeline.parse()
 print("Parameter values:\n")
 args.print()
 
-print("Parameter values:\n")
-args.print()
-
 if args.check_only:
     print("Parameters validated. Ending script")
     exit()
-
-if args.model_type == "xgboost":
-    print("That functionality has not been implemented yet. Terminating process.")
-    exit(0)
     
 '''
 INTENDED ACTION: Modify
@@ -103,7 +96,6 @@ else:
 out_dir = os.path.join(args.output_dir, datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))
 data_dir = args.data_dir
 ensure_npy_feature_label_files(data_dir)
-optimizer_name = args.model_params["optimizer"]
 
 # Create output directory
 if out_dir is None:
