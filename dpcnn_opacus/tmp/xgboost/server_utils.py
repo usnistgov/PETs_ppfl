@@ -37,15 +37,22 @@ def fit_config(rnd: int) -> Dict[str, str]:
 
 
 def evaluate_metrics_aggregation(eval_metrics):
-    """Return an aggregated metric (AUC) for evaluation."""
+    """Return a weighted aggregate for the metric reported by clients."""
+    eval_metrics = [
+        (num, dict(metrics))
+        for num, metrics in eval_metrics
+        if num > 0 and len(metrics) > 0
+    ]
     total_num = sum([num for num, _ in eval_metrics])
     if total_num == 0:
-        return {"AUC": 0.0}
-    auc_aggregated = (
-        sum([metrics["AUC"] * num for num, metrics in eval_metrics])
+        return {}
+
+    metric_name = next(iter(eval_metrics[0][1].keys()))
+    metric_aggregated = (
+        sum([metrics[metric_name] * num for num, metrics in eval_metrics])
         / total_num
     )
-    metrics_aggregated = {"AUC": auc_aggregated}
+    metrics_aggregated = {metric_name: metric_aggregated}
     return metrics_aggregated
 
 
@@ -70,10 +77,12 @@ def get_evaluate_fn(test_data):
                 evals=[(test_data, "valid")],
                 iteration=bst.num_boosted_rounds() - 1,
             )
-            auc = float(eval_results.split("\t")[1].split(":")[1])
-            log(INFO, f"AUC = {round(auc, 4)} at round {server_round}")
+            metric_name, metric_value = eval_results.split("\t")[1].split(":")
+            metric_name = metric_name.split("-")[-1]
+            metric_value = float(metric_value)
+            log(INFO, f"{metric_name} = {round(metric_value, 4)} at round {server_round}")
 
-            return 0, {"AUC": auc}
+            return 0, {metric_name: metric_value}
 
     return evaluate_fn
 

@@ -11,6 +11,7 @@ from xgboost import XGBClassifier, Booster
 import os
 import pickle
 import re
+from report import Report
 
 from jsonschema.validators import validator_for
 
@@ -530,20 +531,22 @@ def save_xgb(
     metadata: Dict[str, any],
     name: str,
     round_number: int | None = None,
+    output_dir: str | Path | None = None,
 ):
-    round_number = f"round_{round_number}" if round_number is not None else ''
-    parent_path = Path(__file__).parent
-    if round_number:
-        model_path = Path(parent_path, f"{name}_{round_number}.json")
-    else:
-        model_path = Path(parent_path, f"{name}.json")
+    out_name = (
+        f"{name}_round_{round_number}" if round_number is not None else name
+    )
+    parent_path = Path(output_dir).absolute() if output_dir is not None else Path(__file__).parent
+    parent_path.mkdir(parents=True, exist_ok=True)
+    model_path = Path(parent_path, f"{out_name}.ubj")
     model.save_model(model_path)
     print(f"Model saved to {model_path}")
-    metadata_path_name = f"{name}_meta.npz"
+    metadata_path_name = f"{out_name}_meta.npz"
     metadata_path = Path(parent_path, metadata_path_name)
-    if not metadata_path.exists():
-        np.savez(metadata_path, **metadata)
-        print(f"Model metadata saved to {metadata_path}")
+    np.savez(metadata_path, **metadata, allow_pickle=True)
+    report = Report(metadata)
+    report.save_to_file(Path(parent_path, f"{out_name}.json"))
+    print(f"Model metadata saved to {metadata_path}")
 
 class UnknownParameterError(ValueError):
     """Exception raised for unknown parameters."""
@@ -650,8 +653,15 @@ class ConfigPipeline:
             if unknown:
                 bad_cli_params = [elem for elem in unknown if elem.startswith("--")]
                 if bad_cli_params:
-                    raise UnknownParameterError(bad_cli_params, message="Unknown parameter name(s) in CLI. Please check the spelling of the inputs above and try again.")
-                raise UnknownParameterError(unknown, message="Unknown parameter name(s) in CLI. Please check the spelling of the inputs above and try again.")
+                    issues = [
+                        (elem[2:].split("=", 1)[0].split(".")[-1], None)
+                        for elem in bad_cli_params
+                    ]
+                    raise UnknownParameterError(issues, where="CLI")
+                raise UnknownParameterError(
+                    [(elem.split("=", 1)[0].split(".")[-1], None) for elem in unknown],
+                    where="CLI",
+                )
             
             # layer + apply schema defaults
             cfg = _to_layered_config(raw_cfg, schema)

@@ -53,26 +53,6 @@ def loader_to_dmatrix(loader):
         labels.append(np.asarray(batch_labels).reshape(-1))
     return DMatrix(data=np.concatenate(features), label=np.concatenate(labels))
 
-def configure_objective(params, labels):
-    labels = np.asarray(labels)
-    unique_labels = np.unique(labels)
-    integer_labels = np.all(np.equal(labels, labels.astype(int)))
-    nonnegative_labels = np.all(labels >= 0)
-
-    if len(unique_labels) <= 2 and set(unique_labels.astype(int)) <= {0, 1}:
-        params.update({"objective": "reg:squarederror", "eval_metric": "rmse"})
-    elif integer_labels and nonnegative_labels:
-        params.update(
-            {
-                "objective": "reg:squarederror",
-                "eval_metric": "rmse",
-                "num_class": int(np.max(labels)) + 1,
-            }
-        )
-    else:
-        params.update({"objective": "reg:squarederror", "eval_metric": "rmse"})
-
-    return params
 
 def load_data(
     client_id: int,
@@ -176,9 +156,10 @@ class FlowerClient:
             test_dmatrix,
             train_indices,
             test_indices,
-            NUM_LOCAL_ROUND,
+            self.params.get('epochs', NUM_LOCAL_ROUND),
             xgb_params,
             train_method,
             self.params.get('data_partitions_file', None),
             self.params.get('test_fraction', 0.2),
+            self.params.get('output_dir', None),
         )

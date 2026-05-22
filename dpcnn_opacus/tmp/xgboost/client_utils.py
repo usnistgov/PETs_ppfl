@@ -6,7 +6,7 @@ from logging import INFO
 import numpy as np
 import xgboost as xgb
 from xgboost.core import DMatrix
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, mean_absolute_error, mean_squared_error
 import flwr as fl
 from flwr.common.logger import log
 from flwr.common import (
@@ -20,9 +20,7 @@ from flwr.common import (
     Parameters,
     Status,
 )
-
-from utils import save_xgb
-
+from report import Report
 
 def predict_labels(model, data):
     predictions = model.predict(data)
@@ -32,27 +30,71 @@ def predict_labels(model, data):
         return np.rint(predictions)
     return np.rint(predictions)
 
-def configure_objective_from_labels(params, labels):
-    params = params.copy()
-    labels = np.asarray(labels)
-    unique_labels = np.unique(labels)
-    integer_labels = np.all(np.equal(labels, labels.astype(int)))
-    nonnegative_labels = np.all(labels >= 0)
 
-    if len(unique_labels) <= 2 and set(unique_labels.astype(int)) <= {0, 1}:
-        params.update({"objective": "reg:squarederror", "eval_metric": "rmse"})
-    elif integer_labels and nonnegative_labels:
-        params.update(
-            {
-                "objective": "reg:squarederror",
-                "eval_metric": "rmse",
-                "num_class": int(np.max(labels)) + 1,
-            }
+def save_xgb_output(model, metadata, name, round_number, output_dir):
+    output_path = (
+        Path(output_dir).absolute()
+        if output_dir is not None
+        else Path(__file__).parent
+    )
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    out_name = (
+        f"{name}_round_{round_number}" if round_number is not None else name
+    )
+    metadata_path = output_path / f"{out_name}_meta.npz"
+    report_path = output_path / f"{out_name}.json"
+
+    np.savez(metadata_path, **metadata, allow_pickle=True)
+    report = Report(metadata)
+    report.save_to_file(report_path)
+    print(f"Model metadata saved to {metadata_path}")
+
+
+def regression_metrics(model, data):
+    labels = data.get_label()
+    predictions = model.predict(data)
+    rounded_predictions = np.rint(predictions)
+    accuracy = accuracy_score(labels, rounded_predictions)
+    mse = mean_squared_error(labels, predictions)
+    mae = mean_absolute_error(labels, predictions)
+    rmse = mse**0.5
+    return accuracy, mse, mae, rmse
+
+
+def print_epoch_metrics(model_id, epoch, epochs, model, train_data, test_data):
+    train_acc, train_mse, train_mae, train_rmse = regression_metrics(
+        model, train_data
+    )
+    test_acc, test_mse, _, _ = regression_metrics(model, test_data)
+    print(
+        f"Model {model_id} | "
+        f"Epoch {epoch}/{epochs}, Loss: {train_mse:.4f}, "
+        f"Train Acc: {train_acc:.2f}, "
+        f"Test Acc: {test_acc:.2f}, "
+        f"Train MSE: {train_mse:.4f}, Test MSE: {test_mse:.4f}, "
+        f"MAE: {train_mae:.4f}, RMSE: {train_rmse:.4f}"
+    )
+
+
+class EpochLogger(xgb.callback.TrainingCallback):
+    def __init__(self, model_id, epochs, train_data, test_data):
+        self.model_id = model_id
+        self.epochs = epochs
+        self.train_data = train_data
+        self.test_data = test_data
+
+    def after_iteration(self, model, epoch, evals_log):
+        print_epoch_metrics(
+            self.model_id,
+            epoch + 1,
+            self.epochs,
+            model,
+            self.train_data,
+            self.test_data,
         )
-    else:
-        params.update({"objective": "reg:squarederror", "eval_metric": "rmse"})
+        return False
 
-    return params
 
 class XgbClient(fl.client.Client):
     def __init__(
@@ -67,6 +109,7 @@ class XgbClient(fl.client.Client):
         train_method: str,
         data_partitions_file: Optional[Path] = None,
         test_data_fraction: float = 0.2,
+        output_dir: Optional[Path] = None,
     ):
         self.client_id = client_id
         self.train_data = train_data
@@ -78,6 +121,7 @@ class XgbClient(fl.client.Client):
         self.train_method = train_method
         self.data_partitions_file = data_partitions_file
         self.test_data_fraction = test_data_fraction
+        self.output_dir = output_dir
 
     def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:
         _ = (self, ins)
@@ -120,6 +164,15 @@ class XgbClient(fl.client.Client):
                     (self.test_data, "validate"),
                     (self.train_data, "train"),
                 ],
+                verbose_eval=False,
+                callbacks=[
+                    EpochLogger(
+                        self.client_id,
+                        self.num_local_round,
+                        self.train_data,
+                        self.test_data,
+                    )
+                ],
             )
         else:
             bst = xgb.Booster(params=self.params)
@@ -137,7 +190,25 @@ class XgbClient(fl.client.Client):
             bst.load_model(global_model)
 
             # Local training
-            bst = self._local_boost(bst)
+            for i in range(self.num_local_round):
+                bst.update(self.train_data, bst.num_boosted_rounds())
+                print_epoch_metrics(
+                    self.client_id,
+                    i + 1,
+                    self.num_local_round,
+                    bst,
+                    self.train_data,
+                    self.test_data,
+                )
+
+            bst = (
+                bst[
+                    bst.num_boosted_rounds()
+                    - self.num_local_round: bst.num_boosted_rounds()
+                ]
+                if self.train_method == "bagging"
+                else bst
+            )
 
         # Save model
         local_model = bst.save_raw("json")
@@ -178,7 +249,13 @@ class XgbClient(fl.client.Client):
         }
 
         metadata['hyperparameters'] = json.dumps(metadata['hyperparameters'])
-        save_xgb(bst, metadata, f'xgb_{self.client_id}', global_round)
+        save_xgb_output(
+            bst,
+            metadata,
+            f'xgb_{self.client_id}',
+            global_round,
+            self.output_dir,
+        )
 
         return FitRes(
             status=Status(
@@ -201,7 +278,7 @@ class XgbClient(fl.client.Client):
                 ),
                 loss=0.0,
                 num_examples=0,
-                metrics={"AUC": 0.0},
+                metrics={self.params.get("eval_metric", "metric"): 0.0},
             )
         for para in ins.parameters.tensors:
             para_b = bytearray(para)
@@ -212,10 +289,12 @@ class XgbClient(fl.client.Client):
             evals=[(self.test_data, "valid")],
             iteration=bst.num_boosted_rounds() - 1,
         )
-        auc = round(float(eval_results.split("\t")[1].split(":")[1]), 4)
+        metric_name, metric_value = eval_results.split("\t")[1].split(":")
+        metric_name = metric_name.split("-")[-1]
+        metric_value = round(float(metric_value), 4)
 
         global_round = ins.config["global_round"]
-        log(INFO, f"AUC = {auc} at round {global_round}")
+        log(INFO, f"{metric_name} = {metric_value} at round {global_round}")
 
         return EvaluateRes(
             status=Status(
@@ -224,5 +303,5 @@ class XgbClient(fl.client.Client):
             ),
             loss=0.0,
             num_examples=len(self.test_indices),
-            metrics={"AUC": auc},
+            metrics={metric_name: metric_value},
         )

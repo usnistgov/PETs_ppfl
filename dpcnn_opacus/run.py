@@ -137,7 +137,6 @@ sys.path.append(file_path)
 
 from client import FlowerClient
 from server import create_strategy
-
 client_params = {
     # partitioner_type ->  uniform, linear, square, exponential
     'partitions_type': partitioner_type,
@@ -158,8 +157,10 @@ client_params = {
     'delta': delta,
     'max_grad_norm': max_grad_norm,
     'opacus_secure_mode': opacus_secure_mode,
+    'train_method': train_method,
+    'centralised_eval': centralised_eval,
+    'scaled_lr': scaled_lr,
 }
-
 def client_fn(context: Context):
     """Returns a FlowerClient"""
     client_id = context.node_config["partition-id"]
@@ -177,7 +178,10 @@ def server_fn(context: Context) -> ServerAppComponents:
             'accuracy_tolerance': accuracy_tolerance,
             'output_dir': out_dir,
             'data_dir': data_dir,
-            'batch_divisor': batch_divisor
+            'batch_divisor': batch_divisor,
+            'train_method': train_method,
+            'centralised_eval': centralised_eval,
+            'scaled_lr': scaled_lr,
         }
     )
     config = ServerConfig(num_rounds=num_rounds)
