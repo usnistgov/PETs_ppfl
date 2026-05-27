@@ -128,12 +128,13 @@ if data_partitions_file and Path(data_partitions_file).exists():
     min_evaluate_clients = num_partitions
     min_available_clients = num_partitions
 
-#variable imports
-file_path = "tmp/" + args.model_type
+if not model_type == "cnn":
+    #variable imports
+    file_path = "tmp/" + args.model_type
 
-print(f"Using the file path: {file_path}")
+    print(f"Using the file path: {file_path}")
 
-sys.path.append(file_path)
+    sys.path.append(file_path)
 
 from client import FlowerClient
 from server import create_strategy

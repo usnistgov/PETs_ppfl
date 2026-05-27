@@ -1,5 +1,5 @@
 {
-  "model_type": "cnn",
+  "model_type": "xgboost",
   "num_partitions": 1,
   "partition_id": 0,
   "client_id": 0,
@@ -12,10 +12,7 @@
   "seed": 673 ,
   "test_fraction": 0.3, 
   "epochs": 100, 
-  "learning_rate": 0.003, 
-  "batch_divisor": 40, 
-  "weight_decay": 0.0001, 
-  "optimizer": "sgd", 
+  "batch_divisor": 40,
   "opacus_secure_mode": false, 
   "epsilon": 0.2, 
   "delta": 1e-05, 
