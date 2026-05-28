@@ -1,5 +1,5 @@
 {
-  "model_type": "cnn",
+  "model_type": "dpcnn",
   "num_partitions": 1,
   "partition_id": 0,
   "client_id": 0,

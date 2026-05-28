@@ -128,7 +128,7 @@ if data_partitions_file and Path(data_partitions_file).exists():
     min_evaluate_clients = num_partitions
     min_available_clients = num_partitions
 
-if not model_type == "cnn":
+if model_type == "xgboost":
     #variable imports
     file_path = "tmp/" + args.model_type
 
@@ -140,6 +140,7 @@ from client import FlowerClient
 from server import create_strategy
 client_params = {
     # partitioner_type ->  uniform, linear, square, exponential
+    "model_type": model_type,
     'partitions_type': partitioner_type,
     'num_partitions': num_partitions,
     'batch_divisor': batch_divisor,
@@ -172,6 +173,7 @@ def server_fn(context: Context) -> ServerAppComponents:
     """Construct components that set the ServerApp behaviour."""
     strategy = create_strategy(
         {
+            "model_type": model_type,
             'min_fit_clients': min_fit_clients,
             'min_evaluate_clients': min_evaluate_clients,
             'min_available_clients': min_available_clients,

@@ -21,8 +21,9 @@ from dataset import (
     load_npy_feature_label_data,
 )
 
-from model import CNNModel #from model import Net, eval_cnn, save_cnn, train_cnn
+from model import CNNModel, DPCNNModel #from model import Net, eval_cnn, save_cnn, train_cnn
 from utils import get_device
+from opacus import PrivacyEngine
 
 
 # warnings.filterwarnings("ignore", category=UserWarning)
@@ -142,12 +143,41 @@ class FlowerClient(fl.client.NumPyClient):
             self.batch_divisor,
         )
 
-        self.cnn_model = CNNModel(model_id=self.client_id, output_dir=self.output_dir)
+        self.model_type = params.get("model_type")
+        self.use_dp = self.model_type == "dpcnn"
+        self.epsilon = params.get("epsilon")
+        self.delta = params.get("delta")
+        self.max_grad_norm = params.get("max_grad_norm")
+        self.opacus_secure_mode = params.get("opacus_secure_mode")
+        self.eps_per_epoch = []
+
+        model_class = DPCNNModel if self.use_dp else CNNModel
+
+        self.cnn_model = model_class(model_id=self.client_id, output_dir=self.output_dir)
         self.cnn_model.build_model(self.num_data_features)
         self.cnn_model.model.to(DEVICE)
 
         self.criterion = nn.MSELoss()
         self.optimizer = self.cnn_model.build_optimizer(self.optimizer_name, self.learning_rate, self.weight_decay)
+
+        self.privacy_engine = None
+
+        if self.use_dp:
+            opacus_params = {
+                "epochs": self.epochs,
+                "epsilon": self.epsilon,
+                "delta": self.delta,
+                "max_grad_norm": self.max_grad_norm,
+                "secure_mode": self.opacus_secure_mode,
+            }
+
+            self.optimizer, self.train_loader, self.privacy_engine = (
+                self.cnn_model.attach_privacy_engine(
+                    self.optimizer,
+                    self.train_loader,
+                    opacus_params,
+                )
+            )
 
         self.train_acc_per_epoch = []
         self.test_acc_per_epoch = []
@@ -160,22 +190,43 @@ class FlowerClient(fl.client.NumPyClient):
         self.cnn_model.set_parameters(parameters)
 
     def fit(self, parameters, config):
-        self.set_parameters(parameters)
         self.current_round = config.get("server_round", 1) - 1
 
-        (
-            self.train_mse_per_epoch,
-            self.test_mse_per_epoch,
-            self.train_acc_per_epoch,
-            self.test_acc_per_epoch,
-            self.losses,
-        ) = self.cnn_model.fit(
-            self.train_loader,
-            self.test_loader,
-            self.epochs,
-            self.optimizer,
-            self.criterion,
-            DEVICE)
+        if not self.use_dp or self.current_round > 0:
+            self.set_parameters(parameters)
+
+        if self.use_dp:
+            (
+                self.train_mse_per_epoch,
+                self.test_mse_per_epoch,
+                self.train_acc_per_epoch,
+                self.test_acc_per_epoch,
+                self.losses,
+                self.eps_per_epoch,
+            ) = self.cnn_model.fit(
+                self.train_loader,
+                self.test_loader,
+                self.epochs,
+                self.optimizer,
+                self.criterion,
+                self.delta,
+                self.privacy_engine,
+                device=DEVICE,
+            )
+        else:
+            (
+                self.train_mse_per_epoch,
+                self.test_mse_per_epoch,
+                self.train_acc_per_epoch,
+                self.test_acc_per_epoch,
+                self.losses,
+            ) = self.cnn_model.fit(
+                self.train_loader,
+                self.test_loader,
+                self.epochs,
+                self.optimizer,
+                self.criterion,
+                DEVICE)
 
         return self.get_parameters(config), len(self.train_loader.dataset), {}
 
@@ -195,6 +246,22 @@ class FlowerClient(fl.client.NumPyClient):
             self.test_loader,
             self.criterion,
         )
+        hyperparameters = {
+            'learning rate': float(self.learning_rate),
+            'weight decay': float(self.weight_decay),
+            'batch divisor': int(self.batch_divisor),
+            'epochs': int(self.epochs),
+            'seed': int(self.seed),
+            'test fraction': float(self.test_fraction),
+        }
+        if self.use_dp:
+            hyperparameters.update({
+                "epsilon": float(self.epsilon),
+                "delta": float(self.delta),
+                "max grad norm": float(self.max_grad_norm),
+                "opacus secure mode": bool(self.opacus_secure_mode),
+            })
+
         metadata = {
             'created on': str(datetime.now()),
             'model id': int(self.client_id),
@@ -209,19 +276,19 @@ class FlowerClient(fl.client.NumPyClient):
             "test accuracy per epoch": np.array(self.test_acc_per_epoch),
             "losses per epoch": np.array(self.losses),
             "predicted labels": test_preds,
-            'hyperparameters': json.dumps({
-                'learning rate': float(self.learning_rate),
-                'weight decay': float(self.weight_decay),
-                'batch divisor': int(self.batch_divisor),
-                'epochs': int(self.epochs),
-                'seed': int(self.seed),
-                'test fraction': float(self.test_fraction),
-            }),
+            'hyperparameters': json.dumps(hyperparameters),
         }
+        if self.use_dp:
+            metadata["epsilon per epoch"] = np.array(self.eps_per_epoch)
+        name = (
+            f"dpcnn{self.epsilon}_opacus_oil_{self.client_id}"
+            if self.use_dp
+            else f"flcnn_{self.client_id}"
+        )
         self.cnn_model.save_model(
             metadata,
-            f"flcnn_{self.client_id}",
+            name,
             self.current_round,
             self.output_dir,
         )
-        return float(test_loss), len(self.test_loader.dataset), {"accuracy": test_acc}
+        return float(test_loss), len(self.test_loader.dataset), {"accuracy": float(test_acc), "mse": float(test_mse)}
