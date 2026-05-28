@@ -30,19 +30,19 @@ def get_device():
 #   purpose: Validate that the discovered train/holdout dataset files are large enough for the requested batch divisor.
 ###
 def validate_data_size(data_path, batch_divisor):
-    pattern = ["_tt_vcf.dat", "_ho_vcf.dat"]
-    for pat in pattern: 
-        matches = [f for f in os.listdir(data_path) if f.endswith(pat)]
-        if not matches:
-            raise FileNotFoundError(f"No file found in {data_path} matching {pat}")
-        if len(matches) > 1:
-            raise ValueError(f"Multiple files found in {data_path} matching {pat}: {matches}")
+    suffixes = ["_tt_vcf", "_ho_vcf"]
+    for suffix in suffixes:
+        npy_matches = [f for f in os.listdir(data_path) if f.endswith(f"{suffix}.npy")]
+        if len(npy_matches) > 1:
+            raise ValueError(f"Multiple files found in {data_path} matching {suffix}.npy: {npy_matches}")
 
-        file_path = os.path.relpath(os.path.join(data_path, matches[0]))
-        with open(file_path, "rb") as f:
-            num_data_rows = pickle.load(f).shape[0]
+        if npy_matches:
+            file_path = os.path.relpath(os.path.join(data_path, npy_matches[0]))
+            num_data_rows = np.load(file_path, mmap_mode="r").shape[0]
             if batch_divisor > num_data_rows:
                 raise ValueError(f"Batch divisor (batch_divisor={batch_divisor}) is greater than train/test dataset size (num_rows={num_data_rows})")
+            continue
+
 
 
 def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, num_bins: int = 10):
