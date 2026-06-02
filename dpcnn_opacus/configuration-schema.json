@@ -122,6 +122,23 @@
                   "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 1, "default": 5},
                   "test_fraction": { "description": "Fraction of dataset set aside for testing", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.2},
                   
+                  "objective": {"description": "XGBoost objective", "type": "string", "default": "reg:squarederror"},
+                  "eta": {"description": "XGBoost learning rate", "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.1},
+                  "max_depth": {"description": "Maximum tree depth", "type": "integer", "minimum": 1, "maximum": 100, "default": 8},
+                  "eval_metric": {"description": "XGBoost evaluation metric", "type": "string", "default": "rmse"},
+                  "nthread": {"description": "Number of XGBoost threads", "type": "integer", "minimum": 1, "maximum": 100, "default": 16},
+                  "num_parallel_tree": {"description": "Number of parallel trees per boosting round", "type": "integer", "minimum": 1, "maximum": 100, "default": 1},
+                  "subsample": {"description": "Subsample ratio of training rows", "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 1},
+                  "tree_method": {"description": "XGBoost tree construction algorithm", "type": "string", "enum": ["auto", "exact", "approx", "hist"], "default": "hist"},
+                  "colsample_bylevel": {"description": "Subsample ratio of columns for each tree level", "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 1},
+                  "colsample_bytree": {"description": "Subsample ratio of columns for each tree", "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 1},
+                  "gamma": {"description": "Minimum loss reduction required to make a split", "type": "number", "minimum": 0, "default": 0},
+                  "max_delta_step": {"description": "Maximum delta step allowed for each tree weight estimate", "type": "number", "minimum": 0, "default": 0},
+                  "min_child_weight": {"description": "Minimum sum of instance weight needed in a child", "type": "number", "minimum": 0, "default": 1},
+                  "reg_alpha": {"description": "L1 regularization term on weights", "type": "number", "minimum": 0, "default": 0},
+                  "reg_lambda": {"description": "L2 regularization term on weights", "type": "number", "minimum": 0, "default": 1},
+                  "scale_pos_weight": {"description": "Balance of positive and negative weights", "type": "number", "exclusiveMinimum": 0, "default": 1},
+
                   "train_method": {"description": "The training method selected", "type": "string", "enum": ["bagging", "cyclic"], "default": "bagging"},
                   "centralised_eval": { "type": "boolean", "default": false},
                   "scaled_lr": { "type": "boolean", "default": true}

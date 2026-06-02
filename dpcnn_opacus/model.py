@@ -6,8 +6,11 @@ from opacus import PrivacyEngine
 import numpy as np
 from pathlib import Path
 import torch.nn.functional as F
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, mean_absolute_error
 from math import sqrt
+import xgboost as xgb
+from datetime import datetime
+import json
 
 ####################################################################################################
 #                                                                                                  #
@@ -623,24 +626,191 @@ class DPCNNModel(BaseModel):
 
 class XGBoostModel(BaseModel):
     model_extension = ".ubj"
+    def __init__(self, model_id=None, output_dir=None, params=None):
+        super().__init__(model_id=model_id, output_dir=output_dir)
+        self.params = params.copy()
 
-    def build_model(self, params):
-        raise NotImplementedError
+    @classmethod
+    def client_params(cls, seed, num_partitions, train_method, scaled_lr=False, base_params=None):
+        params = base_params.copy()
+        params["random_state"] = seed
 
-    def get_parameters(self, path):
-        raise NotImplementedError
+        if train_method == "bagging" and scaled_lr:
+            params["eta"] = params["eta"] / num_partitions
 
-    def set_parameters(self, params):
-        raise NotImplementedError
+        return params
+
+    def build_model(self, params=None):
+        self.params = params or self.params
+        self.model = xgb.Booster(params=self.params)
+        return self.model
+
+    def get_parameters(self, config=None):
+        if self.model is None:
+            return []
+        return [bytes(self.model.save_raw("json"))]
+
+    def set_parameters(self, parameters):
+        self.build_model(self.params)
+        if not parameters:
+            return self.model
+        self.model.load_model(bytearray(parameters[-1]))
+        return self.model
+
+    def fit_round(self, train_data, test_data, num_local_round, train_method, global_round, parameters=None):
+        if global_round > 1 and parameters:
+            self.set_parameters(parameters)
+
+        self.fit(train_data, test_data, num_local_round, train_method)
+        return self.get_parameters()[0]
+
+    def evaluate_parameters(self, parameters, test_data):
+        if not parameters:
+            metric_name = self.params.get("eval_metric", "metric")
+            return metric_name, 0.0
+
+        self.set_parameters(parameters)
+        return self.evaluate(test_data)
 
     def fit(self, train_data, test_data, num_local_round, train_method):
-        raise NotImplementedError
+        if self.model is None or self.model.num_boosted_rounds() == 0:
+            self.model = xgb.train(
+                self.params,
+                train_data,
+                num_boost_round=num_local_round,
+                evals=[
+                    (test_data, "validate"),
+                    (train_data, "train"),
+                ],
+                verbose_eval=False,
+                callbacks=[
+                    _XGBoostEpochLogger(
+                        self.model_id,
+                        num_local_round,
+                        train_data,
+                        test_data,
+                    )
+                ],
+            )
+        else:
+            for i in range(num_local_round):
+                self.model.update(train_data, self.model.num_boosted_rounds())
+                self.print_epoch_metrics(
+                    i + 1,
+                    num_local_round,
+                    train_data,
+                    test_data,
+                )
+
+        if train_method == "bagging":
+            start = self.model.num_boosted_rounds() - num_local_round
+            self.model = self.model[start:self.model.num_boosted_rounds()]
+
+        return self.model
     
     def evaluate(self, test_data):
-        raise NotImplementedError
+        if self.model is None:
+            raise RuntimeError("build_model or set_parameters must be called before evaluate")
 
-    def predict(self, data):
-        raise NotImplementedError
+        eval_results = self.model.eval_set(
+            evals=[(test_data, "valid")],
+            iteration=self.model.num_boosted_rounds() - 1,
+        )
+        metric_name, metric_value = eval_results.split("\t")[1].split(":")
+        metric_name = metric_name.split("-")[-1]
+        return metric_name, round(float(metric_value), 4)
+
+    def regression_metrics(self, data):
+        labels = data.get_label()
+        predictions = self.model.predict(data)
+        rounded_predictions = np.rint(predictions)
+        accuracy = accuracy_score(labels, rounded_predictions)
+        mse = mean_squared_error(labels, predictions)
+        mae = mean_absolute_error(labels, predictions)
+        rmse = mse**0.5
+        return accuracy, mse, mae, rmse
+
+    def print_epoch_metrics(self, epoch, epochs, train_data, test_data):
+        train_acc, train_mse, train_mae, train_rmse = self.regression_metrics(train_data)
+        test_acc, test_mse, _, _ = self.regression_metrics(test_data)
+        print(
+            f"Model {self.model_id} | "
+            f"Epoch {epoch}/{epochs}, Loss: {train_mse:.4f}, "
+            f"Train Acc: {train_acc:.2f}, "
+            f"Test Acc: {test_acc:.2f}, "
+            f"Train MSE: {train_mse:.4f}, Test MSE: {test_mse:.4f}, "
+            f"MAE: {train_mae:.4f}, RMSE: {train_rmse:.4f}"
+        )
+
+    def client_metadata(
+        self,
+        train_data,
+        test_data,
+        train_indices,
+        test_indices,
+        partitions_file,
+        seed,
+        test_fraction,
+    ):
+        train_acc, _train_mse, _train_mae, _train_rmse = self.regression_metrics(train_data)
+        test_acc, _test_mse, _test_mae, _test_rmse = self.regression_metrics(test_data)
+
+        metadata = {
+            "created on": str(datetime.now()),
+            "model id": int(self.model_id),
+            "partitions file": partitions_file,
+            "train accuracy": float(train_acc),
+            "test accuracy": float(test_acc),
+            "train loss": 0,
+            "test loss": 0,
+            "train indices": train_indices,
+            "test indices": test_indices,
+            "hyperparameters": json.dumps(
+                {
+                    **self.params,
+                    "seed": seed,
+                    "test_fraction": test_fraction,
+                }
+            ),
+        }
+        return metadata, train_acc, test_acc
+
+    def save_client_output(
+        self,
+        train_data,
+        test_data,
+        train_indices,
+        test_indices,
+        partitions_file,
+        seed,
+        test_fraction,
+        global_round,
+        output_dir=None,
+    ):
+        metadata, train_acc, test_acc = self.client_metadata(
+            train_data,
+            test_data,
+            train_indices,
+            test_indices,
+            partitions_file,
+            seed,
+            test_fraction,
+        )
+        self.save_model(
+            metadata,
+            f"xgb_{self.model_id}",
+            global_round,
+            output_dir,
+        )
+        return train_acc, test_acc
+
+    def predict(self, model, data):
+        predictions = model.predict(data)
+        if predictions.ndim == 2:
+            return np.argmax(predictions, axis=1)
+        if predictions.dtype.kind == "f" and predictions.min() >= 0 and predictions.max() <= 1:
+            return np.rint(predictions)
+        return np.rint(predictions)
 
     def save_model(self, metadata, name, round_number=None, output_dir=None):
         out_name = self.output_name(name, round_number)
@@ -651,10 +821,14 @@ class XGBoostModel(BaseModel):
         self.save_report(metadata, name, round_number, output_dir)
 
     def load_model(self, path):
-        raise NotImplementedError
+        self.build_model(self.params)
+        self.model.load_model(path)
+        return self.model
 
     def save_raw_parameters(self, path):
-        raise NotImplementedError
+        if self.model is None:
+            raise RuntimeError("No model has been built or trained")
+        Path(path).write_bytes(bytes(self.model.save_raw("json")))
 
 ####################################################################################################
 #                                                                                                  #
@@ -730,3 +904,37 @@ class _CNNNet(nn.Module):
         x = self.layer_norm2(x)
         x = self.output(x)
         return x
+
+class _XGBoostEpochLogger(xgb.callback.TrainingCallback):
+    def __init__(self, model_id, epochs, train_data, test_data):
+        self.model_id = model_id
+        self.epochs = epochs
+        self.train_data = train_data
+        self.test_data = test_data
+
+    def _regression_metrics(self, model, data):
+        labels = data.get_label()
+        predictions = model.predict(data)
+        rounded_predictions = np.rint(predictions)
+        accuracy = accuracy_score(labels, rounded_predictions)
+        mse = mean_squared_error(labels, predictions)
+        mae = mean_absolute_error(labels, predictions)
+        rmse = mse**0.5
+        return accuracy, mse, mae, rmse
+
+    def after_iteration(self, model, epoch, evals_log):
+        train_acc, train_mse, train_mae, train_rmse = self._regression_metrics(
+            model,
+            self.train_data,
+        )
+        test_acc, test_mse, _, _ = self._regression_metrics(model, self.test_data)
+        print(
+            f"Model {self.model_id} | "
+            f"Epoch {epoch + 1}/{self.epochs}, Loss: {train_mse:.4f}, "
+            f"Train Acc: {train_acc:.2f}, "
+            f"Test Acc: {test_acc:.2f}, "
+            f"Train MSE: {train_mse:.4f}, Test MSE: {test_mse:.4f}, "
+            f"MAE: {train_mae:.4f}, RMSE: {train_rmse:.4f}",
+            flush=True,
+        )
+        return False

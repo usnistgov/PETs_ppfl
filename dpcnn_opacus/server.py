@@ -1,4 +1,5 @@
 from typing import List, Tuple
+from typing import Dict
 from datetime import datetime
 from collections import OrderedDict
 import numpy as np
@@ -9,9 +10,13 @@ import flwr as fl
 from flwr.common import Metrics
 from flwr.common import ndarrays_to_parameters
 from pathlib import Path
+from flwr.server.strategy import FedXgbBagging, FedXgbCyclic
+import xgboost as xgb
+from xgboost.core import DMatrix
+from sklearn.metrics import accuracy_score, mean_squared_error
 
 from dataset import IndexedArrayDataset, load_npy_feature_label_data
-from model import CNNModel, DPCNNModel #Net, unpack_batch
+from model import CNNModel, DPCNNModel
 from report import Report
 
 loss_rounds = []  # loss per global round
@@ -113,7 +118,176 @@ def fit_round(server_round: int):
     """Configure the fit function for each round."""
     return {"server_round": server_round}
 
+
+def xgboost_round_config(server_round: int) -> Dict[str, str]:
+    return {"global_round": str(server_round)}
+
+
+def evaluate_and_save_xgboost_global(
+    server_round: int,
+    parameters,
+    num_rounds: int,
+    test_data: DMatrix,
+    output_dir: str,
+    xgboost_params: Dict,
+):
+    """Evaluate and save the aggregated XGBoost global model."""
+    if parameters is None or not parameters.tensors:
+        return 0.0, {"accuracy": 0.0, "mse": 0.0}
+
+    bst = xgb.Booster(params=xgboost_params or {})
+    bst.load_model(bytearray(parameters.tensors[-1]))
+
+    labels = test_data.get_label()
+    predictions = bst.predict(test_data)
+    rounded_predictions = np.rint(predictions)
+    accuracy = accuracy_score(labels, rounded_predictions)
+    mse = mean_squared_error(labels, predictions)
+
+    loss_rounds.append(float(mse))
+    accuracy_rounds.append(float(accuracy))
+    mse_rounds.append(float(mse))
+
+    print(
+        "GLOBAL ACCURACY:",
+        accuracy,
+        "GLOBAL MSE:",
+        mse,
+        "SERVER ROUND:",
+        server_round,
+    )
+
+    if server_round == num_rounds:
+        metadata = {
+            "created on": str(datetime.now()),
+            "loss per round": np.array(loss_rounds),
+            "accuracy per round": np.array(accuracy_rounds),
+            "mse per round": np.array(mse_rounds),
+        }
+
+        np.savez(
+            Path(output_dir, "xgb_global_metadata.npz"),
+            **metadata,
+        )
+        report = Report(metadata)
+        report.save_to_file(Path(output_dir, "xgb_global_metadata.json"))
+        bst.save_model(Path(output_dir, "xgb_global.ubj"))
+
+    return float(mse), {
+        "accuracy": float(accuracy),
+        "mse": float(mse),
+    }
+
+
+def get_xgboost_evaluate_fn(global_output_config):
+    """Return a CNN/DPCNN-style server evaluate function for XGBoost bagging."""
+
+    def evaluate_fn(server_round, parameters, config):
+        return evaluate_and_save_xgboost_global(
+            server_round,
+            parameters,
+            **global_output_config,
+        )
+
+    return evaluate_fn
+
+
+class GlobalOutputFedXgbCyclic(FedXgbCyclic):
+    def __init__(self, *args, global_output_config=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.global_output_config = global_output_config or {}
+
+    def aggregate_fit(self, server_round, results, failures):
+        parameters, metrics = super().aggregate_fit(server_round, results, failures)
+        evaluate_and_save_xgboost_global(
+            server_round,
+            parameters,
+            **self.global_output_config,
+        )
+        return parameters, metrics
+
+
+def evaluate_xgboost_metrics(eval_metrics):
+    """Aggregate XGBoost client metrics using the CNN/DPCNN metric shape."""
+    eval_metrics = [
+        (num, dict(metrics))
+        for num, metrics in eval_metrics
+        if num > 0 and len(metrics) > 0
+    ]
+    total_num = sum([num for num, _ in eval_metrics])
+    if total_num == 0:
+        return {}
+
+    metric_names = sorted(
+        {
+            metric_name
+            for _, metrics in eval_metrics
+            for metric_name in metrics.keys()
+        }
+    )
+    return {
+        metric_name: (
+            sum(
+                metrics.get(metric_name, 0.0) * num
+                for num, metrics in eval_metrics
+            )
+            / total_num
+        )
+        for metric_name in metric_names
+    }
+
+
+def create_xgboost_strategy(strategy_params):
+    train_method = strategy_params.get("train_method", "bagging")
+    pool_size = strategy_params["min_available_clients"]
+    min_fit_clients = strategy_params["min_fit_clients"]
+    min_evaluate_clients = strategy_params["min_evaluate_clients"]
+    centralised_eval = strategy_params.get("centralised_eval", False)
+    tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(
+        strategy_params["data_dir"]
+    )
+    test_features = np.concatenate([tt_vcf, ho_vcf])
+    test_labels = np.concatenate([tt_pheno, ho_pheno]).reshape(-1)
+    test_data = DMatrix(data=test_features, label=test_labels)
+    global_output_config = {
+        "num_rounds": strategy_params["num_rounds"],
+        "test_data": test_data,
+        "output_dir": strategy_params["output_dir"],
+        "xgboost_params": strategy_params.get("xgboost_params") or {},
+    }
+
+    if train_method == "bagging":
+        return FedXgbBagging(
+            evaluate_function=get_xgboost_evaluate_fn(global_output_config),
+            fraction_fit=(float(min_fit_clients) / pool_size),
+            min_fit_clients=min_fit_clients,
+            min_available_clients=pool_size,
+            min_evaluate_clients=(
+                min_evaluate_clients if not centralised_eval else 0
+            ),
+            fraction_evaluate=1.0 if not centralised_eval else 0.0,
+            on_evaluate_config_fn=xgboost_round_config,
+            on_fit_config_fn=xgboost_round_config,
+            evaluate_metrics_aggregation_fn=(
+                evaluate_xgboost_metrics if not centralised_eval else None
+            ),
+        )
+
+    return GlobalOutputFedXgbCyclic(
+        fraction_fit=1.0,
+        min_available_clients=pool_size,
+        fraction_evaluate=1.0,
+        evaluate_metrics_aggregation_fn=evaluate_xgboost_metrics,
+        on_evaluate_config_fn=xgboost_round_config,
+        on_fit_config_fn=xgboost_round_config,
+        global_output_config=global_output_config,
+    )
+
+
 def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
+    if strategy_params.get("model_type") == "xgboost":
+        return create_xgboost_strategy(strategy_params)
+
     tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(strategy_params['data_dir'])
     num_data_features = tt_vcf.shape[1]
     all_indices = np.arange(len(tt_vcf) + len(ho_vcf))

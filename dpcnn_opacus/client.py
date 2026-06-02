@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import torch.optim as optim
+from xgboost.core import DMatrix
 
 from dataset import (
     load_random_partitions,
@@ -21,9 +22,22 @@ from dataset import (
     load_npy_feature_label_data,
 )
 
-from model import CNNModel, DPCNNModel #from model import Net, eval_cnn, save_cnn, train_cnn
+from model import CNNModel, DPCNNModel, XGBoostModel
 from utils import get_device
 from opacus import PrivacyEngine
+from flwr.common import (
+    Code,
+    EvaluateIns,
+    EvaluateRes,
+    FitIns,
+    FitRes,
+    GetParametersIns,
+    GetParametersRes,
+    Parameters,
+    Status,
+)
+from flwr.common.logger import log
+from logging import INFO
 
 
 # warnings.filterwarnings("ignore", category=UserWarning)
@@ -103,7 +117,52 @@ def create_dataloaders(
     )
 
 
-class FlowerClient(fl.client.NumPyClient):
+def loader_to_dmatrix(loader):
+    features = []
+    labels = []
+    for batch_features, batch_labels in loader:
+        features.append(np.asarray(batch_features))
+        labels.append(np.asarray(batch_labels).reshape(-1))
+    return DMatrix(data=np.concatenate(features), label=np.concatenate(labels))
+
+
+def create_xgboost_data(
+    client_id: int,
+    data_partitions_file,
+    data_directory,
+    num_partitions,
+    partitioner_type,
+    test_fraction,
+    seed,
+    batch_divisor,
+):
+    (
+        _num_data_features,
+        partitions_file,
+        train_loader,
+        test_loader,
+        train_indices,
+        test_indices,
+    ) = create_dataloaders(
+        client_id,
+        data_partitions_file,
+        data_directory,
+        num_partitions,
+        partitioner_type,
+        test_fraction,
+        seed,
+        batch_divisor,
+    )
+    return (
+        loader_to_dmatrix(train_loader),
+        loader_to_dmatrix(test_loader),
+        partitions_file,
+        train_indices,
+        test_indices,
+    )
+
+
+class TorchFlowerClient(fl.client.NumPyClient):
     def __init__(
         self, context: Context, client_id: int, params: Dict[str, Any]
     ):
@@ -292,3 +351,136 @@ class FlowerClient(fl.client.NumPyClient):
             self.output_dir,
         )
         return float(test_loss), len(self.test_loader.dataset), {"accuracy": float(test_acc), "mse": float(test_mse)}
+
+
+class XGBoostFlowerClient(fl.client.Client):
+    def __init__(self, context: Context, client_id: int, params: Dict[str, Any]):
+        self.client_id = client_id
+        self.params = params
+        self.seed = params.get("seed", 42)
+        self.train_method = params.get("train_method", "bagging")
+        self.num_partitions = params.get("num_partitions", 1)
+        self.num_local_round = params.get("epochs", 1)
+        self.output_dir = params.get("output_dir")
+        self.data_partitions_file = params.get("data_partitions_file")
+        self.test_fraction = params.get("test_fraction", 0.2)
+
+        (
+            self.train_data,
+            self.test_data,
+            self.partitions_file,
+            self.train_indices,
+            self.test_indices,
+        ) = create_xgboost_data(
+            self.client_id,
+            self.data_partitions_file,
+            params.get("data_dir"),
+            self.num_partitions,
+            params.get("partitions_type", "uniform"),
+            self.test_fraction,
+            self.seed,
+            params.get("batch_divisor", 5),
+        )
+
+        self.xgb_model = XGBoostModel(
+            model_id=self.client_id,
+            output_dir=self.output_dir,
+            params=XGBoostModel.client_params(
+                seed=self.seed,
+                num_partitions=self.num_partitions,
+                train_method=self.train_method,
+                scaled_lr=params.get("scaled_lr", False),
+                base_params=params.get("xgboost_params", {}),
+            ),
+        )
+
+    def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:
+        return GetParametersRes(
+            status=Status(code=Code.OK, message="OK"),
+            parameters=Parameters(tensor_type="", tensors=[]),
+        )
+
+    def fit(self, ins: FitIns) -> FitRes:
+        global_round = int(ins.config["global_round"])
+        local_model_bytes = self.xgb_model.fit_round(
+            self.train_data,
+            self.test_data,
+            self.num_local_round,
+            self.train_method,
+            global_round,
+            ins.parameters.tensors,
+        )
+        train_acc, test_acc = self.xgb_model.save_client_output(
+            self.train_data,
+            self.test_data,
+            self.train_indices,
+            self.test_indices,
+            self.partitions_file,
+            self.seed,
+            self.test_fraction,
+            global_round,
+            self.output_dir,
+        )
+
+        print(
+            f"client {self.client_id} Train accuracy: {train_acc * 100:.2f}%",
+            flush=True,
+        )
+        print(
+            f"client {self.client_id} Test accuracy: {test_acc * 100:.2f}%",
+            flush=True,
+        )
+
+        return FitRes(
+            status=Status(code=Code.OK, message="OK"),
+            parameters=Parameters(tensor_type="", tensors=[local_model_bytes]),
+            num_examples=len(self.test_indices),
+            metrics={},
+        )
+
+    def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
+        if not ins.parameters.tensors:
+            return EvaluateRes(
+                status=Status(
+                    code=Code.OK,
+                    message="No model parameters available for evaluation.",
+                ),
+                loss=0.0,
+                num_examples=0,
+                metrics={"accuracy": 0.0, "mse": 0.0},
+            )
+
+        self.xgb_model.set_parameters(ins.parameters.tensors)
+        accuracy, mse, _mae, _rmse = self.xgb_model.regression_metrics(self.test_data)
+        global_round = ins.config["global_round"]
+        log(
+            INFO,
+            f"accuracy = {accuracy:.4f}, mse = {mse:.4f} at round {global_round}",
+        )
+
+        return EvaluateRes(
+            status=Status(code=Code.OK, message="OK"),
+            loss=float(mse),
+            num_examples=len(self.test_indices),
+            metrics={"accuracy": float(accuracy), "mse": float(mse)},
+        )
+
+
+class FlowerClient:
+    def __init__(self, context: Context, client_id: int, params: Dict[str, Any]):
+        self.context = context
+        self.client_id = client_id
+        self.params = params
+
+    def to_client(self):
+        if self.params.get("model_type") == "xgboost":
+            return XGBoostFlowerClient(
+                self.context,
+                self.client_id,
+                self.params,
+            )
+        return TorchFlowerClient(
+            self.context,
+            self.client_id,
+            self.params,
+        ).to_client()

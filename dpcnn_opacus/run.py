@@ -1,6 +1,4 @@
-import importlib.util
 import os
-import sys
 
 # Stop de-duplicating logs in Ray
 os.environ["RAY_DEDUP_LOGS"] = "0"
@@ -61,7 +59,7 @@ test_fraction = args.model_params["test_fraction"]
 
 learning_rate = None; weight_decay = None; optimizer_name = None
 accuracy_tolerance = None; epsilon = None; delta = None; max_grad_norm = None; opacus_secure_mode = None
-train_method = None; centralised_eval = None; scaled_lr = None
+train_method = None; centralised_eval = None; scaled_lr = None; xgboost_params=None
 
 
 #Federated params
@@ -89,6 +87,28 @@ elif model_type == "xgboost":
     train_method = args.model_params["train_method"]
     centralised_eval = args.model_params["centralised_eval"]
     scaled_lr = args.model_params["scaled_lr"]
+
+    xgboost_params = {
+        key: args.model_params[key]
+        for key in [
+            "objective",
+            "eta",
+            "max_depth",
+            "eval_metric",
+            "nthread",
+            "num_parallel_tree",
+            "subsample",
+            "tree_method",
+            "colsample_bylevel",
+            "colsample_bytree",
+            "gamma",
+            "max_delta_step",
+            "min_child_weight",
+            "reg_alpha",
+            "reg_lambda",
+            "scale_pos_weight",
+        ]
+    }
 else:
     print("error - unhandled model type")
     exit(1)
@@ -128,14 +148,6 @@ if data_partitions_file and Path(data_partitions_file).exists():
     min_evaluate_clients = num_partitions
     min_available_clients = num_partitions
 
-if model_type == "xgboost":
-    #variable imports
-    file_path = "tmp/" + args.model_type
-
-    print(f"Using the file path: {file_path}")
-
-    sys.path.append(file_path)
-
 from client import FlowerClient
 from server import create_strategy
 client_params = {
@@ -162,6 +174,7 @@ client_params = {
     'train_method': train_method,
     'centralised_eval': centralised_eval,
     'scaled_lr': scaled_lr,
+    'xgboost_params': xgboost_params,
 }
 def client_fn(context: Context):
     """Returns a FlowerClient"""
