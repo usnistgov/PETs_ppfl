@@ -129,9 +129,9 @@ Regardless of how the parameter values are input, the values will be validated a
 | `num_cpus` | The number of CPUs available to the run | integer | min: 1, max: 100 |
 | `num_gpus` | The number of GPUs available to the run | integer | min: 0, max: 100 |
 | `num_rounds` | The number of rounds of federated learning | integer | min: 1, max: 100 |
-| `min_fit_clients` | The minimum number of clients that must contribute to the federated training rounds | integer | min: 1, max: 100 |
-| `min_available_clients` | The minimum number of clients that must be connected to the server for federated learning to begin | integer | min: 1, max: 100 |
-| `min_evaluate_clients` | The minimum number of clients that must participate in a federated evaluation round for the round to be successful | integer | min: 1, max: 100 |
+| `min_fit_clients` | The minimum number of clients that must contribute to the federated training rounds. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
+| `min_available_clients` | The minimum number of clients that must be connected to the server for federated learning to begin. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
+| `min_evaluate_clients` | The minimum number of clients that must participate in a federated evaluation round for the round to be successful. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
 | `data_partitions_file` | A path to a file that contains the data partitions | string | — |
 | `partitioner_type` | The type of partitioner to use if a data partition file was not provided | string | `"uniform"`, `"linear"`, `"square"`, `"exponential"` |
 | `num_partitions` | The number of data partitions. If this value is less than `min_fit_clients`, `min_available_clients`, or `min_evaluate_clients`, then those values may be lowered accordingly. | integer | min: 1, max: 100 |
@@ -384,8 +384,6 @@ This codebase currently follows the standard Flower simulation pattern:
 
 - One data partition corresponds to one Flower client.
 - One Flower client trains one local model update per federated round.
-- The text currently printed as `Model 0`, `Model 1`, etc. refers to the Flower client/partition id, not multiple models trained inside a single client.
-- For example, seeing `Model 0` through `Model 4` means five clients/partitions are participating in that round, each training one local model update.
 
 ### Parameters that affect how many clients train
 
@@ -406,18 +404,17 @@ This codebase currently follows the standard Flower simulation pattern:
 Current output may look like:
 
 ```
-Model 0 | Epoch 1/100 | ...
-Model 3 | Epoch 1/100 | ...
-Model 1 | Epoch 1/100 | ...
+Client 0 | Epoch 1/100 | ...
+Client 3 | Epoch 1/100 | ...
+Client 1 | Epoch 1/100 | ...
 ```
 
-This does not mean one client is training multiple models. It means multiple client processes are training concurrently, and Ray prints logs as each process emits them. The order is based on scheduling/runtime progress, not client id order.
+It means multiple client processes are training concurrently, and Ray prints logs as each process emits them. The order is based on scheduling/runtime progress, not client id order.
 
 ### Planned cleanup
 
 To reduce confusion in a future non-hotfix change:
 
-- Rename log text from `Model {id}` to `Client {id}` or `Client/Partition {id}`.
 - Clarify `n_models` in the configuration schema, or replace it with a parameter name that reflects current behavior.
 - Document the relationship between partition files, Flower clients, and federated rounds directly in the configuration docs.
 - Keep memory-related changes separate from naming/logging cleanup to avoid expanding the current hotfix scope.
