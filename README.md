@@ -33,7 +33,7 @@ Throughout the beta development process, these capabilities are expected to expa
 - Validation of provided file paths against the currently visible directory
 - Generation of machine-readable and JSON reports, with some values printed out to the terminal, in timestamped directories
 
-_*Please note that bring-your-own-data partition files have not been tested yet. There may be unexpected behaviors. Also note that users are expected to have already preprocessed their data prior to uploading it to the `data/` folder.*_
+_*Please note that users are expected to have already preprocessed their data prior to uploading it to the `data/` folder.*_
 
 ## Currently In-Progress Capabilities <a name="future_supported"></a>
 - Generation of human-readable and machine-readable reports
@@ -43,7 +43,9 @@ _*Please note that bring-your-own-data partition files have not been tested yet.
 ## Setting Up the Testbed <a name="setup"></a>
 
 1. Download the zip file containing the data and code.
-   1. If using the provided Oil_binned5 test data, ensure the following files exist in the `data/Oil_binned5` directory (and your data path matches):
+
+   The testbed expects ho (holdout) and tt (train-test) datasets to be present. While this is the expectation, please note that all data will be aggregated and then split between the provided clients. This is behavior is different than the names suggest; however, it was beneficial due to the original size limitations of the Oil dataset. 
+   - If using the provided Oil_binned5 test data, ensure the following files exist in the `data/Oil_binned5` directory (and your data path matches):
       1. `Oil_QTL_ho_pheno.dat`
       2. `Oil_QTL_ho_vcf.dat`
       3. `Oil_QTL_ohe_map.dat`
@@ -51,7 +53,7 @@ _*Please note that bring-your-own-data partition files have not been tested yet.
       5. `Oil_QTL_pheno_bins.dat`
       6. `Oil_QTL_tt_pheno.dat`
       7. `Oil_QTL_tt_vcf.dat`
-   Or if using the provided SCC test data and partitions, ensure the following files exist in the `data/gpd_scc` (and your data path and partition paths matches). Only one data partition file will be used (you must specify which one):
+   - Or if using the provided SCC test data and partitions, ensure the following files exist in the `data/gpd_scc` (and your data path and partition paths matches). Only one data partition file will be used (you must specify which one):
       1. `SCC_QTL_ho_pheno.dat`
       2. `SCC_QTL_ho_vcf.dat`
       3. `SCC_QTL_ohe_map.dat`
@@ -61,7 +63,7 @@ _*Please note that bring-your-own-data partition files have not been tested yet.
       7. `SCC_QTL_tt_vcf.dat`
       8. `ppfl_SCC_c0c1_5clients_2025_01_14.npz`
       9. `ppfl_SCC_c4c5_5clients_2025_01_14.npz`
-   2. If using your own data:
+   - If using your own data:
       - Please ensure that all data files are of type `.dat` or `.npy`. It is also expected that the endings of the data files match the provided test data. For example, this testbed assumes the data file endings are:
          1. `_ho_pheno.dat`
          2. `_ho_vcf.dat`
