@@ -164,7 +164,7 @@ class CNNModel(BaseModel):
             test_acc.append(epoch_test_acc)
             losses.append(epoch_loss)
             print(
-                f"Model {self.model_id} | "
+                f"Client {self.model_id} | "
                 f"Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}, "
                 f"Train Acc: {train_accuracy:.2f}, "
                 f"Test Acc: {epoch_test_acc:.2f}, "
@@ -225,23 +225,23 @@ class CNNModel(BaseModel):
         (test_accuracy, test_loss, test_mae, test_mse, test_rmse,
          test_ss, test_rr, test_mm,test_error_mean, test_preds) = evaluate(test_loader)
 
-        print(f"\nModel {self.model_id} | Final Results:")
-        print(f"Model {self.model_id} | Train: Accuracy: {train_accuracy:.2f}, "
+        print(f"\Client {self.model_id} | Final Results:")
+        print(f"Client {self.model_id} | Train: Accuracy: {train_accuracy:.2f}, "
               f"Loss: {train_loss:.4f}, MAE: {train_mae:.4f}, "
               f"MSE: {train_mse:.4f}, RMSE: {train_rmse:.4f}")
-        print(f"Model {self.model_id} | R^2 Value is: {train_rr:.4f}")
-        print(f"Model {self.model_id} | "
+        print(f"Client {self.model_id} | R^2 Value is: {train_rr:.4f}")
+        print(f"Client {self.model_id} | "
               f"RMSE for train set is: {train_ss:.4f} & mean is {train_mm:.4f}")
-        print(f"Model {self.model_id} | "
+        print(f"Client {self.model_id} | "
               f"This is {train_error_mean:.2f}% of the mean pheno data")
 
-        print(f"Model {self.model_id} | Test: Accuracy: {test_accuracy:.2f}, "
+        print(f"Client {self.model_id} | Test: Accuracy: {test_accuracy:.2f}, "
               f"Loss: {test_loss:.4f}, MAE: {test_mae:.4f}, "
               f"MSE: {test_mse:.4f}, RMSE: {test_rmse:.4f}")
-        print(f"Model {self.model_id} | R^2 Value is: {test_rr:.4f}")
-        print(f"Model {self.model_id} | "
+        print(f"Client {self.model_id} | R^2 Value is: {test_rr:.4f}")
+        print(f"Client {self.model_id} | "
               f"RMSE for test set is: {test_ss:.4f} & mean is {test_mm:.4f}")
-        print(f"Model {self.model_id} | "
+        print(f"Client {self.model_id} | "
               f"This is {test_error_mean:.2f}% of the mean pheno data")
 
         return train_accuracy, test_accuracy, train_loss, test_loss, train_mse, test_mse, train_preds, test_preds
@@ -451,7 +451,7 @@ class DPCNNModel(BaseModel):
             losses.append(epoch_loss)
             eps.append(epsilon_spent)
             print(
-                f"Model {self.model_id} | "
+                f"Client {self.model_id} | "
                 f"Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}, "
                 f"Train Acc: {train_accuracy:.2f}, "
                 f"Test Acc: {epoch_test_acc:.2f}, "
@@ -514,23 +514,23 @@ class DPCNNModel(BaseModel):
         (test_accuracy, test_loss, test_mae, test_mse, test_rmse,
          test_ss, test_rr, test_mm,test_error_mean, test_preds) = evaluate(test_loader)
 
-        print(f"\nModel {self.model_id} | Final Results:")
-        print(f"Model {self.model_id} | Train: Accuracy: {train_accuracy:.2f}, "
+        print(f"\Client {self.model_id} | Final Results:")
+        print(f"Client {self.model_id} | Train: Accuracy: {train_accuracy:.2f}, "
               f"Loss: {train_loss:.4f}, MAE: {train_mae:.4f}, "
               f"MSE: {train_mse:.4f}, RMSE: {train_rmse:.4f}")
-        print(f"Model {self.model_id} | R^2 Value is: {train_rr:.4f}")
-        print(f"Model {self.model_id} | "
+        print(f"Client {self.model_id} | R^2 Value is: {train_rr:.4f}")
+        print(f"Client {self.model_id} | "
               f"RMSE for train set is: {train_ss:.4f} & mean is {train_mm:.4f}")
-        print(f"Model {self.model_id} | "
+        print(f"Client {self.model_id} | "
               f"This is {train_error_mean:.2f}% of the mean pheno data")
 
-        print(f"Model {self.model_id} | Test: Accuracy: {test_accuracy:.2f}, "
+        print(f"Client {self.model_id} | Test: Accuracy: {test_accuracy:.2f}, "
               f"Loss: {test_loss:.4f}, MAE: {test_mae:.4f}, "
               f"MSE: {test_mse:.4f}, RMSE: {test_rmse:.4f}")
-        print(f"Model {self.model_id} | R^2 Value is: {test_rr:.4f}")
-        print(f"Model {self.model_id} | "
+        print(f"Client {self.model_id} | R^2 Value is: {test_rr:.4f}")
+        print(f"Client {self.model_id} | "
               f"RMSE for test set is: {test_ss:.4f} & mean is {test_mm:.4f}")
-        print(f"Model {self.model_id} | "
+        print(f"Client {self.model_id} | "
               f"This is {test_error_mean:.2f}% of the mean pheno data")
 
         return train_accuracy, test_accuracy, train_loss, test_loss, train_mse, test_mse, train_preds, test_preds
@@ -734,7 +734,7 @@ class XGBoostModel(BaseModel):
         train_acc, train_mse, train_mae, train_rmse = self.regression_metrics(train_data)
         test_acc, test_mse, _, _ = self.regression_metrics(test_data)
         print(
-            f"Model {self.model_id} | "
+            f"Client {self.model_id} | "
             f"Epoch {epoch}/{epochs}, Loss: {train_mse:.4f}, "
             f"Train Acc: {train_acc:.2f}, "
             f"Test Acc: {test_acc:.2f}, "
@@ -929,7 +929,7 @@ class _XGBoostEpochLogger(xgb.callback.TrainingCallback):
         )
         test_acc, test_mse, _, _ = self._regression_metrics(model, self.test_data)
         print(
-            f"Model {self.model_id} | "
+            f"Client {self.model_id} | "
             f"Epoch {epoch + 1}/{self.epochs}, Loss: {train_mse:.4f}, "
             f"Train Acc: {train_acc:.2f}, "
             f"Test Acc: {test_acc:.2f}, "

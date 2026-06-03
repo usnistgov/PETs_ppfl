@@ -33,7 +33,7 @@ Throughout the beta development process, these capabilities are expected to expa
 - Validation of provided file paths against the currently visible directory
 - Generation of machine-readable and JSON reports, with some values printed out to the terminal, in timestamped directories
 
-_*Please note that bring-your-own-data partition files have not been tested yet. There may be unexpected behaviors. Also note that users are expected to have already preprocessed their data prior to uploading it to the `data/` folder.*_
+_*Please note that users are expected to have already preprocessed their data prior to uploading it to the `data/` folder.*_
 
 ## Currently In-Progress Capabilities <a name="future_supported"></a>
 - Generation of human-readable and machine-readable reports
@@ -43,7 +43,9 @@ _*Please note that bring-your-own-data partition files have not been tested yet.
 ## Setting Up the Testbed <a name="setup"></a>
 
 1. Download the zip file containing the data and code.
-   1. If using the provided Oil_binned5 test data, ensure the following files exist in the `data/Oil_binned5` directory (and your data path matches):
+
+   The testbed expects ho (holdout) and tt (train-test) datasets to be present. While this is the expectation, please note that all data will be aggregated and then split between the provided clients. This is behavior is different than the names suggest; however, it was beneficial due to the original size limitations of the Oil dataset. 
+   - If using the provided Oil_binned5 test data, ensure the following files exist in the `data/Oil_binned5` directory (and your data path matches):
       1. `Oil_QTL_ho_pheno.dat`
       2. `Oil_QTL_ho_vcf.dat`
       3. `Oil_QTL_ohe_map.dat`
@@ -51,7 +53,7 @@ _*Please note that bring-your-own-data partition files have not been tested yet.
       5. `Oil_QTL_pheno_bins.dat`
       6. `Oil_QTL_tt_pheno.dat`
       7. `Oil_QTL_tt_vcf.dat`
-   Or if using the provided SCC test data and partitions, ensure the following files exist in the `data/gpd_scc` (and your data path and partition paths matches). Only one data partition file will be used (you must specify which one):
+   - Or if using the provided SCC test data and partitions, ensure the following files exist in the `data/gpd_scc` (and your data path and partition paths matches). Only one data partition file will be used (you must specify which one):
       1. `SCC_QTL_ho_pheno.dat`
       2. `SCC_QTL_ho_vcf.dat`
       3. `SCC_QTL_ohe_map.dat`
@@ -61,7 +63,7 @@ _*Please note that bring-your-own-data partition files have not been tested yet.
       7. `SCC_QTL_tt_vcf.dat`
       8. `ppfl_SCC_c0c1_5clients_2025_01_14.npz`
       9. `ppfl_SCC_c4c5_5clients_2025_01_14.npz`
-   2. If using your own data:
+   - If using your own data:
       - Please ensure that all data files are of type `.dat` or `.npy`. It is also expected that the endings of the data files match the provided test data. For example, this testbed assumes the data file endings are:
          1. `_ho_pheno.dat`
          2. `_ho_vcf.dat`
@@ -127,9 +129,9 @@ Regardless of how the parameter values are input, the values will be validated a
 | `num_cpus` | The number of CPUs available to the run | integer | min: 1, max: 100 |
 | `num_gpus` | The number of GPUs available to the run | integer | min: 0, max: 100 |
 | `num_rounds` | The number of rounds of federated learning | integer | min: 1, max: 100 |
-| `min_fit_clients` | The minimum number of clients that must contribute to the federated training rounds | integer | min: 1, max: 100 |
-| `min_available_clients` | The minimum number of clients that must be connected to the server for federated learning to begin | integer | min: 1, max: 100 |
-| `min_evaluate_clients` | The minimum number of clients that must participate in a federated evaluation round for the round to be successful | integer | min: 1, max: 100 |
+| `min_fit_clients` | The minimum number of clients that must contribute to the federated training rounds. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
+| `min_available_clients` | The minimum number of clients that must be connected to the server for federated learning to begin. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
+| `min_evaluate_clients` | The minimum number of clients that must participate in a federated evaluation round for the round to be successful. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
 | `data_partitions_file` | A path to a file that contains the data partitions | string | — |
 | `partitioner_type` | The type of partitioner to use if a data partition file was not provided | string | `"uniform"`, `"linear"`, `"square"`, `"exponential"` |
 | `num_partitions` | The number of data partitions. If this value is less than `min_fit_clients`, `min_available_clients`, or `min_evaluate_clients`, then those values may be lowered accordingly. | integer | min: 1, max: 100 |
@@ -382,8 +384,6 @@ This codebase currently follows the standard Flower simulation pattern:
 
 - One data partition corresponds to one Flower client.
 - One Flower client trains one local model update per federated round.
-- The text currently printed as `Model 0`, `Model 1`, etc. refers to the Flower client/partition id, not multiple models trained inside a single client.
-- For example, seeing `Model 0` through `Model 4` means five clients/partitions are participating in that round, each training one local model update.
 
 ### Parameters that affect how many clients train
 
@@ -404,18 +404,17 @@ This codebase currently follows the standard Flower simulation pattern:
 Current output may look like:
 
 ```
-Model 0 | Epoch 1/100 | ...
-Model 3 | Epoch 1/100 | ...
-Model 1 | Epoch 1/100 | ...
+Client 0 | Epoch 1/100 | ...
+Client 3 | Epoch 1/100 | ...
+Client 1 | Epoch 1/100 | ...
 ```
 
-This does not mean one client is training multiple models. It means multiple client processes are training concurrently, and Ray prints logs as each process emits them. The order is based on scheduling/runtime progress, not client id order.
+It means multiple client processes are training concurrently, and Ray prints logs as each process emits them. The order is based on scheduling/runtime progress, not client id order.
 
 ### Planned cleanup
 
 To reduce confusion in a future non-hotfix change:
 
-- Rename log text from `Model {id}` to `Client {id}` or `Client/Partition {id}`.
 - Clarify `n_models` in the configuration schema, or replace it with a parameter name that reflects current behavior.
 - Document the relationship between partition files, Flower clients, and federated rounds directly in the configuration docs.
 - Keep memory-related changes separate from naming/logging cleanup to avoid expanding the current hotfix scope.
