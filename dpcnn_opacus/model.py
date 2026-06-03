@@ -98,7 +98,7 @@ tol_offset = 0.01  # Small constant to avoid zero tolerance
 
 
 def train_cnn(
-    model_id: int,
+    client_id: int,
     train_loader,
     test_loader,
     epochs,
@@ -168,7 +168,7 @@ def train_cnn(
         losses.append(epoch_loss)
         eps.append(epsilon_spent)
         print(
-            f"Model {model_id} | "
+            f"Client {client_id} | "
             f"Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}, "
             f"Train Acc: {train_accuracy:.2f}, "
             f"Test Acc: {epoch_test_acc:.2f}, "
@@ -218,7 +218,7 @@ def compute_test_mse(
 
 
 def eval_cnn(
-    model_id: int, train_loader, test_loader, model, criterion, tolerance=0.1
+    client_id: int, train_loader, test_loader, model, criterion, tolerance=0.1
 ):
 
     def evaluate(loader):
@@ -302,34 +302,34 @@ def eval_cnn(
         test_preds,
     ) = evaluate(test_loader)
 
-    print(f"\nModel {model_id} | Final Results:")
+    print(f"\nClient {client_id} | Final Results:")
     print(
-        f"Model {model_id} | Train: Accuracy: {train_accuracy:.2f}, "
+        f"Client {client_id} | Train: Accuracy: {train_accuracy:.2f}, "
         f"Loss: {train_loss:.4f}, MAE: {train_mae:.4f}, "
         f"MSE: {train_mse:.4f}, RMSE: {train_rmse:.4f}"
     )
-    print(f"Model {model_id} | R^2 Value is: {train_rr:.4f}")
+    print(f"Client {client_id} | R^2 Value is: {train_rr:.4f}")
     print(
-        f"Model {model_id} | "
+        f"Client {client_id} | "
         f"RMSE for train set is: {train_ss:.4f} & mean is {train_mm:.4f}"
     )
     print(
-        f"Model {model_id} | "
+        f"Client {client_id} | "
         f"This is {train_error_mean:.2f}% of the mean pheno data"
     )
 
     print(
-        f"Model {model_id} | Test: Accuracy: {test_accuracy:.2f}, "
+        f"Client {client_id} | Test: Accuracy: {test_accuracy:.2f}, "
         f"Loss: {test_loss:.4f}, MAE: {test_mae:.4f}, "
         f"MSE: {test_mse:.4f}, RMSE: {test_rmse:.4f}"
     )
-    print(f"Model {model_id} | R^2 Value is: {test_rr:.4f}")
+    print(f"Client {client_id} | R^2 Value is: {test_rr:.4f}")
     print(
-        f"Model {model_id} | "
+        f"Client {client_id} | "
         f"RMSE for test set is: {test_ss:.4f} & mean is {test_mm:.4f}"
     )
     print(
-        f"Model {model_id} | "
+        f"Client {client_id} | "
         f"This is {test_error_mean:.2f}% of the mean pheno data"
     )
 

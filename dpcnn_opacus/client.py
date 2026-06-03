@@ -413,7 +413,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.set_parameters(parameters)
         self.current_round = config.get('server_round', None) - 1
         print(
-            f"Model {self.client_id} | Evaluating model "
+            f"Client {self.client_id} | Evaluating model "
             f"| Round {self.current_round}"
         )
         (
