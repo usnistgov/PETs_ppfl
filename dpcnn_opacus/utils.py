@@ -76,6 +76,33 @@ def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, nu
             )
 
 ###
+#   configure_warning_logging(output_dir)
+#   purpose: Route Python warnings into a warnings.log file under output_dir instead of printing them to the terminal.
+###
+def configure_warning_logging(output_dir):
+    import logging
+    import warnings
+    from pathlib import Path
+
+    #Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    logging.captureWarnings(True)
+
+    warning_logger = logging.getLogger("py.warnings")
+    warning_logger.setLevel(logging.WARNING)
+    warning_logger.propagate = False
+
+    if not any(isinstance(h, logging.FileHandler) for h in warning_logger.handlers):
+        handler = logging.FileHandler(Path(output_dir) / "warnings.log")
+        handler.setLevel(logging.WARNING)
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(process)d %(levelname)s %(message)s"
+        ))
+        warning_logger.addHandler(handler)
+
+    warnings.simplefilter("default")
+
+###
 #   _is_object_schema(sch)
 #   purpose: Return True when the given schema behaves like a JSON object schema, based on type or properties.
 ###

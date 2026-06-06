@@ -23,7 +23,7 @@ from dataset import (
 )
 
 from model import CNNModel, DPCNNModel, XGBoostModel
-from utils import get_device
+from utils import get_device, configure_warning_logging
 from opacus import PrivacyEngine
 from flwr.common import (
     Code,
@@ -182,7 +182,10 @@ class TorchFlowerClient(fl.client.NumPyClient):
         self.output_dir = params.get('output_dir')
         self.data_dir = params.get('data_dir')
         self.seed = params.get('seed')
+        self.print_warning_logs = params.get('print_warning_logs')
         torch.manual_seed(self.seed)
+        if not self.print_warning_logs:
+            configure_warning_logging(self.output_dir)
 
         (
             self.num_data_features,
@@ -357,13 +360,16 @@ class XGBoostFlowerClient(fl.client.Client):
     def __init__(self, context: Context, client_id: int, params: Dict[str, Any]):
         self.client_id = client_id
         self.params = params
-        self.seed = params.get("seed", 42)
-        self.train_method = params.get("train_method", "bagging")
-        self.num_partitions = params.get("num_partitions", 1)
-        self.num_local_round = params.get("epochs", 1)
+        self.seed = params.get("seed")
+        self.train_method = params.get("train_method")
+        self.num_partitions = params.get("num_partitions")
+        self.num_local_round = params.get("epochs")
         self.output_dir = params.get("output_dir")
         self.data_partitions_file = params.get("data_partitions_file")
-        self.test_fraction = params.get("test_fraction", 0.2)
+        self.test_fraction = params.get("test_fraction")
+        self.print_warning_logs = params.get('print_warning_logs')
+        if not self.print_warning_logs:
+            configure_warning_logging(self.output_dir)
 
         (
             self.train_data,
@@ -376,10 +382,10 @@ class XGBoostFlowerClient(fl.client.Client):
             self.data_partitions_file,
             params.get("data_dir"),
             self.num_partitions,
-            params.get("partitions_type", "uniform"),
+            params.get("partitions_type"),
             self.test_fraction,
             self.seed,
-            params.get("batch_divisor", 5),
+            params.get("batch_divisor"),
         )
 
         self.xgb_model = XGBoostModel(
@@ -389,8 +395,8 @@ class XGBoostFlowerClient(fl.client.Client):
                 seed=self.seed,
                 num_partitions=self.num_partitions,
                 train_method=self.train_method,
-                scaled_lr=params.get("scaled_lr", False),
-                base_params=params.get("xgboost_params", {}),
+                scaled_lr=params.get("scaled_lr"),
+                base_params=params.get("xgboost_params"),
             ),
         )
 

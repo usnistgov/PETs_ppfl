@@ -361,7 +361,7 @@ class DPCNNModel(BaseModel):
     def attach_privacy_engine(self, optimizer, train_loader, opacus_params):
         privacy_engine = PrivacyEngine(
             accountant="rdp",
-            secure_mode=opacus_params.get("secure_mode", False),
+            secure_mode=opacus_params.get("secure_mode"),
         )
 
         private_model, private_optimizer, private_train_loader = (
@@ -369,10 +369,10 @@ class DPCNNModel(BaseModel):
                 module=self.model,
                 optimizer=optimizer,
                 data_loader=train_loader,
-                epochs=opacus_params.get("epochs", 1),
-                target_epsilon=opacus_params.get("epsilon", 1.0),
-                target_delta=opacus_params.get("delta", 1e-5),
-                max_grad_norm=opacus_params.get("max_grad_norm", 1.0),
+                epochs=opacus_params.get("epochs"),
+                target_epsilon=opacus_params.get("epsilon"),
+                target_delta=opacus_params.get("delta"),
+                max_grad_norm=opacus_params.get("max_grad_norm"),
             )
         )
 

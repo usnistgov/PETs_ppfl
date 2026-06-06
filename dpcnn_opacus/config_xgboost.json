@@ -19,5 +19,5 @@
   "max_grad_norm":1.0,
   "data_dir":"/home/ubuntu/genomics_ppfl_base/data/gpd_scc",
   "data_partitions_file":"../data/ppfl_SCC_c4c5_5clients_2025_01_14.npz",
-  "output_dir": "reports/gpd_scc_reports"
+  "output_dir": "../reports/gpd_scc_reports"
 }

@@ -929,7 +929,7 @@ def test_check_only_print_order_follows_effective_schema_top_level(tmp_path: Pat
 
     expected_scalar_keys = [
         key for key in expected_top_level_order
-        if key in {"model_type", "num_cpus", "num_gpus", "output_dir", "data_dir"}
+        if key in {"model_type", "num_cpus", "num_gpus", "print_warning_logs", "output_dir", "data_dir"}
     ]
     expected_scalar_keys.append("check_only")
 

@@ -238,11 +238,11 @@ def evaluate_xgboost_metrics(eval_metrics):
 
 
 def create_xgboost_strategy(strategy_params):
-    train_method = strategy_params.get("train_method", "bagging")
+    train_method = strategy_params.get("train_method")
     pool_size = strategy_params["min_available_clients"]
     min_fit_clients = strategy_params["min_fit_clients"]
     min_evaluate_clients = strategy_params["min_evaluate_clients"]
-    centralised_eval = strategy_params.get("centralised_eval", False)
+    centralised_eval = strategy_params.get("centralised_eval")
     tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(
         strategy_params["data_dir"]
     )

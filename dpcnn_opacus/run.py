@@ -12,7 +12,7 @@ from flwr.server import ServerApp, ServerConfig, ServerAppComponents
 from flwr.common import Context
 from datetime import datetime
 
-from utils import get_device, ConfigPipeline
+from utils import get_device, ConfigPipeline, configure_warning_logging
 from report import Report
 from dataset import ensure_npy_feature_label_files
 
@@ -125,6 +125,9 @@ else:
 if not out_dir.exists():
     out_dir.mkdir(parents=True)
 
+if not args.print_warning_logs:
+    configure_warning_logging(out_dir)
+
 # Save these parameters into a json report
 arg_dictionary = vars(args)
 # remove unneeded "_print_schema" field from input parameters report
@@ -175,6 +178,7 @@ client_params = {
     'centralised_eval': centralised_eval,
     'scaled_lr': scaled_lr,
     'xgboost_params': xgboost_params,
+    'print_warning_logs': args.print_warning_logs,
 }
 def client_fn(context: Context):
     """Returns a FlowerClient"""

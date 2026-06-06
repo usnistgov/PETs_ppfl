@@ -13,6 +13,8 @@
     "num_cpus": { "description": "Number of CPUs to use during training", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
     "num_gpus": { "description": "Number of GPUs to use during training", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
 
+    "print_warning_logs": {"description": "Set to True to have warning logs print to the terminal. Set to False to have them directed to a log file in the output directory", "type": "boolean", "default": false},
+
     "output_dir": { "description": "Output directory for reports", "type": "string", "default": "../reports"},
     "data_dir": {"description": "Path to the input data", "type": "string", "default": "../data/Oil_binned5"},
     "model_params" : {"type": "object", "default": {}},
