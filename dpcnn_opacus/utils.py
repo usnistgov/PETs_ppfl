@@ -93,7 +93,7 @@ def configure_warning_logging(output_dir):
     warning_logger.propagate = False
 
     if not any(isinstance(h, logging.FileHandler) for h in warning_logger.handlers):
-        handler = logging.FileHandler(Path(output_dir) / "warnings.log")
+        handler = logging.FileHandler(Path(output_dir) / "PETs-warnings.log")
         handler.setLevel(logging.WARNING)
         handler.setFormatter(logging.Formatter(
             "%(asctime)s %(process)d %(levelname)s %(message)s"
@@ -712,29 +712,19 @@ class ConfigPipeline:
                 raise ValueError(msg.rstrip())
 
             # path checks / postprocessing (same logic you already had)
-            if cfg.get("model_params", {}).get("data_partitions_file", "") not in ("", None):
-                validate_file_path(cfg["model_params"]["data_partitions_file"])
-            #validate_dir_path(cfg["output_dir"])
+            if cfg["data_partitions_file"] not in ("", None):
+                validate_file_path(cfg["data_partitions_file"])
             validate_dir_path(cfg["data_dir"])
 
             # ensure batch_divisor size aligns with data size
             validate_data_size(cfg["data_dir"], cfg["model_params"]["batch_divisor"])
 
             # your equalization logic
-            if cfg["model_params"]["partition_id"] > cfg["model_params"]["num_partitions"]:
+            if cfg["model_params"]["partition_id"] > cfg["num_partitions"]:
                 raise ValueError("partition_id must be <= num_partitions.")
 
-            if cfg.get("federated", {}).get("federated_enabled", False):
-                fed = cfg["federated"]
-                if not (fed["min_available_clients"] == fed["min_evaluate_clients"] == fed["min_fit_clients"]):
-                    print(f"Normalizing min_available_clients, min_evaluate_clients, and min_fit_clients to their minimum value.")
-                    min_val = min(fed["min_available_clients"], fed["min_evaluate_clients"], fed["min_fit_clients"])
-                    fed["min_available_clients"] = min_val
-                    fed["min_evaluate_clients"] = min_val
-                    fed["min_fit_clients"] = min_val
-
-                if fed["min_fit_clients"] > cfg["model_params"]["num_partitions"]:
-                    raise ValueError("min_*_clients must be <= num_partitions.")
+            if cfg["federated"]["federated_enabled"] and not cfg["data_partitions_file"] and cfg["federated"]["num_clients"] > cfg["num_partitions"]:
+                raise ValueError("num_clients must be <= num_partitions.")
 
             if cfg.get("dp", {}).get("dp_enabled", False) and cfg["dp"].get("opacus_secure_mode", False):
                 cfg["dp"]["opacus_secure_mode"] = False

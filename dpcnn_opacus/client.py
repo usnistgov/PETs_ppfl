@@ -342,11 +342,8 @@ class TorchFlowerClient(fl.client.NumPyClient):
         }
         if self.use_dp:
             metadata["epsilon per epoch"] = np.array(self.eps_per_epoch)
-        name = (
-            f"dpcnn{self.epsilon}_opacus_oil_{self.client_id}"
-            if self.use_dp
-            else f"flcnn_{self.client_id}"
-        )
+        model_prefix = "dpcnn" if self.use_dp else "cnn"
+        name = f"{model_prefix}_client_{self.client_id}"
         self.cnn_model.save_model(
             metadata,
             name,

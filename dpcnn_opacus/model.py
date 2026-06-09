@@ -798,7 +798,7 @@ class XGBoostModel(BaseModel):
         )
         self.save_model(
             metadata,
-            f"xgb_{self.model_id}",
+            f"xgboost_client_{self.model_id}",
             global_round,
             output_dir,
         )

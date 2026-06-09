@@ -45,14 +45,14 @@ num_cpus = args.num_cpus
 num_gpus = args.num_gpus
 out_dir = args.output_dir
 data_dir = args.data_dir
+data_partitions_file = args.data_partitions_file
+partitioner_type = args.partitioner_type
+num_partitions = args.num_partitions
+seed = args.seed
 
 #common params
-data_partitions_file = args.model_params["data_partitions_file"]
-partitioner_type = args.model_params["partitioner_type"]
-num_partitions = args.model_params["num_partitions"]
 partition_id = args.model_params["partition_id"]
 client_id = args.model_params["client_id"]
-seed = args.model_params["seed"]
 epochs = args.model_params["epochs"]
 batch_divisor = args.model_params["batch_divisor"]
 test_fraction = args.model_params["test_fraction"]
@@ -64,9 +64,7 @@ train_method = None; centralised_eval = None; scaled_lr = None; xgboost_params=N
 
 #Federated params
 num_rounds = args.federated["num_rounds"]
-min_fit_clients = args.federated["min_fit_clients"]
-min_evaluate_clients = args.federated["min_evaluate_clients"]
-min_available_clients = args.federated["min_available_clients"]
+num_clients = args.federated["num_clients"]
 
 if model_type == "dpcnn":
     learning_rate = args.model_params["learning_rate"]
@@ -191,9 +189,9 @@ def server_fn(context: Context) -> ServerAppComponents:
     strategy = create_strategy(
         {
             "model_type": model_type,
-            'min_fit_clients': min_fit_clients,
-            'min_evaluate_clients': min_evaluate_clients,
-            'min_available_clients': min_available_clients,
+            'min_fit_clients': num_clients,
+            'min_evaluate_clients': num_clients,
+            'min_available_clients': num_clients,
             'num_rounds': num_rounds,
             'accuracy_tolerance': accuracy_tolerance,
             'output_dir': out_dir,

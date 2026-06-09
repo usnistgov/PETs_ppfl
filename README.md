@@ -129,18 +129,15 @@ Regardless of how the parameter values are input, the values will be validated a
 | `num_cpus` | The number of CPUs available to the run | integer | min: 1, max: 100 |
 | `num_gpus` | The number of GPUs available to the run | integer | min: 0, max: 100 |
 | `num_rounds` | The number of rounds of federated learning | integer | min: 1, max: 100 |
-| `min_fit_clients` | The minimum number of clients that must contribute to the federated training rounds. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
-| `min_available_clients` | The minimum number of clients that must be connected to the server for federated learning to begin. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
-| `min_evaluate_clients` | The minimum number of clients that must participate in a federated evaluation round for the round to be successful. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
+| `num_clients` | The number of clients that will be sampled. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
 | `data_partitions_file` | A path to a file that contains the data partitions | string | — |
 | `partitioner_type` | The type of partitioner to use if a data partition file was not provided | string | `"uniform"`, `"linear"`, `"square"`, `"exponential"` |
-| `num_partitions` | The number of data partitions. If this value is less than `min_fit_clients`, `min_available_clients`, or `min_evaluate_clients`, then those values may be lowered accordingly. | integer | min: 1, max: 100 |
+| `num_partitions` | The number of data partitions. If this value is less than `num_clients` then those values may be lowered accordingly. | integer | min: 1, max: 100 |
 | `partition_id` | Partition ID used for the current client | integer | min: 0, max: 100 |
 | `client_id` | Client ID used for the current client | integer | min: 0, max: 100 |
 | `seed` | The seed used to randomize training and testing | integer | min: 1, max: 1000 |
 | `epochs` | The number of model training epochs. An epoch is one full pass through a training dataset. | integer | min: 1, max: 100 |
 | `batch_divisor` | The divisor used to determine the number of batches (`num_batches = dataset_size / batch_divisor`) | integer | min: 1 |
-| `n_models` | The number of models to train. This can be useful if simulating federated learning locally. | integer | min: 1, max: 100 |
 | `test_fraction` | The fraction of the dataset to set aside for testing | number | exclusive min: 0, exclusive max: 1 |
 | `learning_rate` | Sets the model’s learning rate. This defines how much a model changes at each iteration. | number | exclusive min: 0, exclusive max: 1 |
 | `weight_decay` | Sets the model’s weight decay. This is a regularization method that penalizes high weights. | number | exclusive min: 0, exclusive max: 0.1 |
@@ -157,6 +154,7 @@ Regardless of how the parameter values are input, the values will be validated a
 | `train_method` | The XGBoost training method | string | `"bagging"`, `"cyclic"` |
 | `centralised_eval` | Whether centralized evaluation is enabled for XGBoost | boolean | — |
 | `scaled_lr` | Whether scaled learning rate behavior is enabled for XGBoost | boolean | — |
+| `print_warning_logs` | Set to True to have warning logs print to the terminal. Set to False to have them directed to a log file in the output directory | boolean | - |
 
 ### Parameter settings
 To approximate centralized training from `run.py`, you should be able to use the following parameter values. Please note that the output may still look like federated learning training rounds, even though it is only one client, one round, and one data partition:
@@ -167,10 +165,7 @@ To approximate centralized training from `run.py`, you should be able to use the
 | `num_partitions` | `1` |
 | `partition_id` | `0` |
 | `client_id` | `0` |
-| `min_fit_clients` | `1` |
-| `min_available_clients` | `1` |
-| `min_evaluate_clients` | `1` |
-| `n_models` | `1` |
+| `num_clients` | `1` |
 | `num_rounds` | `1` |
 | `num_cpus` | `4` |
 | `seed` | `673` |
@@ -184,6 +179,7 @@ To approximate centralized training from `run.py`, you should be able to use the
 | `epsilon` | `0.2` |
 | `delta` | `1e-05` |
 | `max_grad_norm` | `1.0` |
+| `print_warning_logs` | `false` |
 
 Example `config.json`:
 
@@ -193,10 +189,7 @@ Example `config.json`:
    "num_partitions": 1,
    "partition_id": 0,
    "client_id": 0,
-   "min_fit_clients": 1,
-   "min_available_clients": 1,
-   "min_evaluate_clients": 1,
-   "n_models": 1,
+   "num_clients": 1,
    "num_rounds": 1,
    "num_cpus": 4,
    "seed": 673 ,
@@ -209,7 +202,8 @@ Example `config.json`:
    "opacus_secure_mode": false, 
    "epsilon": 0.2, 
    "delta": 1e-05, 
-   "max_grad_norm":1.0
+   "max_grad_norm":1.0,
+   "print_warning_logs": false
 }
 ```
 
@@ -354,7 +348,7 @@ pytest.param(
 pytest.param(
     Case(
         "36. client_id uniqueness in local sim (if enforced)",
-        _base_with(n_models=2, client_id=1),
+        _base_with(client_id=1),
         cli_args=["--client_id", "1"],
         allowed_exit_codes={0},
     ),
@@ -389,8 +383,6 @@ This codebase currently follows the standard Flower simulation pattern:
 
 - `model_params.num_partitions` controls how many simulated client partitions are available when random partitioning is used.
 - When `model_params.data_partitions_file` is provided, the code reads the number of `client_*` entries in that file and uses those as the available client partitions.
-- `federated.min_fit_clients`, `federated.min_evaluate_clients`, and `federated.min_available_clients` control how many clients Flower requires for fit/evaluate rounds.
-- `federated.n_models` exists in the schema, but the current implementation does not train multiple inner models per client. Going forward, this should either be renamed/documented as a client-count control or wired explicitly if repeated local models are desired.
 
 ### Parameters that affect concurrency
 
@@ -415,7 +407,6 @@ It means multiple client processes are training concurrently, and Ray prints log
 
 To reduce confusion in a future non-hotfix change:
 
-- Clarify `n_models` in the configuration schema, or replace it with a parameter name that reflects current behavior.
 - Document the relationship between partition files, Flower clients, and federated rounds directly in the configuration docs.
 - Keep memory-related changes separate from naming/logging cleanup to avoid expanding the current hotfix scope.
 

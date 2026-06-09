@@ -12,11 +12,15 @@
 
     "num_cpus": { "description": "Number of CPUs to use during training", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
     "num_gpus": { "description": "Number of GPUs to use during training", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
+    "seed": { "description": "Seed used to randomize training/testing", "type": "integer", "minimum": 1, "maximum": 1000, "default": 42},
 
     "print_warning_logs": {"description": "Set to True to have warning logs print to the terminal. Set to False to have them directed to a log file in the output directory", "type": "boolean", "default": false},
 
     "output_dir": { "description": "Output directory for reports", "type": "string", "default": "../reports"},
     "data_dir": {"description": "Path to the input data", "type": "string", "default": "../data/Oil_binned5"},
+    "data_partitions_file": { "description": "Path to a file that contains the data partitions", "type": "string", "default": ""},
+    "partitioner_type": { "description": "Partitioner type (optional)", "type": "string", "enum": ["uniform", "linear", "square", "exponential"], "default": "uniform"},
+    "num_partitions": { "description": "Number of data partitions", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
     "model_params" : {"type": "object", "default": {}},
 
     "federated": {
@@ -24,10 +28,7 @@
       "properties": {
         "federated_enabled": { "type": "boolean", "default": true },
         "num_rounds": { "description": "Number of federated learning rounds", "type": "integer", "minimum": 1, "maximum": 100, "default": 3},
-        "min_fit_clients": { "description": "Min clients that must contribute to training", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
-        "n_models": { "description": "The number of models to train. This can be useful if simulating federated learning locally.", "type": "integer", "minimum": 1, "maximum": 100, "default": 1},
-        "min_available_clients": { "description": "Min clients connected for FL to begin", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
-        "min_evaluate_clients": { "description": "Min clients for a successful eval round", "type": "integer", "minimum": 1, "maximum": 100, "default": 2}
+        "num_clients": { "description": "The number of clients used in federated learning", "type": "integer", "minimum": 1, "maximum": 100, "default": 2}
       }
     },
 
@@ -57,13 +58,8 @@
                 "additionalProperties": false,
                 "properties":
                 {
-                  "data_partitions_file": { "description": "Path to a file that contains the data partitions", "type": "string", "default": ""},
-                  "partitioner_type": { "description": "Partitioner type (optional)", "type": "string", "enum": ["uniform", "linear", "square", "exponential"], "default": "uniform"},
-                  "num_partitions": { "description": "Number of data partitions", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
                   "partition_id": { "description": "Partition ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100 , "default": 0},
-                  
                   "client_id": { "description": "Client ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
-                  "seed": { "description": "Seed used to randomize training/testing", "type": "integer", "minimum": 1, "maximum": 1000, "default": 42},
 
                   "epochs": { "description": "Number of training epochs", "type": "integer", "minimum": 1, "maximum": 100, "default": 20},
                   "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 1, "default": 5},
@@ -84,13 +80,8 @@
                 "additionalProperties": false,
                 "properties":
                 {
-                  "data_partitions_file": { "description": "Path to a file that contains the data partitions", "type": "string", "default": ""},
-                  "partitioner_type": { "description": "Partitioner type (optional)", "type": "string", "enum": ["uniform", "linear", "square", "exponential"], "default": "uniform"},
-                  "num_partitions": { "description": "Number of data partitions", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
                   "partition_id": { "description": "Partition ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100 , "default": 0},
-                  
                   "client_id": { "description": "Client ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
-                  "seed": { "description": "Seed used to randomize training/testing", "type": "integer", "minimum": 1, "maximum": 1000, "default": 42},
 
                   "epochs": { "description": "Number of training epochs", "type": "integer", "minimum": 1, "maximum": 100, "default": 20},
                   "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 1, "default": 5},
@@ -112,13 +103,8 @@
                 "additionalProperties": false,
                 "properties":
                 {
-                  "data_partitions_file": { "description": "Path to a file that contains the data partitions", "type": "string", "default": ""},
-                  "partitioner_type": { "description": "Partitioner type (optional)", "type": "string", "enum": ["uniform", "linear", "square", "exponential"], "default": "uniform"},
-                  "num_partitions": { "description": "Number of data partitions", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
                   "partition_id": { "description": "Partition ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100 , "default": 0},
-                  
                   "client_id": { "description": "Client ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
-                  "seed": { "description": "Seed used to randomize training/testing", "type": "integer", "minimum": 1, "maximum": 1000, "default": 42},
 
                   "epochs": { "description": "Number of training epochs", "type": "integer", "minimum": 1, "maximum": 100, "default": 20},
                   "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 1, "default": 5},

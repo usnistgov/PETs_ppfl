@@ -3,10 +3,7 @@
   "num_partitions": 1,
   "partition_id": 0,
   "client_id": 0,
-  "min_fit_clients": 1,
-  "min_available_clients": 1,
-  "min_evaluate_clients": 1,
-  "n_models": 1,
+  "num_clients": 1,
   "num_rounds": 1,
   "num_cpus": 4,
   "seed": 673 ,
@@ -20,7 +17,7 @@
   "epsilon": 0.2, 
   "delta": 1e-05, 
   "max_grad_norm":1.0,
-  "data_dir":"/home/ubuntu/genomics_ppfl_base/data/gpd_scc",
-  "data_partitions_file":"../data/ppfl_SCC_c4c5_5clients_2025_01_14.npz",
-  "output_dir": "../reports/gpd_scc_reports"
+  "data_dir":"/home/ubuntu/genomics_ppfl_base/data/genetic_plant_dat",
+  "data_partitions_file":"",
+  "output_dir": "../reports/genetic_plant_dat"
 }
