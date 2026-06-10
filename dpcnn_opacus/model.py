@@ -146,9 +146,9 @@ class CNNModel(BaseModel):
                 total_mse += torch.sum((outputs - labels.float()) ** 2).item()
             
             # compute training accuracy per epoch
-            train_accuracy = (pred_correct_train / total_train)
-            mae = total_mae / total_train
-            mse = total_mse / total_train
+            train_accuracy = pred_correct_train / total_train if total_train else 0
+            mae = total_mae / total_train if total_train else 0
+            mse = total_mse / total_train if total_train else 0
             rmse = mse**0.5
 
             self.model.eval()
@@ -205,15 +205,15 @@ class CNNModel(BaseModel):
                     all_labels.extend(labels.cpu().numpy())
 
             # Compute training accuracy per epoch
-            accuracy = pred_correct_test / total
-            average_loss = total_loss / len(loader)
-            mae = total_mae / total
-            mse = total_mse / total
+            accuracy = pred_correct_test / total if total else 0
+            average_loss = total_loss / len(loader) if len(loader) else 0
+            mae = total_mae / total if total else 0
+            mse = total_mse / total if total else 0
             rmse = mse**0.5
-            ss = sqrt(mean_squared_error(all_labels, all_preds))
-            rr = r2_score(all_labels, all_preds)
+            ss = sqrt(mean_squared_error(all_labels, all_preds)) if all_labels else 0
+            rr = r2_score(all_labels, all_preds) if all_labels else 0
             mm = np.mean(all_labels)
-            error_mean = (ss / mm) * 100
+            error_mean = ((ss / mm) * 100) if mm else 0
 
             return accuracy, average_loss, mae, mse, rmse, ss, rr, mm, error_mean, all_preds
 
@@ -291,9 +291,9 @@ class CNNModel(BaseModel):
                 all_labels.extend(labels.cpu().numpy())
 
         # Compute testing accuracy per epoch
-        accuracy = pred_correct_test / total
-        average_loss = total_loss / len(test_loader)
-        mse = total_mse / total
+        accuracy = pred_correct_test / total if total else 0
+        average_loss = total_loss / len(test_loader) if len(test_loader) else 0
+        mse = total_mse / total if total else 0
         return mse, accuracy, average_loss
     
     def save_model(self, metadata, name, round_number=None, output_dir=None):
@@ -428,9 +428,9 @@ class DPCNNModel(BaseModel):
                 total_mse += torch.sum((outputs - labels.float()) ** 2).item()
 
             # Compute training accuracy per epoch
-            train_accuracy = pred_correct_train / total_train
-            mae = total_mae / total_train
-            mse = total_mse / total_train
+            train_accuracy = pred_correct_train / total_train if total_train else 0
+            mae = total_mae / total_train if total_train else 0
+            mse = total_mse / total_train if total_train else 0
             rmse = mse**0.5
 
             # Compute test MSE per epoch
@@ -494,15 +494,15 @@ class DPCNNModel(BaseModel):
                     all_labels.extend(labels.cpu().numpy())
 
             # Compute training accuracy per epoch
-            accuracy = pred_correct_test / total
-            average_loss = total_loss / len(loader)
-            mae = total_mae / total
-            mse = total_mse / total
+            accuracy = pred_correct_test / total if total else 0
+            average_loss = total_loss / len(loader) if len(loader) else 0
+            mae = total_mae / total if total else 0
+            mse = total_mse / total if total else 0
             rmse = mse**0.5
-            ss = sqrt(mean_squared_error(all_labels, all_preds))
-            rr = r2_score(all_labels, all_preds)
+            ss = sqrt(mean_squared_error(all_labels, all_preds)) if all_labels else 0
+            rr = r2_score(all_labels, all_preds) if all_labels else 0
             mm = np.mean(all_labels)
-            error_mean = (ss / mm) * 100
+            error_mean = ((ss / mm) * 100) if mm else 0
 
             return accuracy, average_loss, mae, mse, rmse, ss, rr, mm, error_mean, all_preds
 
@@ -580,9 +580,9 @@ class DPCNNModel(BaseModel):
                 all_labels.extend(labels.cpu().numpy())
 
         # Compute testing accuracy per epoch
-        accuracy = pred_correct_test / total
-        average_loss = total_loss / len(test_loader)
-        mse = total_mse / total
+        accuracy = pred_correct_test / total if total else 0
+        average_loss = total_loss / len(test_loader) if len(test_loader) else 0
+        mse = total_mse / total if total else 0
         return mse, accuracy, average_loss
     
     def save_model(self, metadata, name, round_number=None, output_dir=None):
@@ -636,7 +636,7 @@ class XGBoostModel(BaseModel):
         params["random_state"] = seed
 
         if train_method == "bagging" and scaled_lr:
-            params["eta"] = params["eta"] / num_partitions
+            params["eta"] = params["eta"] / num_partitions if num_partitions else 0
 
         return params
 
