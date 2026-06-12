@@ -93,7 +93,7 @@ def configure_warning_logging(output_dir):
     warning_logger.propagate = False
 
     if not any(isinstance(h, logging.FileHandler) for h in warning_logger.handlers):
-        handler = logging.FileHandler(Path(output_dir) / "PETs-warnings.log")
+        handler = logging.FileHandler(Path(output_dir) / "warnings.log")
         handler.setLevel(logging.WARNING)
         handler.setFormatter(logging.Formatter(
             "%(asctime)s %(process)d %(levelname)s %(message)s"
@@ -200,6 +200,48 @@ def _build_schema_path_index(schema: Dict[str, Any]):
             by_name[name] = next(iter(paths))
 
     return by_name, by_dot
+
+###
+#   _model_param_keys_by_model_type(schema)
+#   purpose: Collect the model_params keys declared for each model_type branch.
+###
+def _model_param_keys_by_model_type(schema: Dict[str, Any]) -> Dict[str, Set[str]]:
+    keys_by_model: Dict[str, Set[str]] = {}
+
+    for sub in schema.get("allOf", []) or []:
+        for branch in sub.get("oneOf", []) or []:
+            props = branch.get("properties", {})
+            model_type = props.get("model_type", {}).get("const")
+            model_params = props.get("model_params", {})
+            param_props = model_params.get("properties", {})
+            if isinstance(model_type, str) and isinstance(param_props, dict):
+                keys_by_model[model_type] = set(param_props.keys())
+
+    return keys_by_model
+
+###
+#   _prune_inactive_model_params(cfg, schema)
+#   purpose: Drop known model_params that do not apply to the selected model_type.
+###
+def _prune_inactive_model_params(cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+    model_type = cfg.get("model_type")
+    model_params = cfg.get("model_params")
+    if not isinstance(model_type, str) or not isinstance(model_params, dict):
+        return cfg
+
+    keys_by_model = _model_param_keys_by_model_type(schema)
+    active_keys = keys_by_model.get(model_type)
+    if active_keys is None:
+        return cfg
+
+    all_known_keys = set().union(*keys_by_model.values()) if keys_by_model else set()
+    pruned_params = {}
+    for key, value in model_params.items():
+        if key in active_keys or key not in all_known_keys:
+            pruned_params[key] = value
+
+    cfg["model_params"] = pruned_params
+    return cfg
 
 ###
 #   _flatten_config_items(data, prefix=())
@@ -693,6 +735,7 @@ class ConfigPipeline:
             # layer + apply schema defaults
             cfg = _to_layered_config(raw_cfg, schema)
             cfg = self._apply_cli_overrides(cfg, args)
+            cfg = _prune_inactive_model_params(cfg, schema)
             cfg = _sync_enabled_flags(cfg, schema)
             cfg = apply_defaults(schema=schema, instance=cfg)
 
@@ -712,19 +755,29 @@ class ConfigPipeline:
                 raise ValueError(msg.rstrip())
 
             # path checks / postprocessing (same logic you already had)
-            if cfg["data_partitions_file"] not in ("", None):
-                validate_file_path(cfg["data_partitions_file"])
+            if cfg.get("model_params", {}).get("data_partitions_file", "") not in ("", None):
+                validate_file_path(cfg["model_params"]["data_partitions_file"])
+            #validate_dir_path(cfg["output_dir"])
             validate_dir_path(cfg["data_dir"])
 
             # ensure batch_divisor size aligns with data size
             validate_data_size(cfg["data_dir"], cfg["model_params"]["batch_divisor"])
 
             # your equalization logic
-            if cfg["model_params"]["partition_id"] > cfg["num_partitions"]:
+            if cfg["model_params"]["partition_id"] > cfg["model_params"]["num_partitions"]:
                 raise ValueError("partition_id must be <= num_partitions.")
 
-            if cfg["federated"]["federated_enabled"] and not cfg["data_partitions_file"] and cfg["federated"]["num_clients"] > cfg["num_partitions"]:
-                raise ValueError("num_clients must be <= num_partitions.")
+            if cfg.get("federated", {}).get("federated_enabled", False):
+                fed = cfg["federated"]
+                if not (fed["min_available_clients"] == fed["min_evaluate_clients"] == fed["min_fit_clients"]):
+                    print(f"Normalizing min_available_clients, min_evaluate_clients, and min_fit_clients to their minimum value.")
+                    min_val = min(fed["min_available_clients"], fed["min_evaluate_clients"], fed["min_fit_clients"])
+                    fed["min_available_clients"] = min_val
+                    fed["min_evaluate_clients"] = min_val
+                    fed["min_fit_clients"] = min_val
+
+                if fed["min_fit_clients"] > cfg["model_params"]["num_partitions"]:
+                    raise ValueError("min_*_clients must be <= num_partitions.")
 
             if cfg.get("dp", {}).get("dp_enabled", False) and cfg["dp"].get("opacus_secure_mode", False):
                 cfg["dp"]["opacus_secure_mode"] = False

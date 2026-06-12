@@ -832,12 +832,11 @@ CASES: List[Any] = [
     ),
     pytest.param(
         Case(
-            "[NEW] 65. Branch-specific CLI arg is accepted by parser but rejected by effective schema for dpcnn",
+            "[NEW] 65. Branch-specific CLI arg for another model is ignored for dpcnn",
             config=_base_with(model_type="dpcnn"),
             cli_args=["--train_method", "cyclic"],
-            allowed_exit_codes={1},
-            stdout_must_match=[r"train_method"],
-            stdout_must_not_match=[r"Unknown parameter name\(s\) in CLI", r"unrecognized|invalid option|no such option"],
+            allowed_exit_codes={0},
+            stdout_must_not_match=[r"train_method", r"Unknown parameter", r"unrecognized|invalid option|no such option"],
         ),
         id="t65",
     ),
@@ -860,6 +859,15 @@ CASES: List[Any] = [
             stdout_must_not_match=[r"argument --model_type", r"invalid choice", r"not valid under any of the given schemas"],
         ),
         id="t67",
+    ),
+    pytest.param(
+        Case(
+            "[NEW] 68. Branch-specific config key for another model is ignored for cnn",
+            config=_cnn_base_with(eta=0.1),
+            allowed_exit_codes={0},
+            stdout_must_not_match=[r"\beta\b", r"Unknown parameter"],
+        ),
+        id="t68",
     ),
 ]
 
