@@ -78,6 +78,7 @@ def get_parameters(schema: dict, batch_experimentation: dict) -> dict:
 
     Returns:
         Dictionary containing:
+            - model_chpoce: selected model type
             - parameter_choice: selected parameter name
             - raw_parameters: raw values entered by the user or generated using the user inputs
             - valid_parameters: subset of values validated successfully
@@ -160,7 +161,7 @@ def get_parameters(schema: dict, batch_experimentation: dict) -> dict:
                 sys.exit(1)
 
             # Validate the start/end bounds before generating the full range
-            valid_range_values = validate_parameters(parameter_choice, [start, end])
+            valid_range_values = validate_parameters(model_choice, parameter_choice, [start, end])
             if valid_range_values == [start, end]:
                 current = start
                 while current <= end:
@@ -186,9 +187,10 @@ def get_parameters(schema: dict, batch_experimentation: dict) -> dict:
         sys.exit(1)
 
     print("\n Validating parameter values...")
-    valid_parameters = validate_parameters(parameter_choice, parameters)
+    valid_parameters = validate_parameters(model_choice, parameter_choice, parameters)
 
     return_json = {
+        "model_choice": model_choice,
         "parameter_choice": parameter_choice,
         "raw_parameters": parameters,
         "valid_parameters": valid_parameters,
@@ -197,10 +199,11 @@ def get_parameters(schema: dict, batch_experimentation: dict) -> dict:
     return return_json
 
 
-def validate_parameters(parameter_choice: str, parameters: list) -> list:
+def validate_parameters(model_choice: str, parameter_choice: str, parameters: list) -> list:
     """ Validate candidate parameter values using run.py in check_only mode
 
     Args:
+        model_choice: name of the model being tested
         parameter_choice: name of the parameter being tested
         parameters: candidate values to validate
 
@@ -208,7 +211,7 @@ def validate_parameters(parameter_choice: str, parameters: list) -> list:
         List of valid parameters
     """
     # Validate the default configuration without any CLI override
-    result = subprocess.run(["python3", "run.py", "--check_only"], capture_output=True, text=True, check=True)
+    result = subprocess.run(["python3", "run.py", f"--model_type={model_choice}", "--check_only"], capture_output=True, text=True, check=True)
     if result.returncode != 0:
         print(
             " Unexpected error occurred during validation of your configuration file. Please check your configuration file and try again. Aborting."
@@ -220,7 +223,7 @@ def validate_parameters(parameter_choice: str, parameters: list) -> list:
     for parameter in parameters:
         try:
             result = subprocess.run(
-                ["python3", "run.py", f"--{parameter_choice}={parameter}", "--check_only"],
+                ["python3", "run.py", f"--model_type={model_choice}", f"--{parameter_choice}={parameter}", "--check_only"],
                 capture_output=True,
                 text=True,
                 check=True
@@ -244,11 +247,12 @@ def validate_parameters(parameter_choice: str, parameters: list) -> list:
     return valid_parameters
 
 
-def run_experiments(parameter_choice: str, parameters: list) -> None:
+def run_experiments(model_choice: str, parameter_choice: str, parameters: list) -> None:
     """ Executes run.py for each validated parameter
 
     Args:
-        parameter_choice: parameter being swept
+        model_choice: name of the model being run
+        parameter_choice: name of the parameter being swept
         parameters: validated values
     """
     print("\n Starting experiments...\n")
@@ -258,7 +262,7 @@ def run_experiments(parameter_choice: str, parameters: list) -> None:
         tqdm.write(f" Running {parameter_choice} = {value}")
 
         try:
-            subprocess.run(["python3", "run.py", f"--{parameter_choice}={value}"])
+            subprocess.run(["python3", "run.py", f"--model_type={model_choice}", f"--{parameter_choice}={value}"])
             tqdm.write(f" Finished {parameter_choice} = {value}")
         except subprocess.CalledProcessError as e:
             tqdm.write(f" Experiment failed for {parameter_choice} = {value}")
@@ -288,7 +292,7 @@ def main() -> None:
         print("\n Aborted.")
         sys.exit(0)
 
-    run_experiments(parameters["parameter_choice"], parameters["valid_parameters"])
+    run_experiments(parameters["model_choice"], parameters["parameter_choice"], parameters["valid_parameters"])
     print("\n All experiments completed.")
 
 
