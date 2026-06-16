@@ -93,7 +93,7 @@ def configure_warning_logging(output_dir):
     warning_logger.propagate = False
 
     if not any(isinstance(h, logging.FileHandler) for h in warning_logger.handlers):
-        handler = logging.FileHandler(Path(output_dir) / "warnings.log")
+        handler = logging.FileHandler(Path(output_dir) / "PETs_warnings.log")
         handler.setLevel(logging.WARNING)
         handler.setFormatter(logging.Formatter(
             "%(asctime)s %(process)d %(levelname)s %(message)s"
@@ -224,6 +224,11 @@ def _model_param_keys_by_model_type(schema: Dict[str, Any]) -> Dict[str, Set[str
 #   purpose: Drop known model_params that do not apply to the selected model_type.
 ###
 def _prune_inactive_model_params(cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+    if cfg.get("problem_type") != "classification":
+        cfg.pop("class_labels", None)
+    if cfg.get("problem_type") != "regression":
+        cfg.pop("accuracy_tolerance", None)
+
     model_type = cfg.get("model_type")
     model_params = cfg.get("model_params")
     if not isinstance(model_type, str) or not isinstance(model_params, dict):
@@ -735,9 +740,9 @@ class ConfigPipeline:
             # layer + apply schema defaults
             cfg = _to_layered_config(raw_cfg, schema)
             cfg = self._apply_cli_overrides(cfg, args)
-            cfg = _prune_inactive_model_params(cfg, schema)
             cfg = _sync_enabled_flags(cfg, schema)
             cfg = apply_defaults(schema=schema, instance=cfg)
+            cfg = _prune_inactive_model_params(cfg, schema)
 
             validation_cfg = _validation_instance(cfg)
             effective_schema = _effective_schema(schema, validation_cfg)
@@ -764,20 +769,12 @@ class ConfigPipeline:
             validate_data_size(cfg["data_dir"], cfg["model_params"]["batch_divisor"])
 
             # your equalization logic
-            if cfg["model_params"]["partition_id"] > cfg["model_params"]["num_partitions"]:
+            if cfg["model_params"]["partition_id"] > cfg["num_partitions"]:
                 raise ValueError("partition_id must be <= num_partitions.")
 
             if cfg.get("federated", {}).get("federated_enabled", False):
-                fed = cfg["federated"]
-                if not (fed["min_available_clients"] == fed["min_evaluate_clients"] == fed["min_fit_clients"]):
-                    print(f"Normalizing min_available_clients, min_evaluate_clients, and min_fit_clients to their minimum value.")
-                    min_val = min(fed["min_available_clients"], fed["min_evaluate_clients"], fed["min_fit_clients"])
-                    fed["min_available_clients"] = min_val
-                    fed["min_evaluate_clients"] = min_val
-                    fed["min_fit_clients"] = min_val
-
-                if fed["min_fit_clients"] > cfg["model_params"]["num_partitions"]:
-                    raise ValueError("min_*_clients must be <= num_partitions.")
+                if cfg["federated"]["num_clients"] > cfg["num_partitions"]:
+                    raise ValueError("num_clients must be <= num_partitions.")
 
             if cfg.get("dp", {}).get("dp_enabled", False) and cfg["dp"].get("opacus_secure_mode", False):
                 cfg["dp"]["opacus_secure_mode"] = False

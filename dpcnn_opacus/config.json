@@ -17,7 +17,9 @@
   "epsilon": 0.2, 
   "delta": 1e-05, 
   "max_grad_norm":1.0,
-  "data_dir":"/home/ubuntu/genomics_ppfl_base/data/genetic_plant_dat",
-  "data_partitions_file":"",
-  "output_dir": "../reports/genetic_plant_dat"
+  "problem_type": "classification",
+  "class_labels": [0.0, 1.0, 2.0, 3.0],
+  "data_dir":"/home/ubuntu/genomics_ppfl_base/data/gpd_scc",
+  "data_partitions_file":"/home/ubuntu/genomics_ppfl_base/data/gpd_scc/ppfl_SCC_c0c1_5clients_2025_01_14.npz",
+  "output_dir": "../reports/testing_reg_and_class"
 }

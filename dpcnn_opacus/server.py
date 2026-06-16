@@ -29,6 +29,9 @@ def get_evaluate_fn(
     test_loader: DataLoader,
     output_dir: str,
     model_type: str,
+    problem_type: str = "regression",
+    num_classes: int = 1,
+    accuracy_tolerance: float = 0.1,
 ):
     """Return a function that can be called to do global evaluation."""
 
@@ -42,24 +45,27 @@ def get_evaluate_fn(
 
         model_class = DPCNNModel if model_type == "dpcnn" else CNNModel
         global_model = model_class(model_id="global", output_dir=output_dir)
-        global_model.build_model(num_data_features)
+        output_dim = num_classes if problem_type == "classification" else 1
+        global_model.build_model(num_data_features, output_dim=output_dim)
         global_model.set_parameters(parameters)
 
-        criterion = nn.MSELoss()
+        criterion = (
+            nn.CrossEntropyLoss()
+            if problem_type == "classification"
+            else nn.MSELoss()
+        )
 
         (
-            _train_accuracy,
-            test_accuracy,
-            _train_loss,
-            test_loss,
-            _train_mse,
             test_mse,
-            _train_preds,
-            _test_preds,
-        ) = global_model.evaluate(
-            test_loader,
+            test_accuracy,
+            test_loss,
+            _test_class_metrics,
+        ) = global_model.compute_test_metrics(
             test_loader,
             criterion,
+            "cpu",
+            problem_type=problem_type,
+            accuracy_tolerance=accuracy_tolerance,
         )
 
         loss_rounds.append(float(test_loss))
@@ -130,6 +136,7 @@ def evaluate_and_save_xgboost_global(
     test_data: DMatrix,
     output_dir: str,
     xgboost_params: Dict,
+    problem_type: str = "regression",
 ):
     """Evaluate and save the aggregated XGBoost global model."""
     if parameters is None or not parameters.tensors:
@@ -140,9 +147,17 @@ def evaluate_and_save_xgboost_global(
 
     labels = test_data.get_label()
     predictions = bst.predict(test_data)
-    rounded_predictions = np.rint(predictions)
-    accuracy = accuracy_score(labels, rounded_predictions)
-    mse = mean_squared_error(labels, predictions)
+    if problem_type == "classification":
+        if predictions.ndim == 2:
+            predicted_labels = np.argmax(predictions, axis=1)
+        else:
+            predicted_labels = np.rint(predictions)
+        accuracy = accuracy_score(labels, predicted_labels)
+        mse = 0.0
+    else:
+        rounded_predictions = np.rint(predictions)
+        accuracy = accuracy_score(labels, rounded_predictions)
+        mse = mean_squared_error(labels, predictions)
 
     loss_rounds.append(float(mse))
     accuracy_rounds.append(float(accuracy))
@@ -248,12 +263,18 @@ def create_xgboost_strategy(strategy_params):
     )
     test_features = np.concatenate([tt_vcf, ho_vcf])
     test_labels = np.concatenate([tt_pheno, ho_pheno]).reshape(-1)
+    if strategy_params.get("problem_type") == "classification":
+        label_to_index = {
+            label: i for i, label in enumerate(strategy_params.get("class_labels"))
+        }
+        test_labels = np.array([label_to_index[label] for label in test_labels])
     test_data = DMatrix(data=test_features, label=test_labels)
     global_output_config = {
         "num_rounds": strategy_params["num_rounds"],
         "test_data": test_data,
         "output_dir": strategy_params["output_dir"],
         "xgboost_params": strategy_params.get("xgboost_params") or {},
+        "problem_type": strategy_params.get("problem_type", "regression"),
     }
 
     if train_method == "bagging":
@@ -291,7 +312,21 @@ def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
     tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(strategy_params['data_dir'])
     num_data_features = tt_vcf.shape[1]
     all_indices = np.arange(len(tt_vcf) + len(ho_vcf))
-    test_dataset = IndexedArrayDataset(tt_vcf, tt_pheno, ho_vcf, ho_pheno, all_indices)
+    problem_type = strategy_params.get("problem_type", "regression")
+    num_classes = strategy_params.get("num_classes", 1)
+    label_to_index = (
+        {label: i for i, label in enumerate(strategy_params.get("class_labels"))}
+        if problem_type == "classification"
+        else None
+    )
+    test_dataset = IndexedArrayDataset(
+        tt_vcf,
+        tt_pheno,
+        ho_vcf,
+        ho_pheno,
+        all_indices,
+        label_to_index,
+    )
     total_rows = len(tt_vcf) + len(ho_vcf)
     batch_size = max(1, total_rows // strategy_params['batch_divisor'])
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
@@ -300,8 +335,12 @@ def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
     model_class = DPCNNModel if model_type == "dpcnn" else CNNModel
 
     initial_model = model_class(model_id="initial", output_dir=strategy_params["output_dir"])
-    initial_model.build_model(num_data_features)
-    params = initial_model.get_parameters()
+    output_dim = num_classes if problem_type == "classification" else 1
+    initial_model.build_model(num_data_features, output_dim=output_dim)
+    params = initial_model.get_parameters(None)
+    accuracy_tolerance = strategy_params.get("accuracy_tolerance")
+    if accuracy_tolerance is None:
+        accuracy_tolerance = 0.1
 
     strategy = fl.server.strategy.FedAvg(
     initial_parameters=ndarrays_to_parameters(params),
@@ -311,6 +350,9 @@ def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
         test_loader,
         strategy_params['output_dir'],
         model_type,
+        problem_type,
+        num_classes,
+        accuracy_tolerance,
     ),
     evaluate_metrics_aggregation_fn=weighted_average,
     min_fit_clients=strategy_params['min_fit_clients'],

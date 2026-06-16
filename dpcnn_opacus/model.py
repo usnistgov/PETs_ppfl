@@ -6,11 +6,17 @@ from opacus import PrivacyEngine
 import numpy as np
 from pathlib import Path
 import torch.nn.functional as F
-from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, mean_absolute_error
-from math import sqrt
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    mean_absolute_error,
+    mean_squared_error,
+    precision_score,
+    r2_score,
+    recall_score,
+)
 import xgboost as xgb
 from datetime import datetime
-import json
 
 ####################################################################################################
 #                                                                                                  #
@@ -19,35 +25,61 @@ import json
 ####################################################################################################
 
 class BaseModel:
-    def __init__(self, model_id=None, output_dir=None):
+    def __init__(self, model_id, output_dir):
         self.model_id = model_id
         self.output_dir = output_dir
         self.model = None
 
-    def output_name(self, name, round_number=None):
+    def output_name(self, name, round_number):
         return f"{name}_round_{round_number}" if round_number is not None else name
 
-    def output_path(self, filename, output_dir=None):
+    def output_path(self, filename, output_dir):
         out_dir = Path(output_dir or self.output_dir or Path(__file__).parent).absolute()
         out_dir.mkdir(parents=True, exist_ok=True)
         return out_dir / filename
 
-    def save_metadata(self, metadata, name, round_number=None, output_dir=None):
+    def save_metadata(self, metadata, name, round_number, output_dir):
         out_name = self.output_name(name, round_number)
         metadata_path = self.output_path(f"{out_name}_meta.npz", output_dir)
         np.savez(metadata_path, **metadata, allow_pickle=True)
 
     
-    def save_report(self, metadata, name, round_number=None, output_dir=None):
+    def save_report(self, metadata, name, round_number, output_dir):
         out_name = self.output_name(name, round_number)
         report = Report(metadata)
         report.save_to_file(self.output_path(f"{out_name}.json", output_dir))
 
+    def model_path(self, name, round_number, output_dir):
+        return self.output_path(
+            f"{self.output_name(name, round_number)}{self.model_extension}",
+            output_dir,
+        )
+
+    def save_artifacts(self, metadata, name, round_number, output_dir):
+        self.save_metadata(metadata, name, round_number, output_dir)
+        self.save_report(metadata, name, round_number, output_dir)
+
     def fit(self, *args, **kwargs):
         raise NotImplementedError
 
-    def evaluate(self, *args, **kwargs):
-        raise NotImplementedError
+    def evaluate(self, train_loader, test_loader, criterion, problem_type, accuracy_tolerance):
+        self.model.eval()
+        self.model.to("cpu")
+        train = self.evaluate_loader(train_loader, criterion, None, problem_type, accuracy_tolerance)
+        test = self.evaluate_loader(test_loader, criterion, None, problem_type, accuracy_tolerance)
+
+        print(f"\nClient {self.model_id} | Final Results:")
+        if problem_type == "classification":
+            self.print_final_classification_metrics("Train", train)
+            self.print_final_classification_metrics("Test", test)
+        else:
+            self.print_final_regression_metrics("Train", train)
+            self.print_final_regression_metrics("Test", test)
+
+        return (
+            train["accuracy"], test["accuracy"], train["loss"], test["loss"],
+            train["mse"], test["mse"], train["predictions"], test["predictions"]
+        )
 
     def predict(self, data):
         raise NotImplementedError
@@ -58,13 +90,13 @@ class BaseModel:
     def set_parameters(self, parameters):
         raise NotImplementedError
 
-    def save_model(self, metadata, name, round_number=None, output_dir=None):
+    def save_model(self, metadata, name, round_number, output_dir):
         raise NotImplementedError
 
     def load_model(self, path):
         raise NotImplementedError
 
-    def unpack_batch(self, data, device=None):
+    def unpack_batch(self, data, device):
         if isinstance(data, (tuple, list)):
             inputs, labels = data
         else:
@@ -80,6 +112,162 @@ class BaseModel:
 
         return inputs, labels
 
+    @staticmethod
+    def task_labels(labels, problem_type):
+        return labels.long() if problem_type == "classification" else labels.float()
+
+    @staticmethod
+    def task_predictions(outputs, problem_type):
+        if problem_type == "classification":
+            if isinstance(outputs, torch.Tensor):
+                return torch.argmax(outputs, dim=1)
+            return np.argmax(outputs, axis=1) if outputs.ndim == 2 else np.rint(outputs)
+
+        return outputs.squeeze() if isinstance(outputs, torch.Tensor) else outputs
+
+    def task_loss_and_predictions(self, criterion, outputs, labels, problem_type):
+        labels = self.task_labels(labels, problem_type)
+        predictions = self.task_predictions(outputs, problem_type)
+        loss = criterion(outputs, labels) if problem_type == "classification" else criterion(predictions, labels)
+        return loss, labels, predictions
+
+    def evaluate_loader(self, loader, criterion, device, problem_type, accuracy_tolerance):
+        total_loss = 0
+        all_preds, all_labels = [], []
+
+        with torch.no_grad():
+            for data in loader:
+                inputs, labels = self.unpack_batch(data, device)
+                if inputs.shape[0] < 2:
+                    continue
+
+                outputs = self.model(inputs)
+                loss, labels, predictions = self.task_loss_and_predictions(
+                    criterion,
+                    outputs,
+                    labels,
+                    problem_type,
+                )
+                total_loss += loss.item()
+                all_preds.extend(predictions.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
+
+        metrics = self.task_metrics(all_labels, all_preds, problem_type, accuracy_tolerance)
+        metrics["loss"] = total_loss / len(loader) if len(loader) else 0
+        metrics["predictions"] = all_preds
+        return metrics
+
+    def compute_test_metrics(self, test_loader, criterion, device, problem_type, accuracy_tolerance):
+        metrics = self.evaluate_loader(test_loader, criterion, device, problem_type, accuracy_tolerance)
+        return metrics["mse"], metrics["accuracy"], metrics["loss"], (
+            metrics if problem_type == "classification" else {}
+        )
+
+    @classmethod
+    def task_metrics(cls, labels, predictions, problem_type, accuracy_tolerance):
+        if problem_type == "classification":
+            metrics = cls.get_classification_metrics(labels, predictions)
+            metrics.update({"mae": 0, "mse": 0, "rmse": 0, "r2": 0, "mean": 0, "error_mean": 0})
+            return metrics
+        return cls.get_regression_metrics(labels, predictions, accuracy_tolerance)
+
+    def print_final_classification_metrics(self, name, metrics):
+        print(
+            f"Client {self.model_id} | {name}: Accuracy: {metrics['accuracy']:.2f}, "
+            f"Loss: {metrics['loss']:.4f}"
+        )
+
+    def print_final_regression_metrics(self, name, metrics):
+        print(
+            f"Client {self.model_id} | {name}: Accuracy: {metrics['accuracy']:.2f}, "
+            f"Loss: {metrics['loss']:.4f}, MAE: {metrics['mae']:.4f}, "
+            f"MSE: {metrics['mse']:.4f}, RMSE: {metrics['rmse']:.4f}"
+        )
+        print(f"Client {self.model_id} | R^2 Value is: {metrics['r2']:.4f}")
+        print(
+            f"Client {self.model_id} | RMSE for {name.lower()} set is: "
+            f"{metrics['rmse']:.4f} & mean is {metrics['mean']:.4f}"
+        )
+        print(
+            f"Client {self.model_id} | "
+            f"This is {metrics['error_mean']:.2f}% of the mean pheno data"
+        )
+
+    @staticmethod
+    def get_classification_metrics(labels, predictions):
+        if len(labels) == 0:
+            return {
+                "accuracy": 0.0,
+                "precision_macro": 0.0,
+                "recall_macro": 0.0,
+                "f1_macro": 0.0,
+            }
+
+        return {
+            "accuracy": accuracy_score(labels, predictions),
+            "precision_macro": precision_score(
+                labels, predictions, average="macro", zero_division=0
+            ),
+            "recall_macro": recall_score(
+                labels, predictions, average="macro", zero_division=0
+            ),
+            "f1_macro": f1_score(labels, predictions, average="macro", zero_division=0),
+        }
+
+    @staticmethod
+    def format_classification_metrics(name, metrics):
+        return (
+            f"{name} Macro Precision: {metrics['precision_macro']:.2f}, "
+            f"{name} Macro Recall: {metrics['recall_macro']:.2f}, "
+            f"{name} Macro F1: {metrics['f1_macro']:.2f}"
+        )
+
+    @staticmethod
+    def get_regression_metrics(labels, predictions, accuracy_tolerance):
+        if len(labels) == 0:
+            return {
+                "accuracy": 0.0,
+                "mae": 0.0,
+                "mse": 0.0,
+                "rmse": 0.0,
+                "r2": 0.0,
+                "mean": 0.0,
+                "error_mean": 0.0,
+            }
+
+        labels = np.asarray(labels, dtype=float)
+        predictions = np.asarray(predictions, dtype=float)
+        mse = mean_squared_error(labels, predictions)
+        rmse = mse**0.5
+        mean = np.mean(labels)
+        return {
+            "accuracy": np.mean(np.abs(predictions - labels) <= accuracy_tolerance),
+            "mae": mean_absolute_error(labels, predictions),
+            "mse": mse,
+            "rmse": rmse,
+            "r2": r2_score(labels, predictions),
+            "mean": mean,
+            "error_mean": ((rmse / mean) * 100) if mean else 0,
+        }
+
+    @staticmethod
+    def print_epoch_metrics(model_id, epoch, epochs, epoch_loss, train_accuracy, test_accuracy, problem_type, train_metrics, test_class_metrics,
+                            mse, epoch_test_mse, epsilon_spent=None):
+        message = (f"Client {model_id} | "
+                   f"Epoch {epoch + 1}/{epochs}, "
+                   f"{f'Loss: {epoch_loss:.4f}, ' if epoch_loss is not None else ''}"
+                   f"Train Acc: {train_accuracy:.2f}, "
+                   f"Test Acc: {test_accuracy:.2f}, ")
+        if problem_type == "classification":
+            message += (f"{BaseModel.format_classification_metrics('Train', train_metrics)}, "
+                        f"{BaseModel.format_classification_metrics('Test', test_class_metrics)}")
+        else:
+            message += (f"Train MSE: {mse:.4f}, Test MSE: {epoch_test_mse:.4f}, "
+                        f"MAE: {train_metrics['mae']:.4f}, RMSE: {train_metrics['rmse']:.4f}")
+        if epsilon_spent is not None:
+            message += f", ε: {epsilon_spent:.2f}"
+        print(message)
+
 ####################################################################################################
 #                                                                                                  #
 #                                         Callable Classes                                         #
@@ -89,7 +277,7 @@ class BaseModel:
 class CNNModel(BaseModel):
     model_extension = ".torch"
 
-    def build_model(self, num_features, output_dim=1):
+    def build_model(self, num_features, output_dim):
         self.model = _CNNNet(num_features, output_dim=output_dim)
         return self.model
     
@@ -111,7 +299,17 @@ class CNNModel(BaseModel):
                 weight_decay=weight_decay,
             )
 
-    def fit(self, train_loader, test_loader, epochs, optimizer, criterion, device='cpu'):
+    def fit(
+        self,
+        train_loader,
+        test_loader,
+        epochs,
+        optimizer,
+        criterion,
+        device,
+        problem_type,
+        accuracy_tolerance,
+    ):
         self.model.train()
         train_mse = []
         test_mse = []
@@ -121,132 +319,65 @@ class CNNModel(BaseModel):
 
         for epoch in range(epochs):
             epoch_loss = 0
-            total_mae, total_mse = 0, 0
-            correct_train, pred_correct_train, total_train = 0, 0, 0
+            train_labels, train_preds = [], []
             for i, data in enumerate(train_loader):
                 inputs, labels = self.unpack_batch(data, device)
                 if inputs.shape[0] < 2:
                     continue
                 
                 optimizer.zero_grad()
-                outputs = self.model(inputs).squeeze()
-                loss = criterion(outputs, labels.float())
+                outputs = self.model(inputs)
+                loss, labels, pred_classes = self.task_loss_and_predictions(
+                    criterion,
+                    outputs,
+                    labels,
+                    problem_type,
+                )
+                if problem_type == "classification":
+                    outputs = pred_classes.float()
+                else:
+                    outputs = pred_classes
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item()
-
-                # Use rounded-class accuracy
-                pred_classes = torch.round(outputs)
-                pred_correct = pred_classes == labels
-                pred_correct_train += pred_correct.sum().item()
-                total_train += len(labels)
-
-                # Compute MAE and MSE per batch
-                total_mae += torch.sum(torch.abs(outputs - labels.float())).item()
-                total_mse += torch.sum((outputs - labels.float()) ** 2).item()
+                train_labels.extend(labels.cpu().numpy())
+                train_preds.extend(outputs.detach().cpu().numpy())
             
-            # compute training accuracy per epoch
-            train_accuracy = pred_correct_train / total_train if total_train else 0
-            mae = total_mae / total_train if total_train else 0
-            mse = total_mse / total_train if total_train else 0
-            rmse = mse**0.5
+            train_metrics = (
+                self.get_classification_metrics(train_labels, train_preds)
+                if problem_type == "classification"
+                else self.get_regression_metrics(train_labels, train_preds, accuracy_tolerance)
+            )
+            train_accuracy = train_metrics["accuracy"]
+            mse = train_metrics.get("mse", 0)
 
             self.model.eval()
             (
                 epoch_test_mse,
                 epoch_test_acc,
                 _,
-            ) = self.compute_test_metrics(test_loader, criterion, device)
+                test_class_metrics,
+            ) = self.compute_test_metrics(
+                test_loader,
+                criterion,
+                device,
+                problem_type,
+                accuracy_tolerance,
+            )
             self.model.train()
             train_mse.append(mse)
             train_acc.append(train_accuracy)
             test_mse.append(epoch_test_mse)
             test_acc.append(epoch_test_acc)
             losses.append(epoch_loss)
-            print(
-                f"Client {self.model_id} | "
-                f"Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}, "
-                f"Train Acc: {train_accuracy:.2f}, "
-                f"Test Acc: {epoch_test_acc:.2f}, "
-                f"Train MSE: {mse:.4f}, Test MSE: {epoch_test_mse:.4f}, "
-                f"MAE: {mae:.4f}, RMSE: {rmse:.4f}"
-            )
+
+            self.print_epoch_metrics(self.model_id, epoch, epochs, epoch_loss, train_accuracy,
+                                     epoch_test_acc, problem_type, train_metrics,
+                                     test_class_metrics, mse, epoch_test_mse)
+
         return train_mse, test_mse, train_acc, test_acc, losses
 
-    def evaluate(self, train_loader, test_loader, criterion):
-        def evaluate(loader):
-            total_loss = 0
-            total_mae = 0
-            total_mse = 0
-            correct = 0
-            total = 0
-            pred_correct_test = 0
-            all_preds, all_labels = [], []
-
-            with torch.no_grad():
-                for data in loader:
-                    inputs, labels = self.unpack_batch(data)
-                    if inputs.shape[0] < 2:
-                        continue
-
-                    outputs = self.model(inputs).squeeze()
-                    loss = criterion(outputs, labels.float())
-                    total_loss += loss.item()
-                    total_mae += torch.sum(torch.abs(outputs - labels)).item()
-                    total_mse += torch.sum((outputs - labels) ** 2).item()
-
-                    pred_classes = torch.round(outputs)
-                    pred_correct = pred_classes == labels
-                    pred_correct_test += pred_correct.sum().item()
-                    total += labels.size(0)
-
-                    # Store predictions and labels for evaluation
-                    all_preds.extend(outputs.cpu().numpy())
-                    all_labels.extend(labels.cpu().numpy())
-
-            # Compute training accuracy per epoch
-            accuracy = pred_correct_test / total if total else 0
-            average_loss = total_loss / len(loader) if len(loader) else 0
-            mae = total_mae / total if total else 0
-            mse = total_mse / total if total else 0
-            rmse = mse**0.5
-            ss = sqrt(mean_squared_error(all_labels, all_preds)) if all_labels else 0
-            rr = r2_score(all_labels, all_preds) if all_labels else 0
-            mm = np.mean(all_labels)
-            error_mean = ((ss / mm) * 100) if mm else 0
-
-            return accuracy, average_loss, mae, mse, rmse, ss, rr, mm, error_mean, all_preds
-
-        self.model.eval()
-        self.model.to("cpu")
-        (train_accuracy, train_loss, train_mae, train_mse, train_rmse,
-         train_ss, train_rr, train_mm, train_error_mean, train_preds) = evaluate(train_loader)
-
-        (test_accuracy, test_loss, test_mae, test_mse, test_rmse,
-         test_ss, test_rr, test_mm,test_error_mean, test_preds) = evaluate(test_loader)
-
-        print(f"\Client {self.model_id} | Final Results:")
-        print(f"Client {self.model_id} | Train: Accuracy: {train_accuracy:.2f}, "
-              f"Loss: {train_loss:.4f}, MAE: {train_mae:.4f}, "
-              f"MSE: {train_mse:.4f}, RMSE: {train_rmse:.4f}")
-        print(f"Client {self.model_id} | R^2 Value is: {train_rr:.4f}")
-        print(f"Client {self.model_id} | "
-              f"RMSE for train set is: {train_ss:.4f} & mean is {train_mm:.4f}")
-        print(f"Client {self.model_id} | "
-              f"This is {train_error_mean:.2f}% of the mean pheno data")
-
-        print(f"Client {self.model_id} | Test: Accuracy: {test_accuracy:.2f}, "
-              f"Loss: {test_loss:.4f}, MAE: {test_mae:.4f}, "
-              f"MSE: {test_mse:.4f}, RMSE: {test_rmse:.4f}")
-        print(f"Client {self.model_id} | R^2 Value is: {test_rr:.4f}")
-        print(f"Client {self.model_id} | "
-              f"RMSE for test set is: {test_ss:.4f} & mean is {test_mm:.4f}")
-        print(f"Client {self.model_id} | "
-              f"This is {test_error_mean:.2f}% of the mean pheno data")
-
-        return train_accuracy, test_accuracy, train_loss, test_loss, train_mse, test_mse, train_preds, test_preds
-
-    def predict(self, data, device="cpu"):
+    def predict(self, data, device):
         self.model.eval()
 
         with torch.no_grad():
@@ -262,49 +393,11 @@ class CNNModel(BaseModel):
 
         return outputs.cpu().numpy()
 
-    def compute_test_metrics(self, test_loader, criterion, device):
-        total_loss = 0
-        total_mse = 0
-        correct = 0
-        total = 0
-        pred_correct_test = 0
-        all_preds, all_labels = [], []
+    def save_model(self, metadata, name, round_number, output_dir):
+        torch.save(self.model.state_dict(), self.model_path(name, round_number, output_dir))
+        self.save_artifacts(metadata, name, round_number, output_dir)
 
-        with torch.no_grad():
-            for data in test_loader:
-                inputs, labels = self.unpack_batch(data, device)
-                if inputs.shape[0] < 2:
-                    continue
-
-                outputs = self.model(inputs).squeeze()
-                loss = criterion(outputs, labels.float())
-                total_loss += loss.item()
-                total_mse += torch.sum((outputs - labels.float()) ** 2).item()
-                
-                pred_classes = torch.round(outputs)
-                pred_correct = pred_classes == labels
-                pred_correct_test += pred_correct.sum().item()
-                total += labels.size(0)
-
-                # Store predictions and labels for evaluation
-                all_preds.extend(outputs.cpu().numpy())
-                all_labels.extend(labels.cpu().numpy())
-
-        # Compute testing accuracy per epoch
-        accuracy = pred_correct_test / total if total else 0
-        average_loss = total_loss / len(test_loader) if len(test_loader) else 0
-        mse = total_mse / total if total else 0
-        return mse, accuracy, average_loss
-    
-    def save_model(self, metadata, name, round_number=None, output_dir=None):
-        out_name = self.output_name(name, round_number)
-        model_path = self.output_path(f"{out_name}{self.model_extension}", output_dir)
-
-        torch.save(self.model.state_dict(), model_path)
-        self.save_metadata(metadata, name, round_number, output_dir)
-        self.save_report(metadata, name, round_number, output_dir)
-
-    def get_parameters(self, config=None):
+    def get_parameters(self, config):
         self.model.eval()
         return [
             val.detach().cpu().numpy()
@@ -323,7 +416,7 @@ class CNNModel(BaseModel):
 
         self.model.load_state_dict(state_dict, strict=True)
 
-    def load_model(self, path, num_features=None, output_dim=1, device="cpu"):
+    def load_model(self, path, num_features, output_dim, device):
         if self.model is None:
             if num_features is None:
                 raise ValueError("num_features is required when loading into an unbuilt model")
@@ -338,7 +431,7 @@ class CNNModel(BaseModel):
 class DPCNNModel(BaseModel):
     model_extension = ".torch"
 
-    def build_model(self, num_features, output_dim=1):
+    def build_model(self, num_features, output_dim):
         self.model = _CNNNet(num_features, output_dim=output_dim)
         return self.model
     
@@ -390,8 +483,9 @@ class DPCNNModel(BaseModel):
         criterion,
         delta,
         privacy_engine,
-        tolerance=0.1,
-        device="cpu",
+        device,
+        problem_type,
+        accuracy_tolerance,
     ):
         self.model.train()
         train_mse = []
@@ -403,35 +497,37 @@ class DPCNNModel(BaseModel):
 
         for epoch in range(epochs):
             epoch_loss = 0
-            total_mae, total_mse = 0, 0
-            correct_train, pred_correct_train, total_train = 0, 0, 0
+            train_labels, train_preds = [], []
             for i, data in enumerate(train_loader):
                 inputs, labels = self.unpack_batch(data, device)
                 if inputs.shape[0] < 2:
                     continue
                 
                 optimizer.zero_grad()
-                outputs = self.model(inputs).squeeze()
-                loss = criterion(outputs, labels.float())
+                outputs = self.model(inputs)
+                loss, labels, pred_classes = self.task_loss_and_predictions(
+                    criterion,
+                    outputs,
+                    labels,
+                    problem_type,
+                )
+                if problem_type == "classification":
+                    outputs = pred_classes.float()
+                else:
+                    outputs = pred_classes
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item()
+                train_labels.extend(labels.cpu().numpy())
+                train_preds.extend(outputs.detach().cpu().numpy())
 
-                # Use rounded-class accuracy
-                pred_classes = torch.round(outputs)
-                pred_correct = pred_classes == labels
-                pred_correct_train += pred_correct.sum().item()
-                total_train += len(labels)
-
-                # Compute MAE and MSE per batch
-                total_mae += torch.sum(torch.abs(outputs - labels.float())).item()
-                total_mse += torch.sum((outputs - labels.float()) ** 2).item()
-
-            # Compute training accuracy per epoch
-            train_accuracy = pred_correct_train / total_train if total_train else 0
-            mae = total_mae / total_train if total_train else 0
-            mse = total_mse / total_train if total_train else 0
-            rmse = mse**0.5
+            train_metrics = (
+                self.get_classification_metrics(train_labels, train_preds)
+                if problem_type == "classification"
+                else self.get_regression_metrics(train_labels, train_preds, accuracy_tolerance)
+            )
+            train_accuracy = train_metrics["accuracy"]
+            mse = train_metrics.get("mse", 0)
 
             # Compute test MSE per epoch
             self.model.eval()
@@ -439,7 +535,14 @@ class DPCNNModel(BaseModel):
                 epoch_test_mse,
                 epoch_test_acc,
                 _,
-            ) = self.compute_test_metrics(test_loader, criterion, device)
+                test_class_metrics,
+            ) = self.compute_test_metrics(
+                test_loader,
+                criterion,
+                device,
+                problem_type,
+                accuracy_tolerance,
+            )
             self.model.train()
             epsilon_spent, _ = privacy_engine.accountant.get_privacy_spent(
                 delta=delta
@@ -450,92 +553,14 @@ class DPCNNModel(BaseModel):
             test_acc.append(epoch_test_acc)
             losses.append(epoch_loss)
             eps.append(epsilon_spent)
-            print(
-                f"Client {self.model_id} | "
-                f"Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}, "
-                f"Train Acc: {train_accuracy:.2f}, "
-                f"Test Acc: {epoch_test_acc:.2f}, "
-                f"Train MSE: {mse:.4f}, Test MSE: {epoch_test_mse:.4f}, "
-                f"MAE: {mae:.4f}, RMSE: {rmse:.4f}, "
-                f"ε: {epsilon_spent:.2f}"
-            )
+
+            self.print_epoch_metrics(self.model_id, epoch, epochs, epoch_loss, train_accuracy,
+                                     epoch_test_acc, problem_type, train_metrics,
+                                     test_class_metrics, mse, epoch_test_mse, epsilon_spent)
 
         return train_mse, test_mse, train_acc, test_acc, losses, eps
 
-    def evaluate(self, train_loader, test_loader, criterion):
-        def evaluate(loader):
-            total_loss = 0
-            total_mae = 0
-            total_mse = 0
-            correct = 0
-            total = 0
-            pred_correct_test = 0
-            all_preds, all_labels = [], []
-
-            with torch.no_grad():
-                for data in loader:
-                    inputs, labels = self.unpack_batch(data)
-                    if inputs.shape[0] < 2:
-                        continue
-
-                    outputs = self.model(inputs).squeeze()
-                    loss = criterion(outputs, labels.float())
-                    total_loss += loss.item()
-                    total_mae += torch.sum(torch.abs(outputs - labels)).item()
-                    total_mse += torch.sum((outputs - labels) ** 2).item()
-
-                    pred_classes = torch.round(outputs)
-                    pred_correct = pred_classes == labels
-                    pred_correct_test += pred_correct.sum().item()
-                    total += labels.size(0)
-
-                    # Store predictions and labels for evaluation
-                    all_preds.extend(outputs.cpu().numpy())
-                    all_labels.extend(labels.cpu().numpy())
-
-            # Compute training accuracy per epoch
-            accuracy = pred_correct_test / total if total else 0
-            average_loss = total_loss / len(loader) if len(loader) else 0
-            mae = total_mae / total if total else 0
-            mse = total_mse / total if total else 0
-            rmse = mse**0.5
-            ss = sqrt(mean_squared_error(all_labels, all_preds)) if all_labels else 0
-            rr = r2_score(all_labels, all_preds) if all_labels else 0
-            mm = np.mean(all_labels)
-            error_mean = ((ss / mm) * 100) if mm else 0
-
-            return accuracy, average_loss, mae, mse, rmse, ss, rr, mm, error_mean, all_preds
-
-        self.model.eval()
-        self.model.to("cpu")
-        (train_accuracy, train_loss, train_mae, train_mse, train_rmse,
-         train_ss, train_rr, train_mm, train_error_mean, train_preds) = evaluate(train_loader)
-
-        (test_accuracy, test_loss, test_mae, test_mse, test_rmse,
-         test_ss, test_rr, test_mm,test_error_mean, test_preds) = evaluate(test_loader)
-
-        print(f"\Client {self.model_id} | Final Results:")
-        print(f"Client {self.model_id} | Train: Accuracy: {train_accuracy:.2f}, "
-              f"Loss: {train_loss:.4f}, MAE: {train_mae:.4f}, "
-              f"MSE: {train_mse:.4f}, RMSE: {train_rmse:.4f}")
-        print(f"Client {self.model_id} | R^2 Value is: {train_rr:.4f}")
-        print(f"Client {self.model_id} | "
-              f"RMSE for train set is: {train_ss:.4f} & mean is {train_mm:.4f}")
-        print(f"Client {self.model_id} | "
-              f"This is {train_error_mean:.2f}% of the mean pheno data")
-
-        print(f"Client {self.model_id} | Test: Accuracy: {test_accuracy:.2f}, "
-              f"Loss: {test_loss:.4f}, MAE: {test_mae:.4f}, "
-              f"MSE: {test_mse:.4f}, RMSE: {test_rmse:.4f}")
-        print(f"Client {self.model_id} | R^2 Value is: {test_rr:.4f}")
-        print(f"Client {self.model_id} | "
-              f"RMSE for test set is: {test_ss:.4f} & mean is {test_mm:.4f}")
-        print(f"Client {self.model_id} | "
-              f"This is {test_error_mean:.2f}% of the mean pheno data")
-
-        return train_accuracy, test_accuracy, train_loss, test_loss, train_mse, test_mse, train_preds, test_preds
-
-    def predict(self, data, device="cpu"):
+    def predict(self, data, device):
         self.model.eval()
 
         with torch.no_grad():
@@ -551,49 +576,11 @@ class DPCNNModel(BaseModel):
 
         return outputs.cpu().numpy()
 
-    def compute_test_metrics(self, test_loader, criterion, device):
-        total_loss = 0
-        total_mse = 0
-        correct = 0
-        total = 0
-        pred_correct_test = 0
-        all_preds, all_labels = [], []
+    def save_model(self, metadata, name, round_number, output_dir):
+        torch.save(self.model.state_dict(), self.model_path(name, round_number, output_dir))
+        self.save_artifacts(metadata, name, round_number, output_dir)
 
-        with torch.no_grad():
-            for data in test_loader:
-                inputs, labels = self.unpack_batch(data, device)
-                if inputs.shape[0] < 2:
-                    continue
-
-                outputs = self.model(inputs).squeeze()
-                loss = criterion(outputs, labels.float())
-                total_loss += loss.item()
-                total_mse += torch.sum((outputs - labels.float()) ** 2).item()
-                
-                pred_classes = torch.round(outputs)
-                pred_correct = pred_classes == labels
-                pred_correct_test += pred_correct.sum().item()
-                total += labels.size(0)
-
-                # Store predictions and labels for evaluation
-                all_preds.extend(outputs.cpu().numpy())
-                all_labels.extend(labels.cpu().numpy())
-
-        # Compute testing accuracy per epoch
-        accuracy = pred_correct_test / total if total else 0
-        average_loss = total_loss / len(test_loader) if len(test_loader) else 0
-        mse = total_mse / total if total else 0
-        return mse, accuracy, average_loss
-    
-    def save_model(self, metadata, name, round_number=None, output_dir=None):
-        out_name = self.output_name(name, round_number)
-        model_path = self.output_path(f"{out_name}{self.model_extension}", output_dir)
-
-        torch.save(self.model.state_dict(), model_path)
-        self.save_metadata(metadata, name, round_number, output_dir)
-        self.save_report(metadata, name, round_number, output_dir)
-
-    def get_parameters(self, config=None):
+    def get_parameters(self, config):
         self.model.eval()
         return [
             val.detach().cpu().numpy()
@@ -612,7 +599,7 @@ class DPCNNModel(BaseModel):
 
         self.model.load_state_dict(state_dict, strict=True)
 
-    def load_model(self, path, num_features=None, output_dim=1, device="cpu"):
+    def load_model(self, path, num_features, output_dim, device):
         if self.model is None:
             if num_features is None:
                 raise ValueError("num_features is required when loading into an unbuilt model")
@@ -626,12 +613,23 @@ class DPCNNModel(BaseModel):
 
 class XGBoostModel(BaseModel):
     model_extension = ".ubj"
-    def __init__(self, model_id=None, output_dir=None, params=None):
+    def __init__(
+        self,
+        model_id,
+        output_dir,
+        params,
+        problem_type,
+        class_labels,
+        accuracy_tolerance,
+    ):
         super().__init__(model_id=model_id, output_dir=output_dir)
         self.params = params.copy()
+        self.problem_type = problem_type
+        self.class_labels = class_labels
+        self.accuracy_tolerance = accuracy_tolerance
 
     @classmethod
-    def client_params(cls, seed, num_partitions, train_method, scaled_lr=False, base_params=None):
+    def client_params(cls, seed, num_partitions, train_method, scaled_lr, base_params):
         params = base_params.copy()
         params["random_state"] = seed
 
@@ -640,12 +638,12 @@ class XGBoostModel(BaseModel):
 
         return params
 
-    def build_model(self, params=None):
+    def build_model(self, params):
         self.params = params or self.params
         self.model = xgb.Booster(params=self.params)
         return self.model
 
-    def get_parameters(self, config=None):
+    def get_parameters(self, config):
         if self.model is None:
             return []
         return [bytes(self.model.save_raw("json"))]
@@ -657,12 +655,12 @@ class XGBoostModel(BaseModel):
         self.model.load_model(bytearray(parameters[-1]))
         return self.model
 
-    def fit_round(self, train_data, test_data, num_local_round, train_method, global_round, parameters=None):
+    def fit_round(self, train_data, test_data, num_local_round, train_method, global_round, parameters):
         if global_round > 1 and parameters:
             self.set_parameters(parameters)
 
         self.fit(train_data, test_data, num_local_round, train_method)
-        return self.get_parameters()[0]
+        return self.get_parameters(None)[0]
 
     def evaluate_parameters(self, parameters, test_data):
         if not parameters:
@@ -673,34 +671,38 @@ class XGBoostModel(BaseModel):
         return self.evaluate(test_data)
 
     def fit(self, train_data, test_data, num_local_round, train_method):
-        if self.model is None or self.model.num_boosted_rounds() == 0:
-            self.model = xgb.train(
-                self.params,
-                train_data,
-                num_boost_round=num_local_round,
-                evals=[
-                    (test_data, "validate"),
-                    (train_data, "train"),
-                ],
-                verbose_eval=False,
-                callbacks=[
-                    _XGBoostEpochLogger(
-                        self.model_id,
-                        num_local_round,
-                        train_data,
-                        test_data,
-                    )
-                ],
-            )
-        else:
-            for i in range(num_local_round):
-                self.model.update(train_data, self.model.num_boosted_rounds())
-                self.print_epoch_metrics(
-                    i + 1,
-                    num_local_round,
+        for i in range(num_local_round):
+            if self.model is None or self.model.num_boosted_rounds() == 0:
+                self.model = xgb.train(
+                    self.params,
                     train_data,
-                    test_data,
+                    num_boost_round=1,
+                    evals=[
+                        (test_data, "validate"),
+                        (train_data, "train"),
+                    ],
+                    verbose_eval=False,
                 )
+            else:
+                self.model.update(train_data, self.model.num_boosted_rounds())
+
+            train_acc, train_mse, train_mae, train_rmse = self.regression_metrics(train_data)
+            test_acc, test_mse, _, _ = self.regression_metrics(test_data)
+            train_metrics = {"mae": train_mae, "rmse": train_rmse}
+            test_metrics = {}
+            if self.problem_type == "classification":
+                train_metrics = self.get_classification_metrics(
+                    train_data.get_label(),
+                    self.task_predictions(self.model.predict(train_data), self.problem_type),
+                )
+                test_metrics = self.get_classification_metrics(
+                    test_data.get_label(),
+                    self.task_predictions(self.model.predict(test_data), self.problem_type),
+                )
+            self.print_epoch_metrics(self.model_id, i, num_local_round,
+                                     train_mse if self.problem_type == "regression" else None,
+                                     train_acc, test_acc, self.problem_type,
+                                     train_metrics, test_metrics, train_mse, test_mse)
 
         if train_method == "bagging":
             start = self.model.num_boosted_rounds() - num_local_round
@@ -722,25 +724,14 @@ class XGBoostModel(BaseModel):
 
     def regression_metrics(self, data):
         labels = data.get_label()
-        predictions = self.model.predict(data)
-        rounded_predictions = np.rint(predictions)
-        accuracy = accuracy_score(labels, rounded_predictions)
-        mse = mean_squared_error(labels, predictions)
-        mae = mean_absolute_error(labels, predictions)
-        rmse = mse**0.5
-        return accuracy, mse, mae, rmse
-
-    def print_epoch_metrics(self, epoch, epochs, train_data, test_data):
-        train_acc, train_mse, train_mae, train_rmse = self.regression_metrics(train_data)
-        test_acc, test_mse, _, _ = self.regression_metrics(test_data)
-        print(
-            f"Client {self.model_id} | "
-            f"Epoch {epoch}/{epochs}, Loss: {train_mse:.4f}, "
-            f"Train Acc: {train_acc:.2f}, "
-            f"Test Acc: {test_acc:.2f}, "
-            f"Train MSE: {train_mse:.4f}, Test MSE: {test_mse:.4f}, "
-            f"MAE: {train_mae:.4f}, RMSE: {train_rmse:.4f}"
+        predictions = self.task_predictions(self.model.predict(data), self.problem_type)
+        metrics = self.task_metrics(
+            labels,
+            predictions,
+            self.problem_type,
+            self.accuracy_tolerance,
         )
+        return metrics["accuracy"], metrics["mse"], metrics["mae"], metrics["rmse"]
 
     def client_metadata(
         self,
@@ -751,27 +742,36 @@ class XGBoostModel(BaseModel):
         partitions_file,
         seed,
         test_fraction,
+        global_round,
     ):
         train_acc, _train_mse, _train_mae, _train_rmse = self.regression_metrics(train_data)
         test_acc, _test_mse, _test_mae, _test_rmse = self.regression_metrics(test_data)
+        train_predictions = self.task_predictions(self.model.predict(train_data), self.problem_type)
+        test_predictions = self.task_predictions(self.model.predict(test_data), self.problem_type)
 
         metadata = {
             "created on": str(datetime.now()),
             "model id": int(self.model_id),
+            "round number": int(global_round),
             "partitions file": partitions_file,
+            "problem type": self.problem_type,
+            "class labels": self.class_labels,
             "train accuracy": float(train_acc),
             "test accuracy": float(test_acc),
+            "train mean squared error": float(_train_mse),
+            "test mean squared error": float(_test_mse),
             "train loss": 0,
             "test loss": 0,
             "train indices": train_indices,
             "test indices": test_indices,
-            "hyperparameters": json.dumps(
-                {
-                    **self.params,
-                    "seed": seed,
-                    "test_fraction": test_fraction,
-                }
-            ),
+            "train predictions": train_predictions,
+            "test predictions": test_predictions,
+            "hyperparameters": {
+                **self.params,
+                "seed": seed,
+                "test_fraction": test_fraction,
+                "test fraction": test_fraction,
+            },
         }
         return metadata, train_acc, test_acc
 
@@ -785,7 +785,7 @@ class XGBoostModel(BaseModel):
         seed,
         test_fraction,
         global_round,
-        output_dir=None,
+        output_dir,
     ):
         metadata, train_acc, test_acc = self.client_metadata(
             train_data,
@@ -795,6 +795,7 @@ class XGBoostModel(BaseModel):
             partitions_file,
             seed,
             test_fraction,
+            global_round,
         )
         self.save_model(
             metadata,
@@ -805,20 +806,11 @@ class XGBoostModel(BaseModel):
         return train_acc, test_acc
 
     def predict(self, model, data):
-        predictions = model.predict(data)
-        if predictions.ndim == 2:
-            return np.argmax(predictions, axis=1)
-        if predictions.dtype.kind == "f" and predictions.min() >= 0 and predictions.max() <= 1:
-            return np.rint(predictions)
-        return np.rint(predictions)
+        return self.task_predictions(model.predict(data), self.problem_type)
 
-    def save_model(self, metadata, name, round_number=None, output_dir=None):
-        out_name = self.output_name(name, round_number)
-        model_path = self.output_path(f"{out_name}{self.model_extension}", output_dir)
-
-        self.model.save_model(model_path)
-        self.save_metadata(metadata, name, round_number, output_dir)
-        self.save_report(metadata, name, round_number, output_dir)
+    def save_model(self, metadata, name, round_number, output_dir):
+        self.model.save_model(self.model_path(name, round_number, output_dir))
+        self.save_artifacts(metadata, name, round_number, output_dir)
 
     def load_model(self, path):
         self.build_model(self.params)
@@ -837,7 +829,7 @@ class XGBoostModel(BaseModel):
 ####################################################################################################
 
 class _CNNNet(nn.Module):
-    def __init__(self, features: int, output_dim: int = 1):
+    def __init__(self, features: int, output_dim: int):
         super().__init__()
         self.conv1 = nn.Conv1d(1, 12, kernel_size=14)
         self.relu1 = nn.ReLU()
@@ -904,37 +896,3 @@ class _CNNNet(nn.Module):
         x = self.layer_norm2(x)
         x = self.output(x)
         return x
-
-class _XGBoostEpochLogger(xgb.callback.TrainingCallback):
-    def __init__(self, model_id, epochs, train_data, test_data):
-        self.model_id = model_id
-        self.epochs = epochs
-        self.train_data = train_data
-        self.test_data = test_data
-
-    def _regression_metrics(self, model, data):
-        labels = data.get_label()
-        predictions = model.predict(data)
-        rounded_predictions = np.rint(predictions)
-        accuracy = accuracy_score(labels, rounded_predictions)
-        mse = mean_squared_error(labels, predictions)
-        mae = mean_absolute_error(labels, predictions)
-        rmse = mse**0.5
-        return accuracy, mse, mae, rmse
-
-    def after_iteration(self, model, epoch, evals_log):
-        train_acc, train_mse, train_mae, train_rmse = self._regression_metrics(
-            model,
-            self.train_data,
-        )
-        test_acc, test_mse, _, _ = self._regression_metrics(model, self.test_data)
-        print(
-            f"Client {self.model_id} | "
-            f"Epoch {epoch + 1}/{self.epochs}, Loss: {train_mse:.4f}, "
-            f"Train Acc: {train_acc:.2f}, "
-            f"Test Acc: {test_acc:.2f}, "
-            f"Train MSE: {train_mse:.4f}, Test MSE: {test_mse:.4f}, "
-            f"MAE: {train_mae:.4f}, RMSE: {train_rmse:.4f}",
-            flush=True,
-        )
-        return False

@@ -3,7 +3,6 @@ from typing import Any, Dict
 from collections import OrderedDict
 from pathlib import Path
 import re
-import json
 from datetime import datetime
 from collections import Counter
 
@@ -54,6 +53,8 @@ def create_dataloaders(
     test_fraction,
     seed,
     batch_divisor,
+    problem_type="regression",
+    class_labels=None,
 ):
     tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(data_directory)
     num_data_features = tt_vcf.shape[1]
@@ -84,6 +85,8 @@ def create_dataloaders(
                 batch_size,
                 test_fraction,
                 seed,
+                problem_type,
+                class_labels,
             )
         )
     else:
@@ -101,6 +104,8 @@ def create_dataloaders(
                 num_partitions,
                 partitioner_type,
                 data_directory,
+                problem_type,
+                class_labels,
             )
         )
 
@@ -135,6 +140,8 @@ def create_xgboost_data(
     test_fraction,
     seed,
     batch_divisor,
+    problem_type="regression",
+    class_labels=None,
 ):
     (
         _num_data_features,
@@ -152,6 +159,8 @@ def create_xgboost_data(
         test_fraction,
         seed,
         batch_divisor,
+        problem_type,
+        class_labels,
     )
     return (
         loader_to_dmatrix(train_loader),
@@ -182,6 +191,12 @@ class TorchFlowerClient(fl.client.NumPyClient):
         self.output_dir = params.get('output_dir')
         self.data_dir = params.get('data_dir')
         self.seed = params.get('seed')
+        self.problem_type = params.get("problem_type", "regression")
+        self.class_labels = params.get("class_labels")
+        self.num_classes = params.get("num_classes", 1)
+        self.accuracy_tolerance = params.get("accuracy_tolerance")
+        if self.accuracy_tolerance is None:
+            self.accuracy_tolerance = 0.1
         self.print_warning_logs = params.get('print_warning_logs')
         torch.manual_seed(self.seed)
         if not self.print_warning_logs:
@@ -203,6 +218,8 @@ class TorchFlowerClient(fl.client.NumPyClient):
             self.test_fraction,
             self.seed,
             self.batch_divisor,
+            self.problem_type,
+            self.class_labels,
         )
 
         self.model_type = params.get("model_type")
@@ -216,10 +233,15 @@ class TorchFlowerClient(fl.client.NumPyClient):
         model_class = DPCNNModel if self.use_dp else CNNModel
 
         self.cnn_model = model_class(model_id=self.client_id, output_dir=self.output_dir)
-        self.cnn_model.build_model(self.num_data_features)
+        output_dim = self.num_classes if self.problem_type == "classification" else 1
+        self.cnn_model.build_model(self.num_data_features, output_dim=output_dim)
         self.cnn_model.model.to(DEVICE)
 
-        self.criterion = nn.MSELoss()
+        self.criterion = (
+            nn.CrossEntropyLoss()
+            if self.problem_type == "classification"
+            else nn.MSELoss()
+        )
         self.optimizer = self.cnn_model.build_optimizer(self.optimizer_name, self.learning_rate, self.weight_decay)
 
         self.privacy_engine = None
@@ -243,6 +265,8 @@ class TorchFlowerClient(fl.client.NumPyClient):
 
         self.train_acc_per_epoch = []
         self.test_acc_per_epoch = []
+        self.train_mse_per_epoch = []
+        self.test_mse_per_epoch = []
         self.losses = []
 
     def get_parameters(self, config):
@@ -274,6 +298,8 @@ class TorchFlowerClient(fl.client.NumPyClient):
                 self.delta,
                 self.privacy_engine,
                 device=DEVICE,
+                problem_type=self.problem_type,
+                accuracy_tolerance=self.accuracy_tolerance,
             )
         else:
             (
@@ -288,7 +314,10 @@ class TorchFlowerClient(fl.client.NumPyClient):
                 self.epochs,
                 self.optimizer,
                 self.criterion,
-                DEVICE)
+                DEVICE,
+                problem_type=self.problem_type,
+                accuracy_tolerance=self.accuracy_tolerance,
+            )
 
         return self.get_parameters(config), len(self.train_loader.dataset), {}
 
@@ -307,6 +336,8 @@ class TorchFlowerClient(fl.client.NumPyClient):
             self.train_loader,
             self.test_loader,
             self.criterion,
+            problem_type=self.problem_type,
+            accuracy_tolerance=self.accuracy_tolerance,
         )
         hyperparameters = {
             'learning rate': float(self.learning_rate),
@@ -315,6 +346,9 @@ class TorchFlowerClient(fl.client.NumPyClient):
             'epochs': int(self.epochs),
             'seed': int(self.seed),
             'test fraction': float(self.test_fraction),
+            'problem type': self.problem_type,
+            'class labels': self.class_labels,
+            'accuracy tolerance': self.accuracy_tolerance,
         }
         if self.use_dp:
             hyperparameters.update({
@@ -327,30 +361,44 @@ class TorchFlowerClient(fl.client.NumPyClient):
         metadata = {
             'created on': str(datetime.now()),
             'model id': int(self.client_id),
+            'round number': int(self.current_round),
             'partitions file': self.partitions_file,
             'train accuracy': float(train_acc),
             'test accuracy': float(test_acc),
+            'train mean squared error': float(train_mse),
+            'test mean squared error': float(test_mse),
             'train loss': float(train_loss),
             'test loss': float(test_loss),
             'train indices': self.train_indices,
             'test indices': self.test_indices,
             "train accuracy per epoch": np.array(self.train_acc_per_epoch),
             "test accuracy per epoch": np.array(self.test_acc_per_epoch),
+            "train mse per epoch": np.array(self.train_mse_per_epoch),
+            "test mse per epoch": np.array(self.test_mse_per_epoch),
             "losses per epoch": np.array(self.losses),
-            "predicted labels": test_preds,
-            'hyperparameters': json.dumps(hyperparameters),
+            "train predictions": train_preds,
+            "test predictions": test_preds,
+            "problem type": self.problem_type,
+            "class labels": self.class_labels,
+            'hyperparameters': hyperparameters,
         }
         if self.use_dp:
             metadata["epsilon per epoch"] = np.array(self.eps_per_epoch)
-        model_prefix = "dpcnn" if self.use_dp else "cnn"
-        name = f"{model_prefix}_client_{self.client_id}"
+        name = (
+            f"dpcnn{self.epsilon}_opacus_oil_{self.client_id}"
+            if self.use_dp
+            else f"flcnn_{self.client_id}"
+        )
         self.cnn_model.save_model(
             metadata,
             name,
             self.current_round,
             self.output_dir,
         )
-        return float(test_loss), len(self.test_loader.dataset), {"accuracy": float(test_acc), "mse": float(test_mse)}
+        return float(test_loss), len(self.test_loader.dataset), {
+            "accuracy": float(test_acc),
+            "mse": float(test_mse),
+        }
 
 
 class XGBoostFlowerClient(fl.client.Client):
@@ -364,6 +412,12 @@ class XGBoostFlowerClient(fl.client.Client):
         self.output_dir = params.get("output_dir")
         self.data_partitions_file = params.get("data_partitions_file")
         self.test_fraction = params.get("test_fraction")
+        self.problem_type = params.get("problem_type", "regression")
+        self.class_labels = params.get("class_labels")
+        self.num_classes = params.get("num_classes", 1)
+        self.accuracy_tolerance = params.get("accuracy_tolerance")
+        if self.accuracy_tolerance is None:
+            self.accuracy_tolerance = 0.1
         self.print_warning_logs = params.get('print_warning_logs')
         if not self.print_warning_logs:
             configure_warning_logging(self.output_dir)
@@ -383,6 +437,8 @@ class XGBoostFlowerClient(fl.client.Client):
             self.test_fraction,
             self.seed,
             params.get("batch_divisor"),
+            self.problem_type,
+            self.class_labels,
         )
 
         self.xgb_model = XGBoostModel(
@@ -395,6 +451,9 @@ class XGBoostFlowerClient(fl.client.Client):
                 scaled_lr=params.get("scaled_lr"),
                 base_params=params.get("xgboost_params"),
             ),
+            problem_type=self.problem_type,
+            class_labels=self.class_labels,
+            accuracy_tolerance=self.accuracy_tolerance,
         )
 
     def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:

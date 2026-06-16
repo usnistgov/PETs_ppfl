@@ -49,6 +49,10 @@ data_partitions_file = args.data_partitions_file
 partitioner_type = args.partitioner_type
 num_partitions = args.num_partitions
 seed = args.seed
+problem_type = args.problem_type
+class_labels = args.class_labels if problem_type == "classification" else None
+num_classes = len(class_labels) if problem_type == "classification" else 1
+accuracy_tolerance = args.accuracy_tolerance if problem_type == "regression" else None
 
 #common params
 partition_id = args.model_params["partition_id"]
@@ -58,7 +62,7 @@ batch_divisor = args.model_params["batch_divisor"]
 test_fraction = args.model_params["test_fraction"]
 
 learning_rate = None; weight_decay = None; optimizer_name = None
-accuracy_tolerance = None; epsilon = None; delta = None; max_grad_norm = None; opacus_secure_mode = None
+epsilon = None; delta = None; max_grad_norm = None; opacus_secure_mode = None
 train_method = None; centralised_eval = None; scaled_lr = None; xgboost_params=None
 
 
@@ -70,7 +74,6 @@ if model_type == "dpcnn":
     learning_rate = args.model_params["learning_rate"]
     weight_decay = args.model_params["weight_decay"]
     optimizer_name = args.model_params["optimizer"]
-    accuracy_tolerance = args.model_params["accuracy_tolerance"]
 
     # Privacy arguments
     epsilon = args.dp["epsilon"]  # Target privacy budget (epsilon)
@@ -107,6 +110,12 @@ elif model_type == "xgboost":
             "scale_pos_weight",
         ]
     }
+    if problem_type == "classification":
+        xgboost_params["num_class"] = num_classes
+        if xgboost_params.get("objective") == "reg:squarederror":
+            xgboost_params["objective"] = "multi:softprob"
+        if xgboost_params.get("eval_metric") == "rmse":
+            xgboost_params["eval_metric"] = "mlogloss"
 else:
     print("error - unhandled model type")
     exit(1)
@@ -177,6 +186,9 @@ client_params = {
     'scaled_lr': scaled_lr,
     'xgboost_params': xgboost_params,
     'print_warning_logs': args.print_warning_logs,
+    'problem_type': problem_type,
+    'class_labels': class_labels,
+    'num_classes': num_classes,
 }
 def client_fn(context: Context):
     """Returns a FlowerClient"""
@@ -200,6 +212,10 @@ def server_fn(context: Context) -> ServerAppComponents:
             'train_method': train_method,
             'centralised_eval': centralised_eval,
             'scaled_lr': scaled_lr,
+            'xgboost_params': xgboost_params,
+            'problem_type': problem_type,
+            'class_labels': class_labels,
+            'num_classes': num_classes,
         }
     )
     config = ServerConfig(num_rounds=num_rounds)

@@ -14,7 +14,7 @@
     "num_gpus": { "description": "Number of GPUs to use during training", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
     "seed": { "description": "Seed used to randomize training/testing", "type": "integer", "minimum": 1, "maximum": 1000, "default": 42},
 
-    "print_warning_logs": {"description": "Set to True to have warning logs print to the terminal. Set to False to have them directed to a log file in the output directory", "type": "boolean", "default": true},
+    "print_warning_logs": {"description": "Set to True to have warning logs print to the terminal. Set to False to have them directed to a log file in the output directory", "type": "boolean", "default": false},
 
     "output_dir": { "description": "Output directory for reports", "type": "string", "default": "../reports"},
     "data_dir": {"description": "Path to the input data", "type": "string", "default": "../data/Oil_binned5"},
@@ -23,10 +23,9 @@
     "num_partitions": { "description": "Number of data partitions", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
     "model_params" : {"type": "object", "default": {}},
 
-    "problem_type": {"description": "The type of mdoe to be trained (regression or classification)", 
-                     "type":"string", "enum": ["classification", "regression"], "default": "regression"},
-    "class_labels": {"description": "Allowed class labels for classification tasks", "type": "array", 
-                     "items": {"type": ["string", "number", "integer", "boolean"]}, "minItems": 2, "uniqueItems": true, "default": [0, 1]},
+    "problem_type": {"description": "The type of mdoe to be trained (regression or classification)", "type":"string", "enum": ["classification", "regression"], "default": "regression"},
+    "class_labels": {"description": "Allowed class labels for classification tasks", "type": "array", "items": {"type": ["string", "number", "integer", "boolean"]}, "minItems": 2, "uniqueItems": true},
+    "accuracy_tolerance": { "description": "Error tolerance to declare prediction correct", "type": "number", "minimum": 0, "default":0.1},
 
     "federated": {
       "type": "object",
@@ -104,8 +103,7 @@
                   "test_fraction": { "description": "Fraction of dataset set aside for testing", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.2},
                   "learning_rate": { "description": "Learning rate", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.003},
                   "weight_decay": { "description": "Weight decay", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 0.1, "default": 0.0001},
-                  "optimizer": { "description": "Optimizer name", "type": "string", "enum": ["sgd", "adamax"], "default": "sgd"},
-                  "accuracy_tolerance": { "description": "Error tolerance to declare prediction correct", "type": "number", "minimum": 0, "maximum": 1, "default":0.1}
+                  "optimizer": { "description": "Optimizer name", "type": "string", "enum": ["sgd", "adamax"], "default": "sgd"}
                 }
               }
             }
