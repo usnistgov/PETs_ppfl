@@ -64,7 +64,7 @@
                   "seed": { "description": "Seed used to randomize training/testing", "type": "integer", "minimum": 1, "maximum": 1000, "default": 42},
 
                   "epochs": { "description": "Number of training epochs", "type": "integer", "minimum": 1, "maximum": 100, "default": 20},
-                  "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 1, "default": 5},
+                  "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 32, "default": 32},
                   "test_fraction": { "description": "Fraction of dataset set aside for testing", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.2},
                   "learning_rate": { "description": "Learning rate", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.003},
                   "weight_decay": { "description": "Weight decay", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 0.1, "default": 0.0001},
@@ -91,7 +91,7 @@
                   "seed": { "description": "Seed used to randomize training/testing", "type": "integer", "minimum": 1, "maximum": 1000, "default": 42},
 
                   "epochs": { "description": "Number of training epochs", "type": "integer", "minimum": 1, "maximum": 100, "default": 20},
-                  "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 1, "default": 5},
+                  "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 32, "default": 32},
                   "test_fraction": { "description": "Fraction of dataset set aside for testing", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.2},
                   "learning_rate": { "description": "Learning rate", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.003},
                   "weight_decay": { "description": "Weight decay", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 0.1, "default": 0.0001},
@@ -119,7 +119,7 @@
                   "seed": { "description": "Seed used to randomize training/testing", "type": "integer", "minimum": 1, "maximum": 1000, "default": 42},
 
                   "epochs": { "description": "Number of training epochs", "type": "integer", "minimum": 1, "maximum": 100, "default": 20},
-                  "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 1, "default": 5},
+                  "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 32, "default": 32},
                   "test_fraction": { "description": "Fraction of dataset set aside for testing", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.2},
                   
                   "train_method": {"description": "The training method selected", "type": "string", "enum": ["bagging", "cyclic"], "default": "bagging"},
