@@ -1,0 +1,137 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Client Regression Outputs",
+    "description": "Schema defining the output of regression client reports",
+    "type": "object",
+    "properties":
+        {
+            "created on":
+                {
+                    "description": "The timestamp of when the report was created",
+                    "type": "string"
+                },
+            "model id":
+                {
+                    "description": "The id of the model trained",
+                    "type": "integer"
+                },
+            "round number":
+                {
+                    "description": "The round of training",
+                    "type": "integer"
+                },
+            "partitions file":
+                {
+                    "description": "The file used to partition the data for training",
+                    "type": "string"
+                },
+            "problem type":
+                {
+                    "description": "The modeling problem type",
+                    "const": "regression"
+                },
+            "accuracy tolerance":
+                {
+                    "description": "Error tolerance to declare a regression prediction as correct",
+                    "type": "number"
+                },
+            "train accuracy":
+                {
+                    "description": "Training accuracy for this client and round",
+                    "type": "number"
+                },
+            "test accuracy":
+                {
+                    "description": "Test accuracy for this client and round",
+                    "type": "number"
+                },
+            "train mean squared error":
+                {
+                    "description": "Train MSE for this client and round",
+                    "type": "number"
+                },
+            "test mean squared error":
+                {
+                    "description": "Test MSE for this client and round",
+                    "type": "number"
+                },
+            "train loss":
+                {
+                    "description": "Train loss for this client and round",
+                    "type": "number"
+                },
+            "test loss":
+                {
+                    "description": "Test loss for this client and round",
+                    "type": "number"
+                },
+            "train indices":
+                {
+                    "description": "Indices used for training",
+                    "$ref": "#/$defs/integerArray"
+                },
+            "test indices":
+                {
+                    "description": "Indices used for testing",
+                    "$ref": "#/$defs/integerArray"
+                },
+            "train predictions":
+                {
+                    "description": "The predicted values for the training set",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "test predictions":
+                {
+                    "description": "The predicted values for the test set",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "hyperparameters":
+                {
+                    "description": "The hyperparameters the client used during its training process",
+                    "type": "object"
+                },
+            "train accuracy per epoch":
+                {
+                    "description": "Accuracy over epochs for training",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "test accuracy per epoch":
+                {
+                    "description": "Accuracy over epochs for testing",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "train mse per epoch":
+                {
+                    "description": "MSE over epochs for training",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "test mse per epoch":
+                {
+                    "description": "MSE over epochs for testing",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "losses per epoch":
+                {
+                    "description": "Loss values for each epoch in this client round",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "epsilon per epoch":
+                {
+                    "description": "The epsilon values for each epoch in this client round",
+                    "$ref": "#/$defs/numberArray"
+                }
+        },
+    "$defs":
+        {
+            "numberArray":
+                {
+                    "type": "array",
+                    "items": {"type": "number"}
+                },
+            "integerArray":
+                {
+                    "type": "array",
+                    "items": {"type": "integer"}
+                }
+        }
+}

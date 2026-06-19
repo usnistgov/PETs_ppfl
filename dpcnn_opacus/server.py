@@ -16,12 +16,14 @@ from xgboost.core import DMatrix
 from sklearn.metrics import accuracy_score, mean_squared_error
 
 from dataset import IndexedArrayDataset, load_npy_feature_label_data
-from model import CNNModel, DPCNNModel
+from model import BaseModel, CNNModel, DPCNNModel
 from report import Report
 
 loss_rounds = []  # loss per global round
 accuracy_rounds = []  # accuracy per global round
 mse_rounds = []  # mse per global round
+precision_rounds = []  # macro precision per global round
+recall_rounds = []  # macro recall per global round
 
 def get_evaluate_fn(
     num_data_features: int,
@@ -30,6 +32,7 @@ def get_evaluate_fn(
     output_dir: str,
     model_type: str,
     problem_type: str = "regression",
+    class_labels=None,
     num_classes: int = 1,
     accuracy_tolerance: float = 0.1,
 ):
@@ -41,6 +44,9 @@ def get_evaluate_fn(
             loss_rounds.append(0.0)
             accuracy_rounds.append(0.0)
             mse_rounds.append(0.0)
+            if problem_type == "classification":
+                precision_rounds.append(0.0)
+                recall_rounds.append(0.0)
             return 0.0, {"accuracy": 0.0, "mse": 0.0}
 
         model_class = DPCNNModel if model_type == "dpcnn" else CNNModel
@@ -71,6 +77,9 @@ def get_evaluate_fn(
         loss_rounds.append(float(test_loss))
         accuracy_rounds.append(float(test_accuracy))
         mse_rounds.append(float(test_mse))
+        if problem_type == "classification":
+            precision_rounds.append(float(_test_class_metrics["precision_macro"]))
+            recall_rounds.append(float(_test_class_metrics["recall_macro"]))
 
         print(
             "GLOBAL ACCURACY:",
@@ -85,10 +94,25 @@ def get_evaluate_fn(
             prefix = "dpcnn_opacus" if model_type == "dpcnn" else "cnn"
             metadata = {
                 "created on": str(datetime.now()),
+            }
+            BaseModel.add_task_report_metadata(
+                metadata,
+                problem_type,
+                class_labels,
+                accuracy_tolerance,
+            )
+            metadata.update({
                 "loss per round": np.array(loss_rounds),
                 "accuracy per round": np.array(accuracy_rounds),
-                "mse per round": np.array(mse_rounds),
-            }
+            })
+            if problem_type == "classification":
+                BaseModel.add_global_classification_report_metrics(
+                    metadata,
+                    precision_rounds,
+                    recall_rounds,
+                )
+            else:
+                metadata["mse per round"] = np.array(mse_rounds)
 
             np.savez(
                 Path(output_dir, f"{prefix}_global_metadata.npz"),
@@ -137,6 +161,8 @@ def evaluate_and_save_xgboost_global(
     output_dir: str,
     xgboost_params: Dict,
     problem_type: str = "regression",
+    class_labels=None,
+    accuracy_tolerance: float = 0.1,
 ):
     """Evaluate and save the aggregated XGBoost global model."""
     if parameters is None or not parameters.tensors:
@@ -154,6 +180,7 @@ def evaluate_and_save_xgboost_global(
             predicted_labels = np.rint(predictions)
         accuracy = accuracy_score(labels, predicted_labels)
         mse = 0.0
+        classification_metrics = BaseModel.get_classification_metrics(labels, predicted_labels)
     else:
         rounded_predictions = np.rint(predictions)
         accuracy = accuracy_score(labels, rounded_predictions)
@@ -162,6 +189,9 @@ def evaluate_and_save_xgboost_global(
     loss_rounds.append(float(mse))
     accuracy_rounds.append(float(accuracy))
     mse_rounds.append(float(mse))
+    if problem_type == "classification":
+        precision_rounds.append(float(classification_metrics["precision_macro"]))
+        recall_rounds.append(float(classification_metrics["recall_macro"]))
 
     print(
         "GLOBAL ACCURACY:",
@@ -175,10 +205,25 @@ def evaluate_and_save_xgboost_global(
     if server_round == num_rounds:
         metadata = {
             "created on": str(datetime.now()),
+        }
+        BaseModel.add_task_report_metadata(
+            metadata,
+            problem_type,
+            class_labels,
+            accuracy_tolerance,
+        )
+        metadata.update({
             "loss per round": np.array(loss_rounds),
             "accuracy per round": np.array(accuracy_rounds),
-            "mse per round": np.array(mse_rounds),
-        }
+        })
+        if problem_type == "classification":
+            BaseModel.add_global_classification_report_metrics(
+                metadata,
+                precision_rounds,
+                recall_rounds,
+            )
+        else:
+            metadata["mse per round"] = np.array(mse_rounds)
 
         np.savez(
             Path(output_dir, "xgb_global_metadata.npz"),
@@ -275,6 +320,8 @@ def create_xgboost_strategy(strategy_params):
         "output_dir": strategy_params["output_dir"],
         "xgboost_params": strategy_params.get("xgboost_params") or {},
         "problem_type": strategy_params.get("problem_type", "regression"),
+        "class_labels": strategy_params.get("class_labels"),
+        "accuracy_tolerance": strategy_params.get("accuracy_tolerance"),
     }
 
     if train_method == "bagging":
@@ -351,6 +398,7 @@ def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
         strategy_params['output_dir'],
         model_type,
         problem_type,
+        strategy_params.get("class_labels"),
         num_classes,
         accuracy_tolerance,
     ),

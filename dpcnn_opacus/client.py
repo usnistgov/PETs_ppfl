@@ -267,7 +267,67 @@ class TorchFlowerClient(fl.client.NumPyClient):
         self.test_acc_per_epoch = []
         self.train_mse_per_epoch = []
         self.test_mse_per_epoch = []
+        self.train_precision_per_epoch = []
+        self.test_precision_per_epoch = []
+        self.train_recall_per_epoch = []
+        self.test_recall_per_epoch = []
         self.losses = []
+
+    def hyperparameters_metadata(self):
+        hyperparameters = {
+            'learning rate': float(self.learning_rate),
+            'weight decay': float(self.weight_decay),
+            'batch divisor': int(self.batch_divisor),
+            'epochs': int(self.epochs),
+            'seed': int(self.seed),
+            'test fraction': float(self.test_fraction),
+        }
+        if self.use_dp:
+            hyperparameters.update({
+                "epsilon": float(self.epsilon),
+                "delta": float(self.delta),
+                "max grad norm": float(self.max_grad_norm),
+                "opacus secure mode": bool(self.opacus_secure_mode),
+            })
+        return hyperparameters
+
+    def epoch_metrics_path(self):
+        return Path(self.output_dir, f".client_{self.client_id}_round_{self.current_round}_epoch_metrics.npz")
+
+    def save_epoch_metrics(self):
+        self.epoch_metrics_path().parent.mkdir(parents=True, exist_ok=True)
+        np.savez(
+            self.epoch_metrics_path(),
+            train_acc=self.train_acc_per_epoch,
+            test_acc=self.test_acc_per_epoch,
+            train_mse=self.train_mse_per_epoch,
+            test_mse=self.test_mse_per_epoch,
+            train_precision=self.train_precision_per_epoch,
+            test_precision=self.test_precision_per_epoch,
+            train_recall=self.train_recall_per_epoch,
+            test_recall=self.test_recall_per_epoch,
+            losses=self.losses,
+            eps=self.eps_per_epoch,
+        )
+
+    def load_epoch_metrics(self):
+        path = self.epoch_metrics_path()
+        if not path.exists():
+            return {
+                "train_acc": self.train_acc_per_epoch,
+                "test_acc": self.test_acc_per_epoch,
+                "train_mse": self.train_mse_per_epoch,
+                "test_mse": self.test_mse_per_epoch,
+                "train_precision": self.train_precision_per_epoch,
+                "test_precision": self.test_precision_per_epoch,
+                "train_recall": self.train_recall_per_epoch,
+                "test_recall": self.test_recall_per_epoch,
+                "losses": self.losses,
+                "eps": self.eps_per_epoch,
+            }
+        metrics = dict(np.load(path, allow_pickle=True))
+        path.unlink(missing_ok=True)
+        return metrics
 
     def get_parameters(self, config):
         return self.cnn_model.get_parameters(config)
@@ -287,6 +347,10 @@ class TorchFlowerClient(fl.client.NumPyClient):
                 self.test_mse_per_epoch,
                 self.train_acc_per_epoch,
                 self.test_acc_per_epoch,
+                self.train_precision_per_epoch,
+                self.test_precision_per_epoch,
+                self.train_recall_per_epoch,
+                self.test_recall_per_epoch,
                 self.losses,
                 self.eps_per_epoch,
             ) = self.cnn_model.fit(
@@ -307,6 +371,10 @@ class TorchFlowerClient(fl.client.NumPyClient):
                 self.test_mse_per_epoch,
                 self.train_acc_per_epoch,
                 self.test_acc_per_epoch,
+                self.train_precision_per_epoch,
+                self.test_precision_per_epoch,
+                self.train_recall_per_epoch,
+                self.test_recall_per_epoch,
                 self.losses,
             ) = self.cnn_model.fit(
                 self.train_loader,
@@ -318,6 +386,8 @@ class TorchFlowerClient(fl.client.NumPyClient):
                 problem_type=self.problem_type,
                 accuracy_tolerance=self.accuracy_tolerance,
             )
+
+        self.save_epoch_metrics()
 
         return self.get_parameters(config), len(self.train_loader.dataset), {}
 
@@ -332,6 +402,8 @@ class TorchFlowerClient(fl.client.NumPyClient):
             test_mse,
             train_preds,
             test_preds,
+            train_metrics,
+            test_metrics,
         ) = self.cnn_model.evaluate(
             self.train_loader,
             self.test_loader,
@@ -339,51 +411,52 @@ class TorchFlowerClient(fl.client.NumPyClient):
             problem_type=self.problem_type,
             accuracy_tolerance=self.accuracy_tolerance,
         )
-        hyperparameters = {
-            'learning rate': float(self.learning_rate),
-            'weight decay': float(self.weight_decay),
-            'batch divisor': int(self.batch_divisor),
-            'epochs': int(self.epochs),
-            'seed': int(self.seed),
-            'test fraction': float(self.test_fraction),
-            'problem type': self.problem_type,
-            'class labels': self.class_labels,
-            'accuracy tolerance': self.accuracy_tolerance,
-        }
-        if self.use_dp:
-            hyperparameters.update({
-                "epsilon": float(self.epsilon),
-                "delta": float(self.delta),
-                "max grad norm": float(self.max_grad_norm),
-                "opacus secure mode": bool(self.opacus_secure_mode),
-            })
-
         metadata = {
             'created on': str(datetime.now()),
             'model id': int(self.client_id),
             'round number': int(self.current_round),
             'partitions file': self.partitions_file,
+        }
+        self.cnn_model.add_task_report_metadata(
+            metadata,
+            self.problem_type,
+            self.class_labels,
+            self.accuracy_tolerance,
+        )
+        metadata.update({
             'train accuracy': float(train_acc),
             'test accuracy': float(test_acc),
-            'train mean squared error': float(train_mse),
-            'test mean squared error': float(test_mse),
             'train loss': float(train_loss),
             'test loss': float(test_loss),
             'train indices': self.train_indices,
             'test indices': self.test_indices,
-            "train accuracy per epoch": np.array(self.train_acc_per_epoch),
-            "test accuracy per epoch": np.array(self.test_acc_per_epoch),
-            "train mse per epoch": np.array(self.train_mse_per_epoch),
-            "test mse per epoch": np.array(self.test_mse_per_epoch),
-            "losses per epoch": np.array(self.losses),
             "train predictions": train_preds,
             "test predictions": test_preds,
-            "problem type": self.problem_type,
-            "class labels": self.class_labels,
-            'hyperparameters': hyperparameters,
-        }
+            'hyperparameters': self.hyperparameters_metadata(),
+        })
+        if self.problem_type == "regression":
+            metadata.update({
+                'train mean squared error': float(train_mse),
+                'test mean squared error': float(test_mse),
+            })
+        epoch_metrics = self.load_epoch_metrics()
+        self.cnn_model.add_epoch_report_metrics(
+            metadata,
+            epoch_metrics["train_acc"],
+            epoch_metrics["test_acc"],
+            epoch_metrics["train_mse"],
+            epoch_metrics["test_mse"],
+            epoch_metrics["losses"],
+            train_precision=epoch_metrics["train_precision"] if self.problem_type == "classification" else None,
+            test_precision=epoch_metrics["test_precision"] if self.problem_type == "classification" else None,
+            train_recall=epoch_metrics["train_recall"] if self.problem_type == "classification" else None,
+            test_recall=epoch_metrics["test_recall"] if self.problem_type == "classification" else None,
+            problem_type=self.problem_type,
+        )
         if self.use_dp:
-            metadata["epsilon per epoch"] = np.array(self.eps_per_epoch)
+            metadata["epsilon per epoch"] = np.array(epoch_metrics["eps"])
+        if self.problem_type == "classification":
+            self.cnn_model.add_classification_report_metrics(metadata, train_metrics, test_metrics)
         name = (
             f"dpcnn{self.epsilon}_opacus_oil_{self.client_id}"
             if self.use_dp

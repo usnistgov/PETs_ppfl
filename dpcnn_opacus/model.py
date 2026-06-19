@@ -78,7 +78,8 @@ class BaseModel:
 
         return (
             train["accuracy"], test["accuracy"], train["loss"], test["loss"],
-            train["mse"], test["mse"], train["predictions"], test["predictions"]
+            train["mse"], test["mse"], train["predictions"], test["predictions"],
+            train, test
         )
 
     def predict(self, data):
@@ -223,6 +224,90 @@ class BaseModel:
         )
 
     @staticmethod
+    def add_classification_report_metrics(metadata, train_metrics, test_metrics):
+        metadata.update({
+            "train precision macro": float(train_metrics["precision_macro"]),
+            "train recall macro": float(train_metrics["recall_macro"]),
+            "test precision macro": float(test_metrics["precision_macro"]),
+            "test recall macro": float(test_metrics["recall_macro"]),
+        })
+
+    @staticmethod
+    def add_task_report_metadata(metadata, problem_type, class_labels, accuracy_tolerance):
+        metadata["problem type"] = problem_type
+        if problem_type == "classification":
+            metadata["class labels"] = class_labels
+        if problem_type == "regression":
+            metadata["accuracy tolerance"] = accuracy_tolerance
+
+    @staticmethod
+    def add_global_classification_report_metrics(metadata, precision_rounds, recall_rounds):
+        metadata.update({
+            "precision macro per round": np.array(precision_rounds),
+            "recall macro per round": np.array(recall_rounds),
+        })
+
+    @staticmethod
+    def add_epoch_report_metrics(
+        metadata,
+        train_acc,
+        test_acc,
+        train_mse,
+        test_mse,
+        losses,
+        train_precision=None,
+        test_precision=None,
+        train_recall=None,
+        test_recall=None,
+        problem_type="regression",
+    ):
+        metadata.update({
+            "train accuracy per epoch": np.array(train_acc),
+            "test accuracy per epoch": np.array(test_acc),
+            "losses per epoch": np.array(losses),
+        })
+        if problem_type == "regression":
+            metadata.update({
+                "train mse per epoch": np.array(train_mse),
+                "test mse per epoch": np.array(test_mse),
+            })
+        if train_precision is not None:
+            metadata.update({
+                "train precision macro per epoch": np.array(train_precision),
+                "test precision macro per epoch": np.array(test_precision),
+                "train recall macro per epoch": np.array(train_recall),
+                "test recall macro per epoch": np.array(test_recall),
+            })
+
+    @staticmethod
+    def add_epoch_values(
+        train_mse,
+        test_mse,
+        train_acc,
+        test_acc,
+        train_precision,
+        test_precision,
+        train_recall,
+        test_recall,
+        train_metrics,
+        test_metrics,
+        epoch_train_mse,
+        epoch_test_mse,
+        train_accuracy,
+        test_accuracy,
+        problem_type,
+    ):
+        train_mse.append(epoch_train_mse)
+        test_mse.append(epoch_test_mse)
+        train_acc.append(train_accuracy)
+        test_acc.append(test_accuracy)
+        if problem_type == "classification":
+            train_precision.append(train_metrics["precision_macro"])
+            test_precision.append(test_metrics["precision_macro"])
+            train_recall.append(train_metrics["recall_macro"])
+            test_recall.append(test_metrics["recall_macro"])
+
+    @staticmethod
     def get_regression_metrics(labels, predictions, accuracy_tolerance):
         if len(labels) == 0:
             return {
@@ -315,6 +400,10 @@ class CNNModel(BaseModel):
         test_mse = []
         train_acc = []
         test_acc = []
+        train_precision = []
+        test_precision = []
+        train_recall = []
+        test_recall = []
         losses = []
 
         for epoch in range(epochs):
@@ -365,17 +454,19 @@ class CNNModel(BaseModel):
                 accuracy_tolerance,
             )
             self.model.train()
-            train_mse.append(mse)
-            train_acc.append(train_accuracy)
-            test_mse.append(epoch_test_mse)
-            test_acc.append(epoch_test_acc)
+            self.add_epoch_values(
+                train_mse, test_mse, train_acc, test_acc,
+                train_precision, test_precision, train_recall, test_recall,
+                train_metrics, test_class_metrics, mse, epoch_test_mse,
+                train_accuracy, epoch_test_acc, problem_type,
+            )
             losses.append(epoch_loss)
 
             self.print_epoch_metrics(self.model_id, epoch, epochs, epoch_loss, train_accuracy,
                                      epoch_test_acc, problem_type, train_metrics,
                                      test_class_metrics, mse, epoch_test_mse)
 
-        return train_mse, test_mse, train_acc, test_acc, losses
+        return train_mse, test_mse, train_acc, test_acc, train_precision, test_precision, train_recall, test_recall, losses
 
     def predict(self, data, device):
         self.model.eval()
@@ -492,6 +583,10 @@ class DPCNNModel(BaseModel):
         test_mse = []
         train_acc = []
         test_acc = []
+        train_precision = []
+        test_precision = []
+        train_recall = []
+        test_recall = []
         eps = []
         losses = []
 
@@ -547,10 +642,12 @@ class DPCNNModel(BaseModel):
             epsilon_spent, _ = privacy_engine.accountant.get_privacy_spent(
                 delta=delta
             )
-            train_mse.append(mse)
-            train_acc.append(train_accuracy)
-            test_mse.append(epoch_test_mse)
-            test_acc.append(epoch_test_acc)
+            self.add_epoch_values(
+                train_mse, test_mse, train_acc, test_acc,
+                train_precision, test_precision, train_recall, test_recall,
+                train_metrics, test_class_metrics, mse, epoch_test_mse,
+                train_accuracy, epoch_test_acc, problem_type,
+            )
             losses.append(epoch_loss)
             eps.append(epsilon_spent)
 
@@ -558,7 +655,7 @@ class DPCNNModel(BaseModel):
                                      epoch_test_acc, problem_type, train_metrics,
                                      test_class_metrics, mse, epoch_test_mse, epsilon_spent)
 
-        return train_mse, test_mse, train_acc, test_acc, losses, eps
+        return train_mse, test_mse, train_acc, test_acc, train_precision, test_precision, train_recall, test_recall, losses, eps
 
     def predict(self, data, device):
         self.model.eval()
@@ -671,6 +768,16 @@ class XGBoostModel(BaseModel):
         return self.evaluate(test_data)
 
     def fit(self, train_data, test_data, num_local_round, train_method):
+        self.train_mse_per_epoch = []
+        self.test_mse_per_epoch = []
+        self.train_acc_per_epoch = []
+        self.test_acc_per_epoch = []
+        self.train_precision_per_epoch = []
+        self.test_precision_per_epoch = []
+        self.train_recall_per_epoch = []
+        self.test_recall_per_epoch = []
+        self.losses = []
+
         for i in range(num_local_round):
             if self.model is None or self.model.num_boosted_rounds() == 0:
                 self.model = xgb.train(
@@ -699,6 +806,15 @@ class XGBoostModel(BaseModel):
                     test_data.get_label(),
                     self.task_predictions(self.model.predict(test_data), self.problem_type),
                 )
+            self.add_epoch_values(
+                self.train_mse_per_epoch, self.test_mse_per_epoch,
+                self.train_acc_per_epoch, self.test_acc_per_epoch,
+                self.train_precision_per_epoch, self.test_precision_per_epoch,
+                self.train_recall_per_epoch, self.test_recall_per_epoch,
+                train_metrics, test_metrics, train_mse, test_mse,
+                train_acc, test_acc, self.problem_type,
+            )
+            self.losses.append(train_mse if self.problem_type == "regression" else 0)
             self.print_epoch_metrics(self.model_id, i, num_local_round,
                                      train_mse if self.problem_type == "regression" else None,
                                      train_acc, test_acc, self.problem_type,
@@ -754,14 +870,18 @@ class XGBoostModel(BaseModel):
             "model id": int(self.model_id),
             "round number": int(global_round),
             "partitions file": partitions_file,
-            "problem type": self.problem_type,
-            "class labels": self.class_labels,
+        }
+        self.add_task_report_metadata(
+            metadata,
+            self.problem_type,
+            self.class_labels,
+            self.accuracy_tolerance,
+        )
+        metadata.update({
             "train accuracy": float(train_acc),
             "test accuracy": float(test_acc),
-            "train mean squared error": float(_train_mse),
-            "test mean squared error": float(_test_mse),
-            "train loss": 0,
-            "test loss": 0,
+            "train loss": float(_train_mse) if self.problem_type == "regression" else 0,
+            "test loss": float(_test_mse) if self.problem_type == "regression" else 0,
             "train indices": train_indices,
             "test indices": test_indices,
             "train predictions": train_predictions,
@@ -772,7 +892,31 @@ class XGBoostModel(BaseModel):
                 "test_fraction": test_fraction,
                 "test fraction": test_fraction,
             },
-        }
+        })
+        if self.problem_type == "regression":
+            metadata.update({
+                "train mean squared error": float(_train_mse),
+                "test mean squared error": float(_test_mse),
+            })
+        if self.problem_type == "classification":
+            self.add_classification_report_metrics(
+                metadata,
+                self.get_classification_metrics(train_data.get_label(), train_predictions),
+                self.get_classification_metrics(test_data.get_label(), test_predictions),
+            )
+        self.add_epoch_report_metrics(
+            metadata,
+            self.train_acc_per_epoch,
+            self.test_acc_per_epoch,
+            self.train_mse_per_epoch,
+            self.test_mse_per_epoch,
+            self.losses,
+            train_precision=self.train_precision_per_epoch if self.problem_type == "classification" else None,
+            test_precision=self.test_precision_per_epoch if self.problem_type == "classification" else None,
+            train_recall=self.train_recall_per_epoch if self.problem_type == "classification" else None,
+            test_recall=self.test_recall_per_epoch if self.problem_type == "classification" else None,
+            problem_type=self.problem_type,
+        )
         return metadata, train_acc, test_acc
 
     def save_client_output(
