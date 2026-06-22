@@ -64,7 +64,8 @@ class BaseModel:
 
     def evaluate(self, train_loader, test_loader, criterion, problem_type, accuracy_tolerance):
         self.model.eval()
-        self.model.to("cpu")
+        device = next(self.model.parameters()).device
+        self.model.to(device)
         train = self.evaluate_loader(train_loader, criterion, None, problem_type, accuracy_tolerance)
         test = self.evaluate_loader(test_loader, criterion, None, problem_type, accuracy_tolerance)
 
@@ -114,10 +115,6 @@ class BaseModel:
         return inputs, labels
 
     @staticmethod
-    def task_labels(labels, problem_type):
-        return labels.long() if problem_type == "classification" else labels.float()
-
-    @staticmethod
     def task_predictions(outputs, problem_type):
         if problem_type == "classification":
             if isinstance(outputs, torch.Tensor):
@@ -127,18 +124,29 @@ class BaseModel:
         return outputs.squeeze() if isinstance(outputs, torch.Tensor) else outputs
 
     def task_loss_and_predictions(self, criterion, outputs, labels, problem_type):
-        labels = self.task_labels(labels, problem_type)
-        predictions = self.task_predictions(outputs, problem_type)
-        loss = criterion(outputs, labels) if problem_type == "classification" else criterion(predictions, labels)
+        if problem_type == "classification":
+            labels = labels.long()
+            predictions = torch.argmax(outputs, dim=1)
+            loss = criterion(outputs, labels)   # raw logits for CE loss
+        else:
+            labels = labels.float()
+            predictions = outputs.squeeze()
+            loss = criterion(predictions, labels)  # numeric values for regression loss
+
         return loss, labels, predictions
+
+    def metrics_from_predictions(self, labels, predictions, problem_type, accuracy_tolerance):
+        predictions = self.task_predictions(predictions, problem_type)
+        return self.task_metrics(labels, predictions, problem_type, accuracy_tolerance)
 
     def evaluate_loader(self, loader, criterion, device, problem_type, accuracy_tolerance):
         total_loss = 0
+        processed_batches = 0
         all_preds, all_labels = [], []
 
         with torch.no_grad():
-            for data in loader:
-                inputs, labels = self.unpack_batch(data, device)
+            for batch in loader:
+                inputs, labels = self.unpack_batch(batch, device)
                 if inputs.shape[0] < 2:
                     continue
 
@@ -150,11 +158,12 @@ class BaseModel:
                     problem_type,
                 )
                 total_loss += loss.item()
+                processed_batches += 1
                 all_preds.extend(predictions.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
 
         metrics = self.task_metrics(all_labels, all_preds, problem_type, accuracy_tolerance)
-        metrics["loss"] = total_loss / len(loader) if len(loader) else 0
+        metrics["loss"] = total_loss / processed_batches if processed_batches else 0
         metrics["predictions"] = all_preds
         return metrics
 

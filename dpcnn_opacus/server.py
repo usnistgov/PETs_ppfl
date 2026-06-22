@@ -18,6 +18,7 @@ from sklearn.metrics import accuracy_score, mean_squared_error
 from dataset import IndexedArrayDataset, load_npy_feature_label_data
 from model import BaseModel, CNNModel, DPCNNModel
 from report import Report
+from utils import get_device
 
 loss_rounds = []  # loss per global round
 accuracy_rounds = []  # accuracy per global round
@@ -69,7 +70,7 @@ def get_evaluate_fn(
         ) = global_model.compute_test_metrics(
             test_loader,
             criterion,
-            "cpu",
+            get_device(),
             problem_type=problem_type,
             accuracy_tolerance=accuracy_tolerance,
         )
@@ -299,9 +300,9 @@ def evaluate_xgboost_metrics(eval_metrics):
 
 def create_xgboost_strategy(strategy_params):
     train_method = strategy_params.get("train_method")
-    pool_size = strategy_params["min_available_clients"]
-    min_fit_clients = strategy_params["min_fit_clients"]
-    min_evaluate_clients = strategy_params["min_evaluate_clients"]
+    pool_size = strategy_params["num_clients"]
+    min_fit_clients = strategy_params["num_clients"]
+    min_evaluate_clients = strategy_params["num_clients"]
     centralised_eval = strategy_params.get("centralised_eval")
     tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(
         strategy_params["data_dir"]
@@ -327,7 +328,7 @@ def create_xgboost_strategy(strategy_params):
     if train_method == "bagging":
         return FedXgbBagging(
             evaluate_function=get_xgboost_evaluate_fn(global_output_config),
-            fraction_fit=(float(min_fit_clients) / pool_size),
+            fraction_fit=1.0,
             min_fit_clients=min_fit_clients,
             min_available_clients=pool_size,
             min_evaluate_clients=(
@@ -403,9 +404,9 @@ def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
         accuracy_tolerance,
     ),
     evaluate_metrics_aggregation_fn=weighted_average,
-    min_fit_clients=strategy_params['min_fit_clients'],
-    min_evaluate_clients=strategy_params['min_evaluate_clients'],
-    min_available_clients=strategy_params['min_available_clients'],
+    min_fit_clients=strategy_params['num_clients'],
+    min_evaluate_clients=strategy_params['num_clients'],
+    min_available_clients=strategy_params['num_clients'],
     on_fit_config_fn=fit_round,
     )
     return strategy

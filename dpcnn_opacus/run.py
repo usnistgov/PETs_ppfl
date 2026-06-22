@@ -17,13 +17,6 @@ from report import Report
 from dataset import ensure_npy_feature_label_files
 
 # Parse arguments for flower server and client
-'''
-ORIGINAL CODE:
-
-    args = flower_args_parser()
-
-RECOMMENDED CODE:
-'''
 pipeline = ConfigPipeline()
 args = pipeline.parse()
 print("Parameter values:\n")
@@ -33,12 +26,6 @@ if args.check_only:
     print("Parameters validated. Ending script")
     exit()
     
-'''
-INTENDED ACTION: Modify
-
-JUSTIFICAITON: Testing new parameterization methods
-'''
-
 #base params
 model_type = args.model_type
 num_cpus = args.num_cpus
@@ -154,10 +141,6 @@ if data_partitions_file and Path(data_partitions_file).exists():
     )
     num_partitions = len(data_partition_ids)
 
-    min_fit_clients = num_partitions
-    min_evaluate_clients = num_partitions
-    min_available_clients = num_partitions
-
 from client import FlowerClient
 from server import create_strategy
 client_params = {
@@ -201,9 +184,7 @@ def server_fn(context: Context) -> ServerAppComponents:
     strategy = create_strategy(
         {
             "model_type": model_type,
-            'min_fit_clients': num_clients,
-            'min_evaluate_clients': num_clients,
-            'min_available_clients': num_clients,
+            'num_clients': num_clients,
             'num_rounds': num_rounds,
             'accuracy_tolerance': accuracy_tolerance,
             'output_dir': out_dir,
@@ -228,27 +209,10 @@ server_app = ServerApp(server_fn=server_fn)
 
 DEVICE = get_device()
 
-'''
-ORIGINAL CODE:
-
-backend_config = None
-
-if DEVICE.type != 'cpu':
-    backend_config = {"client_resources": {"num_cpus": 2, "num_gpus": 1}}
-
-RECOMMENDED CODE:
-'''
-
 if DEVICE.type != 'cpu':
     backend_config = {"client_resources": {"num_cpus": args.num_cpus, "num_gpus": args.num_gpus}}
 else:
     backend_config = {"client_resources": {"num_cpus": args.num_cpus, "num_gpus": 0}} 
-
-'''
-INTENDED ACTION: Modify
-
-JUSTIFICAITON: Increasing CPUs to speed up performance
-'''
 
 print('BACKEND CONFIG', backend_config)
 run_simulation(

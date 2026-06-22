@@ -1,18 +1,11 @@
-import sys
 from typing import Any, Dict
-from collections import OrderedDict
 from pathlib import Path
-import re
 from datetime import datetime
-from collections import Counter
-
 import flwr as fl
 from flwr.common import Context
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
-import torch.optim as optim
 from xgboost.core import DMatrix
 
 from dataset import (
@@ -23,7 +16,6 @@ from dataset import (
 
 from model import CNNModel, DPCNNModel, XGBoostModel
 from utils import get_device, configure_warning_logging
-from opacus import PrivacyEngine
 from flwr.common import (
     Code,
     EvaluateIns,
@@ -43,7 +35,6 @@ from logging import INFO
 DEVICE = get_device()
 print('DEVICE: ', DEVICE)
 
-
 def create_dataloaders(
     client_id: int,
     data_partitions_file,
@@ -53,7 +44,7 @@ def create_dataloaders(
     test_fraction,
     seed,
     batch_divisor,
-    problem_type="regression",
+    problem_type,
     class_labels=None,
 ):
     tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(data_directory)
@@ -121,7 +112,6 @@ def create_dataloaders(
         test_indices,
     )
 
-
 def loader_to_dmatrix(loader):
     features = []
     labels = []
@@ -129,7 +119,6 @@ def loader_to_dmatrix(loader):
         features.append(np.asarray(batch_features))
         labels.append(np.asarray(batch_labels).reshape(-1))
     return DMatrix(data=np.concatenate(features), label=np.concatenate(labels))
-
 
 def create_xgboost_data(
     client_id: int,
@@ -140,7 +129,7 @@ def create_xgboost_data(
     test_fraction,
     seed,
     batch_divisor,
-    problem_type="regression",
+    problem_type,
     class_labels=None,
 ):
     (
@@ -169,7 +158,6 @@ def create_xgboost_data(
         train_indices,
         test_indices,
     )
-
 
 class TorchFlowerClient(fl.client.NumPyClient):
     def __init__(
