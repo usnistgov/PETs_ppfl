@@ -176,7 +176,7 @@ def train_test_split_backed_indices(
     indices,
     test_frac,
     seed,
-    problem_type="regression",
+    problem_type,
 ):
     selected_labels = get_split_labels(tt_labels, ho_labels, indices)
     local_indices = np.arange(len(selected_labels))
@@ -241,7 +241,7 @@ def train_test_indices_split(
     indices: np.ndarray,
     test_frac: float,
     seed: int,
-    problem_type: str = "regression",
+    problem_type: str,
 ) -> Tuple[List[int], List[int]]:
     """
     Split dataset indices into train and test sets for regression tasks.
@@ -313,7 +313,7 @@ def load_random_partitions(
     num_partitions,
     partitioner_type,
     data_directory,
-    problem_type="regression",
+    problem_type,
     class_labels=None,
 ) -> Tuple[DataLoader, DataLoader, List[int], List[int]]:
     """
@@ -385,7 +385,7 @@ def load_custom_partitions(
     batch_size,
     test_fraction,
     seed,
-    problem_type="regression",
+    problem_type,
     class_labels=None,
 ) -> Tuple[DataLoader, DataLoader, List[int], List[int]]:
     # Check if data partition id is available in the data partitions

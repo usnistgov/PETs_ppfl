@@ -32,7 +32,7 @@ def get_evaluate_fn(
     test_loader: DataLoader,
     output_dir: str,
     model_type: str,
-    problem_type: str = "regression",
+    problem_type: str,
     class_labels=None,
     num_classes: int = 1,
     accuracy_tolerance: float = 0.1,
@@ -161,7 +161,7 @@ def evaluate_and_save_xgboost_global(
     test_data: DMatrix,
     output_dir: str,
     xgboost_params: Dict,
-    problem_type: str = "regression",
+    problem_type: str,
     class_labels=None,
     accuracy_tolerance: float = 0.1,
 ):

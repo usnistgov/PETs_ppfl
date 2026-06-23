@@ -268,7 +268,7 @@ class BaseModel:
         test_precision=None,
         train_recall=None,
         test_recall=None,
-        problem_type="regression",
+        problem_type=None,
     ):
         metadata.update({
             "train accuracy per epoch": np.array(train_acc),
@@ -734,6 +734,32 @@ class XGBoostModel(BaseModel):
         self.class_labels = class_labels
         self.accuracy_tolerance = accuracy_tolerance
 
+        self.train_loss_per_epoch = []
+        self.test_loss_per_epoch = []
+        self.final_train_loss = 0.0
+        self.final_test_loss = 0.0
+
+        if self.problem_type == "classification":
+            if len(self.class_labels) == 2:
+                self.objective = "binary:logistic"
+                self.eval_metric = "logloss"
+                self.params["objective"] = self.objective
+                self.params["eval_metric"] = self.eval_metric
+                self.params.pop("num_class", None)
+            else:
+                self.objective = "multi:softprob"
+                self.eval_metric = "mlogloss"
+                self.num_class = len(self.class_labels)
+                self.params["objective"] = self.objective
+                self.params["eval_metric"] = self.eval_metric
+                self.params["num_class"] = self.num_class
+
+            self.loss_metric_name = self.eval_metric
+        else:
+            self.objective = self.params.get("objective")
+            self.eval_metric = self.params.get("eval_metric", "rmse")
+            self.loss_metric_name = "mse"
+
     @classmethod
     def client_params(cls, seed, num_partitions, train_method, scaled_lr, base_params):
         params = base_params.copy()
@@ -786,8 +812,11 @@ class XGBoostModel(BaseModel):
         self.train_recall_per_epoch = []
         self.test_recall_per_epoch = []
         self.losses = []
+        self.final_train_loss = 0.0
+        self.final_test_loss = 0.0
 
         for i in range(num_local_round):
+            evals_result = {}
             if self.model is None or self.model.num_boosted_rounds() == 0:
                 self.model = xgb.train(
                     self.params,
@@ -797,15 +826,28 @@ class XGBoostModel(BaseModel):
                         (test_data, "validate"),
                         (train_data, "train"),
                     ],
+                    evals_result=evals_result,
                     verbose_eval=False,
                 )
             else:
-                self.model.update(train_data, self.model.num_boosted_rounds())
+                self.model = xgb.train(
+                    self.params,
+                    train_data,
+                    num_boost_round=1,
+                    evals=[
+                        (test_data, "validate"),
+                        (train_data, "train"),
+                    ],
+                    xgb_model=self.model,
+                    evals_result=evals_result,
+                    verbose_eval=False,
+                )
 
             train_acc, train_mse, train_mae, train_rmse = self.regression_metrics(train_data)
             test_acc, test_mse, _, _ = self.regression_metrics(test_data)
             train_metrics = {"mae": train_mae, "rmse": train_rmse}
             test_metrics = {}
+
             if self.problem_type == "classification":
                 train_metrics = self.get_classification_metrics(
                     train_data.get_label(),
@@ -815,6 +857,18 @@ class XGBoostModel(BaseModel):
                     test_data.get_label(),
                     self.task_predictions(self.model.predict(test_data), self.problem_type),
                 )
+
+                metric_key = next(iter(evals_result["train"]))
+                self.final_train_loss = float(evals_result["train"][metric_key][-1])
+                self.final_test_loss = float(evals_result["validate"][metric_key][-1])
+                self.losses.append(self.final_train_loss)
+                displayed_loss = self.final_train_loss
+            else:
+                self.final_train_loss = float(train_mse)
+                self.final_test_loss = float(test_mse)
+                self.losses.append(self.final_train_loss)
+                displayed_loss = self.final_train_loss
+
             self.add_epoch_values(
                 self.train_mse_per_epoch, self.test_mse_per_epoch,
                 self.train_acc_per_epoch, self.test_acc_per_epoch,
@@ -823,11 +877,12 @@ class XGBoostModel(BaseModel):
                 train_metrics, test_metrics, train_mse, test_mse,
                 train_acc, test_acc, self.problem_type,
             )
-            self.losses.append(train_mse if self.problem_type == "regression" else 0)
-            self.print_epoch_metrics(self.model_id, i, num_local_round,
-                                     train_mse if self.problem_type == "regression" else None,
-                                     train_acc, test_acc, self.problem_type,
-                                     train_metrics, test_metrics, train_mse, test_mse)
+            self.print_epoch_metrics(
+                self.model_id, i, num_local_round,
+                displayed_loss,
+                train_acc, test_acc, self.problem_type,
+                train_metrics, test_metrics, train_mse, test_mse
+            )
 
         if train_method == "bagging":
             start = self.model.num_boosted_rounds() - num_local_round
@@ -839,13 +894,7 @@ class XGBoostModel(BaseModel):
         if self.model is None:
             raise RuntimeError("build_model or set_parameters must be called before evaluate")
 
-        eval_results = self.model.eval_set(
-            evals=[(test_data, "valid")],
-            iteration=self.model.num_boosted_rounds() - 1,
-        )
-        metric_name, metric_value = eval_results.split("\t")[1].split(":")
-        metric_name = metric_name.split("-")[-1]
-        return metric_name, round(float(metric_value), 4)
+        return self._evaluate_loss(test_data, "valid")
 
     def regression_metrics(self, data):
         labels = data.get_label()
@@ -889,8 +938,8 @@ class XGBoostModel(BaseModel):
         metadata.update({
             "train accuracy": float(train_acc),
             "test accuracy": float(test_acc),
-            "train loss": float(_train_mse) if self.problem_type == "regression" else 0,
-            "test loss": float(_test_mse) if self.problem_type == "regression" else 0,
+            "train loss": float(self.final_train_loss),
+            "test loss": float(self.final_test_loss),
             "train indices": train_indices,
             "test indices": test_indices,
             "train predictions": train_predictions,

@@ -179,9 +179,9 @@ class TorchFlowerClient(fl.client.NumPyClient):
         self.output_dir = params.get('output_dir')
         self.data_dir = params.get('data_dir')
         self.seed = params.get('seed')
-        self.problem_type = params.get("problem_type", "regression")
+        self.problem_type = params.get("problem_type")
         self.class_labels = params.get("class_labels")
-        self.num_classes = params.get("num_classes", 1)
+        self.num_classes = params.get("num_classes")
         self.accuracy_tolerance = params.get("accuracy_tolerance")
         if self.accuracy_tolerance is None:
             self.accuracy_tolerance = 0.1
@@ -473,9 +473,9 @@ class XGBoostFlowerClient(fl.client.Client):
         self.output_dir = params.get("output_dir")
         self.data_partitions_file = params.get("data_partitions_file")
         self.test_fraction = params.get("test_fraction")
-        self.problem_type = params.get("problem_type", "regression")
+        self.problem_type = params.get("problem_type")
         self.class_labels = params.get("class_labels")
-        self.num_classes = params.get("num_classes", 1)
+        self.num_classes = params.get("num_classes")
         self.accuracy_tolerance = params.get("accuracy_tolerance")
         if self.accuracy_tolerance is None:
             self.accuracy_tolerance = 0.1
