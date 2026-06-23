@@ -254,7 +254,7 @@ def train_test_indices_split(
     labels = dataset[indices, -1]
 
     if problem_type == "classification":
-        binned_labels = labels
+        binned_labels = [int(x) for x in np.asarray(labels)]
     else:
         # Create quantile bins for stratification
         num_bins = min(10, len(np.unique(labels)))  # Adjust number of bins
@@ -354,14 +354,19 @@ def load_random_partitions(
     # count labels in train and test set
     train_labels = get_split_labels(tt_labels, ho_labels, train_indices)
     test_labels = get_split_labels(tt_labels, ho_labels, test_indices)
-
     if problem_type == "classification":
-        print("Train dataset label counts", Counter(train_labels))
-        print("Test dataset label counts", Counter(test_labels))
+        print(f"Client {data_partition_id}: Train dataset label counts")
+        train_counts = Counter(int(x) for x in np.asarray(train_labels))
+        for cls, count in sorted(train_counts.items()):
+            print(f"class {cls}: {count} records")
+        print(f"Client {data_partition_id}: Test dataset label counts")
+        test_counts = Counter(int(x) for x in np.asarray(test_labels))
+        for cls, count in sorted(test_counts.items()):
+            print(f"class {cls}: {count} records")
     else:
-        print('Train dataset binned label counts')
+        print(f'Client {data_partition_id}: Train dataset binned label counts')
         print_binned_counts(train_labels.reshape(-1, 1), np.arange(len(train_labels)))
-        print('Test dataset binned label counts')
+        print(f'Client {data_partition_id}: Test dataset binned label counts')
         print_binned_counts(test_labels.reshape(-1, 1), np.arange(len(test_labels)))
 
     # create data loaders
@@ -428,14 +433,19 @@ def load_custom_partitions(
     # count labels in train and test set
     train_labels = get_split_labels(tt_labels, ho_labels, train_indices)
     test_labels = get_split_labels(tt_labels, ho_labels, test_indices)
-
     if problem_type == "classification":
-        print("Train dataset label counts", Counter(train_labels))
-        print("Test dataset label counts", Counter(test_labels))
+        print(f"Client {data_partition_id}: Train dataset label counts")
+        train_counts = Counter(int(x) for x in np.asarray(train_labels))
+        for cls, count in sorted(train_counts.items()):
+            print(f"class {cls}: {count} records")
+        print(f"Client {data_partition_id}: Test dataset label counts")
+        test_counts = Counter(int(x) for x in np.asarray(test_labels))
+        for cls, count in sorted(test_counts.items()):
+            print(f"class {cls}: {count} records")
     else:
-        print('Train dataset binned label counts')
+        print(f'Client {data_partition_id}: Train dataset binned label counts')
         print_binned_counts(train_labels.reshape(-1, 1), np.arange(len(train_labels)))
-        print('Test dataset binned label counts')
+        print(f'Client {data_partition_id}: Test dataset binned label counts')
         print_binned_counts(test_labels.reshape(-1, 1), np.arange(len(test_labels)))
 
     # create dataloaders

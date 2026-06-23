@@ -37,7 +37,7 @@ _*Please note that users are expected to have already preprocessed their data pr
 
 ## Currently In-Progress Capabilities <a name="future_supported"></a>
 - Improvement of report organization
-- Support for setting the `opacus_secure_mode` parameter to true in DP
+- Support for setting the `opacus_secure_mode` parameter to turn on DP
 
 ## Setting Up the Testbed <a name="setup"></a>
 
@@ -125,6 +125,9 @@ Regardless of how the parameter values are input, the values will be validated a
 | Parameter | Description | Type | Limits / Allowed Values |
 |---|---|---|---|
 | `model_type` | The model family to run | string | `"dpcnn"`, `"cnn"`, `"xgboost"` |
+| `problem_type` | Selects the prediction task | string | `"regression"`, `"classification"` |
+| `class_labels` | Ordered list of allowed labels for classification tasks. Required when `problem_type` is `"classification"` | array | At least 2 unique string, number, integer, or boolean values |
+| `accuracy_tolerance` | Error tolerance used to count a regression prediction as accurate. Ignored for classification runs. | number | min: 0 |
 | `num_cpus` | The number of CPUs available to the run | integer | min: 1, max: 100 |
 | `num_gpus` | The number of GPUs available to the run | integer | min: 0, max: 100 |
 | `num_rounds` | The number of rounds of federated learning | integer | min: 1, max: 100 |
@@ -141,9 +144,6 @@ Regardless of how the parameter values are input, the values will be validated a
 | `learning_rate` | Sets the model’s learning rate. This defines how much a model changes at each iteration. | number | exclusive min: 0, exclusive max: 1 |
 | `weight_decay` | Sets the model’s weight decay. This is a regularization method that penalizes high weights. | number | exclusive min: 0, exclusive max: 0.1 |
 | `optimizer` | The optimizer is responsible for adjusting model parameters based on the value of the loss function | string | `"sgd"`, `"adamax"` |
-| `problem_type` | Selects the prediction task | string | `"regression"`, `"classification"` |
-| `class_labels` | Ordered list of allowed labels for classification tasks. Required when `problem_type` is `"classification"` | array | At least 2 unique string, number, integer, or boolean values |
-| `accuracy_tolerance` | Error tolerance used to count a regression prediction as accurate. Ignored for classification runs. | number | min: 0 |
 | `opacus_secure_mode` | Turns on cryptographically secure differential privacy when set to `True` | boolean | — |
 | `epsilon` | Determines the amount of privacy added to the data | number | exclusive min: 0, exclusive max: 50 |
 | `delta` | Measures the chance of a data breach. It defines the probability that the noise does not add sufficient privacy. | number | min: 0, max: 1 |

@@ -6,15 +6,8 @@ from opacus import PrivacyEngine
 import numpy as np
 from pathlib import Path
 import torch.nn.functional as F
-from sklearn.metrics import (
-    accuracy_score,
-    f1_score,
-    mean_absolute_error,
-    mean_squared_error,
-    precision_score,
-    r2_score,
-    recall_score,
-)
+from sklearn.metrics import (accuracy_score, f1_score, mean_absolute_error, mean_squared_error,
+                             precision_score, r2_score, recall_score)
 import xgboost as xgb
 from datetime import datetime
 ####################################################################################################
@@ -38,26 +31,16 @@ class ClassificationTask():
     
     @classmethod
     def metrics(cls, labels, predictions, accuracy_tolerance=None):
-        metrics = cls.get_classification_metrics(labels, predictions)
-        metrics.update({
-            "mae": 0,
-            "mse": 0,
-            "rmse": 0,
-            "r2": 0,
-            "mean": 0,
-            "error_mean": 0,
-        })
-        return metrics
-    
-    def get_classification_metrics(labels, predictions, accuracy_tolerance=None):
         if len(labels) == 0:
-            return {"accuracy": 0.0, "precision_macro": 0.0, "recall_macro": 0.0, "f1_macro": 0.0}
+            return {"accuracy": 0.0, "precision_macro": 0.0, "recall_macro": 0.0, "f1_macro": 0.0, "mae": 0.0,
+                    "mse": 0.0, "rmse": 0.0, "r2": 0.0, "mean": 0.0, "error_mean": 0.0}
 
-        return {"accuracy": accuracy_score(labels, predictions),
-                "precision_macro": precision_score(labels, predictions, average="macro", 
-                                                   zero_division=0),
-                "recall_macro": recall_score(labels, predictions, average="macro", zero_division=0),
-                "f1_macro": f1_score(labels, predictions, average="macro", zero_division=0)}
+        metrics = {"accuracy": accuracy_score(labels, predictions),
+                   "precision_macro": precision_score(labels, predictions, average="macro", zero_division=0),
+                   "recall_macro": recall_score(labels, predictions, average="macro", zero_division=0),
+                   "f1_macro": f1_score(labels, predictions, average="macro", zero_division=0)}
+        metrics.update({"mae": 0, "mse": 0, "rmse": 0, "r2": 0, "mean": 0, "error_mean": 0})
+        return metrics
     
     def add_task_report_metadata(self, metadata, class_labels=None, accuracy_tolerance=None):
         metadata["class labels"] = class_labels
@@ -71,21 +54,7 @@ class ClassificationTask():
     def format_metrics(self, name, metrics):
         return (f"{name} Macro Precision: {metrics['precision_macro']:.2f}, "
                 f"{name} Macro Recall: {metrics['recall_macro']:.2f}, "
-                f"{name} Macro F1: {metrics['f1_macro']:.2f}")
-    
-
-    @staticmethod
-    def add_global_classification_report_metrics(metadata, precision_rounds, recall_rounds):
-        metadata.update({
-            "precision macro per round": np.array(precision_rounds),
-            "recall macro per round": np.array(recall_rounds),
-        })
-
-    @classmethod
-    def task_metrics(cls, labels, predictions):
-        metrics = cls.get_classification_metrics(labels, predictions)
-        metrics.update({"mae": 0, "mse": 0, "rmse": 0, "r2": 0, "mean": 0, "error_mean": 0})
-        return metrics
+                f"{name} Macro F1: {metrics['f1_macro']:.2f}")   
 
 class RegressionTask():
     def predictions(self, outputs):
@@ -98,10 +67,11 @@ class RegressionTask():
         loss = criterion(predictions, labels)
         return loss, labels, predictions
 
-    def metrics(self, labels, predictions, accuracy_tolerance):
+    @classmethod
+    def metrics(cls, labels, predictions, accuracy_tolerance):
         if len(labels) == 0:
-            return {"accuracy": 0.0, "mae": 0.0, "mse": 0.0, "rmse": 0.0, "r2": 0.0, "mean": 0.0, 
-                    "error_mean": 0.0}
+            return {"accuracy": 0.0, "precision_macro": 0.0, "recall_macro": 0.0, "f1_macro": 0.0, "mae": 0.0,
+                    "mse": 0.0, "rmse": 0.0, "r2": 0.0, "mean": 0.0, "error_mean": 0.0}
 
         labels = np.asarray(labels, dtype=float)
         predictions = np.asarray(predictions, dtype=float)
@@ -121,21 +91,18 @@ class RegressionTask():
 
     @staticmethod
     def add_report_metrics(metadata, train_metrics, test_metrics):
-        return
+        return #Not added because RMSE, MAE, R2 is not included in the report currently
     
+    @staticmethod
     def format_metrics(name, metrics):
         return (f"{name} MAE: {metrics['mae']:.4f}, "
                 f"{name} MSE: {metrics['mse']:.4f}, "
                 f"{name} RMSE: {metrics['rmse']:.4f}, "
                 f"{name} R2: {metrics['r2']:.4f}")
 
-    @classmethod
-    def task_metrics(cls, labels, predictions, accuracy_tolerance):
-        return cls.get_regression_metrics(labels, predictions, accuracy_tolerance)
-
 ####################################################################################################
 #                                                                                                  #
-#                                           Base Class                                             #
+#                                         Base Classes                                             #
 #                                                                                                  #
 ####################################################################################################
 
@@ -148,8 +115,7 @@ class BaseModel:
         self.task = (
             ClassificationTask()
             if problem_type == "classification"
-            else RegressionTask()
-        )
+            else RegressionTask())
 
     def output_name(self, name, round_number):
         return f"{name}_round_{round_number}" if round_number is not None else name
@@ -163,7 +129,6 @@ class BaseModel:
         out_name = self.output_name(name, round_number)
         metadata_path = self.output_path(f"{out_name}_meta.npz", output_dir)
         np.savez(metadata_path, **metadata, allow_pickle=True)
-
     
     def save_report(self, metadata, name, round_number, output_dir):
         out_name = self.output_name(name, round_number)
@@ -171,10 +136,8 @@ class BaseModel:
         report.save_to_file(self.output_path(f"{out_name}.json", output_dir))
 
     def model_path(self, name, round_number, output_dir):
-        return self.output_path(
-            f"{self.output_name(name, round_number)}{self.model_extension}",
-            output_dir,
-        )
+        return self.output_path(f"{self.output_name(name, round_number)}{self.model_extension}",
+                                output_dir)
 
     def save_artifacts(self, metadata, name, round_number, output_dir):
         self.save_metadata(metadata, name, round_number, output_dir)
@@ -184,46 +147,19 @@ class BaseModel:
     def add_epoch_report_metrics(metadata, train_acc, test_acc, losses, problem_type, train_mse=None, 
                                  test_mse=None, train_precision=None, test_precision=None, 
                                  train_recall=None, test_recall=None):
-        metadata.update({
-            "train accuracy per epoch": np.array(train_acc),
-            "test accuracy per epoch": np.array(test_acc),
-            "losses per epoch": np.array(losses),
-        })
+        metadata.update({"train accuracy per epoch": np.array(train_acc),
+                         "test accuracy per epoch": np.array(test_acc),
+                         "losses per epoch": np.array(losses)})
 
         if problem_type == "regression":
-            metadata.update({
-                "train mse per epoch": np.array(train_mse),
-                "test mse per epoch": np.array(test_mse),
-            })
+            metadata.update({"train mse per epoch": np.array(train_mse),
+                             "test mse per epoch": np.array(test_mse)})
 
         if problem_type == "classification":
-            metadata.update({
-                "train precision macro per epoch": np.array(train_precision),
-                "test precision macro per epoch": np.array(test_precision),
-                "train recall macro per epoch": np.array(train_recall),
-                "test recall macro per epoch": np.array(test_recall),
-            })
-
-    def fit(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def evaluate(self, train_loader, test_loader, criterion, problem_type, accuracy_tolerance):
-        raise NotImplementedError
-
-    def predict(self, data):
-        raise NotImplementedError
-
-    def get_parameters(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def set_parameters(self, parameters):
-        raise NotImplementedError
-
-    def save_model(self, metadata, name, round_number, output_dir):
-        raise NotImplementedError
-
-    def load_model(self, path):
-        raise NotImplementedError
+            metadata.update({"train precision macro per epoch": np.array(train_precision),
+                             "test precision macro per epoch": np.array(test_precision),
+                             "train recall macro per epoch": np.array(train_recall),
+                             "test recall macro per epoch": np.array(test_recall)})
     
     @staticmethod
     def add_task_report_metadata(metadata, problem_type, class_labels, accuracy_tolerance):
@@ -235,10 +171,8 @@ class BaseModel:
 
     @staticmethod
     def add_global_classification_report_metrics(metadata, precision_rounds, recall_rounds):
-        metadata.update({
-            "precision macro per round": np.array(precision_rounds),
-            "recall macro per round": np.array(recall_rounds),
-        })
+        metadata.update({"precision macro per round": np.array(precision_rounds),
+                         "recall macro per round": np.array(recall_rounds)})
 
     @staticmethod
     def print_epoch_metrics(model_id, epoch, epochs, epoch_loss, train_accuracy, test_accuracy,
@@ -261,23 +195,9 @@ class BaseModel:
             message += f", ε: {epsilon_spent:.2f}"
         print(message)
 
-    def add_epoch_values(
-        self,
-        train_mse,
-        test_mse,
-        train_acc,
-        test_acc,
-        train_precision,
-        test_precision,
-        train_recall,
-        test_recall,
-        train_metrics,
-        test_metrics,
-        epoch_train_mse,
-        epoch_test_mse,
-        train_accuracy,
-        test_accuracy,
-    ):
+    def add_epoch_values(self, train_mse, test_mse, train_acc, test_acc, train_precision, test_precision,
+                         train_recall, test_recall, train_metrics, test_metrics, epoch_train_mse,
+                         epoch_test_mse, train_accuracy, test_accuracy):
         train_mse.append(epoch_train_mse)
         test_mse.append(epoch_test_mse)
         train_acc.append(train_accuracy)
@@ -288,6 +208,26 @@ class BaseModel:
             test_precision.append(test_metrics["precision_macro"])
             train_recall.append(train_metrics["recall_macro"])
             test_recall.append(test_metrics["recall_macro"])
+    def fit(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def evaluate(self, train_loader, test_loader, criterion, problem_type, accuracy_tolerance):
+        raise NotImplementedError
+
+    def predict(self, data):
+        raise NotImplementedError
+
+    def get_parameters(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def set_parameters(self, parameters):
+        raise NotImplementedError
+
+    def save_model(self, metadata, name, round_number, output_dir):
+        raise NotImplementedError
+
+    def load_model(self, path):
+        raise NotImplementedError
     
 class TorchModelBase(BaseModel):
     model_extension = ".torch"
@@ -310,10 +250,7 @@ class TorchModelBase(BaseModel):
 
     def get_parameters(self, config):
         self.model.eval()
-        return [
-            val.detach().cpu().numpy()
-            for _, val in self.model.state_dict().items()
-        ]
+        return [val.detach().cpu().numpy() for _, val in self.model.state_dict().items()]
 
     def set_parameters(self, parameters):
         state_dict = {}
@@ -332,30 +269,19 @@ class TorchModelBase(BaseModel):
             raise RuntimeError("build_model must be called before build_optimizer")
 
         if optimizer_name == "sgd":
-            return optim.SGD(
-                self.model.parameters(),
-                lr=learning_rate,
-                weight_decay=weight_decay,
-            )
-
+            return optim.SGD(self.model.parameters(), lr=learning_rate, weight_decay=weight_decay)
         if optimizer_name == "adamax":
-            return optim.Adamax(
-                self.model.parameters(),
-                lr=learning_rate,
-                weight_decay=weight_decay,
-            )
+            return optim.Adamax(self.model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        
     def predict(self, data, device):
         self.model.eval()
 
         with torch.no_grad():
             if isinstance(data, np.ndarray):
                 data = torch.tensor(data, dtype=torch.float32)
-
             data = data.float().to(device)
-
             if data.dim() == 2:
                 data = data.unsqueeze(1)
-
             outputs = self.model(data).squeeze()
 
         return outputs.cpu().numpy()
@@ -409,11 +335,7 @@ class TorchModelBase(BaseModel):
                     continue
 
                 outputs = self.model(inputs)
-                loss, labels, predictions = self.task.loss_and_predictions(
-                    criterion,
-                    outputs,
-                    labels,
-                )
+                loss, labels, predictions = self.task.loss_and_predictions(criterion, outputs, labels)
 
                 total_loss += loss.item()
                 processed_batches += 1
@@ -438,17 +360,9 @@ class TorchModelBase(BaseModel):
 
     def fit(self, train_loader, test_loader, epochs, optimizer, criterion, device, problem_type,
             accuracy_tolerance, **kwargs):
-        fit_context = {
-            "train_loader": train_loader,
-            "test_loader": test_loader,
-            "epochs": epochs,
-            "optimizer": optimizer,
-            "criterion": criterion,
-            "device": device,
-            "problem_type": problem_type,
-            "accuracy_tolerance": accuracy_tolerance,
-            **kwargs,
-        }
+        fit_context = {"train_loader": train_loader, "test_loader": test_loader, "epochs": epochs,
+                       "optimizer": optimizer, "criterion": criterion, "device": device, 
+                       "problem_type": problem_type, "accuracy_tolerance": accuracy_tolerance, **kwargs}
 
         fit_context = self._before_fit(fit_context)
 
@@ -478,8 +392,7 @@ class TorchModelBase(BaseModel):
                 loss, labels, pred_values = self.task.loss_and_predictions(
                     fit_context["criterion"],
                     outputs,
-                    labels,
-                )
+                    labels)
                 loss.backward()
                 fit_context["optimizer"].step()
 
@@ -487,52 +400,30 @@ class TorchModelBase(BaseModel):
                 train_labels.extend(labels.cpu().numpy())
                 train_preds.extend(pred_values.detach().cpu().numpy())
 
-            train_metrics = self.task.metrics(
-                train_labels,
-                train_preds,
-                fit_context["accuracy_tolerance"],
-            )
+            train_metrics = self.task.metrics(train_labels, train_preds, fit_context["accuracy_tolerance"])
             train_accuracy = train_metrics["accuracy"]
             mse = train_metrics.get("mse", 0)
 
             self.model.eval()
-            test_metrics = self.evaluate_loader(
-                fit_context["test_loader"],
-                fit_context["criterion"],
-                fit_context["device"],
-                fit_context["accuracy_tolerance"],
-            )
+            test_metrics = self.evaluate_loader(fit_context["test_loader"], fit_context["criterion"],
+                                                fit_context["device"], fit_context["accuracy_tolerance"])
             self.model.train()
 
             epoch_test_acc = test_metrics["accuracy"]
             epoch_test_mse = test_metrics.get("mse", 0)
 
-            self.add_epoch_values(
-                train_mse, test_mse, train_acc, test_acc,
-                train_precision, test_precision, train_recall, test_recall,
-                train_metrics, test_metrics, mse, epoch_test_mse,
-                train_accuracy, epoch_test_acc,
-            )
+            self.add_epoch_values(train_mse, test_mse, train_acc, test_acc, train_precision, 
+                                  test_precision, train_recall, test_recall, train_metrics, 
+                                  test_metrics, mse, epoch_test_mse, train_accuracy, epoch_test_acc)
             losses.append(epoch_loss)
 
             epoch_extras = self._after_epoch(epoch, fit_context)
             for key, value in epoch_extras.items():
                 extra_history.setdefault(key, []).append(value)
 
-            self.print_epoch_metrics(
-                self.model_id,
-                epoch,
-                epochs,
-                epoch_loss,
-                train_accuracy,
-                epoch_test_acc,
-                fit_context["problem_type"],
-                train_metrics,
-                test_metrics,
-                mse,
-                epoch_test_mse,
-                **epoch_extras,
-            )
+            self.print_epoch_metrics(self.model_id, epoch, epochs, epoch_loss, train_accuracy,
+                                     epoch_test_acc, fit_context["problem_type"], train_metrics,
+                                     test_metrics, mse, epoch_test_mse, **epoch_extras)
 
         return (train_mse, test_mse, train_acc, test_acc, train_precision, test_precision,
             train_recall, test_recall, losses, extra_history)
@@ -573,12 +464,9 @@ class DPCNNModel(TorchModelBase):
                 epochs=opacus_params.get("epochs"),
                 target_epsilon=opacus_params.get("epsilon"),
                 target_delta=opacus_params.get("delta"),
-                max_grad_norm=opacus_params.get("max_grad_norm"),
-            )
-        )
-
+                max_grad_norm=opacus_params.get("max_grad_norm")))
+        
         privacy_engine.accountant.alphas = [1 + x / 10.0 for x in range(1000)]
-
         self.model = private_model
         return private_optimizer, private_train_loader, privacy_engine
     
@@ -588,10 +476,7 @@ class DPCNNModel(TorchModelBase):
             return fit_context
 
         private_optimizer, private_train_loader, privacy_engine = self.attach_privacy_engine(
-            fit_context["optimizer"],
-            fit_context["train_loader"],
-            opacus_params,
-        )
+            fit_context["optimizer"], fit_context["train_loader"], opacus_params)
 
         fit_context["optimizer"] = private_optimizer
         fit_context["train_loader"] = private_train_loader
@@ -705,10 +590,7 @@ class XGBoostModel(BaseModel):
                     self.params,
                     train_data,
                     num_boost_round=1,
-                    evals=[
-                        (test_data, "validate"),
-                        (train_data, "train"),
-                    ],
+                    evals=[(test_data, "validate"), (train_data, "train")],
                     evals_result=evals_result,
                     verbose_eval=False,
                 )
@@ -717,14 +599,10 @@ class XGBoostModel(BaseModel):
                     self.params,
                     train_data,
                     num_boost_round=1,
-                    evals=[
-                        (test_data, "validate"),
-                        (train_data, "train"),
-                    ],
+                    evals=[(test_data, "validate"), (train_data, "train")],
                     xgb_model=self.model,
                     evals_result=evals_result,
-                    verbose_eval=False,
-                )
+                    verbose_eval=False)
 
             train_metrics, train_predictions = self.dataset_metrics(train_data)
             test_metrics, test_predictions = self.dataset_metrics(test_data)
@@ -746,37 +624,15 @@ class XGBoostModel(BaseModel):
 
             self.losses.append(self.final_train_loss)
 
-            self.add_epoch_values(
-                self.train_mse_per_epoch,
-                self.test_mse_per_epoch,
-                self.train_acc_per_epoch,
-                self.test_acc_per_epoch,
-                self.train_precision_per_epoch,
-                self.test_precision_per_epoch,
-                self.train_recall_per_epoch,
-                self.test_recall_per_epoch,
-                train_metrics,
-                test_metrics,
-                train_mse,
-                test_mse,
-                train_acc,
-                test_acc,
-            )
+            self.add_epoch_values(self.train_mse_per_epoch, self.test_mse_per_epoch, self.train_acc_per_epoch,
+                                  self.test_acc_per_epoch, self.train_precision_per_epoch, self.test_precision_per_epoch, 
+                                  self.train_recall_per_epoch, self.test_recall_per_epoch, train_metrics, 
+                                  test_metrics, train_mse, test_mse, train_acc, test_acc)
 
-            self.print_epoch_metrics(
-                self.model_id,
-                i,
-                num_local_round,
-                displayed_loss,
-                train_acc,
-                test_acc,
-                self.problem_type,
-                train_metrics,
-                test_metrics,
-                train_mse,
-                test_mse,
-            )
-
+            self.print_epoch_metrics(self.model_id, i, num_local_round, displayed_loss, train_acc,
+                                     test_acc, self.problem_type, train_metrics, test_metrics, 
+                                     train_mse, test_mse)
+            
         if train_method == "bagging":
             start = self.model.num_boosted_rounds() - num_local_round
             self.model = self.model[start:self.model.num_boosted_rounds()]
@@ -787,10 +643,8 @@ class XGBoostModel(BaseModel):
         if self.model is None:
             raise RuntimeError("build_model or set_parameters must be called before evaluate")
 
-        eval_result = self.model.eval_set(
-            evals=[(test_data, "valid")],
-            iteration=self.model.num_boosted_rounds() - 1,
-        )
+        eval_result = self.model.eval_set(evals=[(test_data, "valid")],
+                                          iteration=self.model.num_boosted_rounds() - 1)
         metric_value = float(eval_result.rsplit(":", 1)[-1])
         return self.eval_metric, metric_value
 
@@ -800,17 +654,9 @@ class XGBoostModel(BaseModel):
         metrics = self.task.metrics(labels, predictions, self.accuracy_tolerance)
         return metrics, predictions
 
-    def client_metadata(
-        self,
-        train_data,
-        test_data,
-        train_indices,
-        test_indices,
-        partitions_file,
-        seed,
-        test_fraction,
-        global_round,
-    ):
+    def client_metadata(self, train_data, test_data, train_indices, test_indices, partitions_file,
+                        seed, test_fraction, global_round):
+        
         train_metrics, train_predictions = self.dataset_metrics(train_data)
         test_metrics, test_predictions = self.dataset_metrics(test_data)
 
@@ -819,19 +665,12 @@ class XGBoostModel(BaseModel):
         train_mse = train_metrics.get("mse", 0)
         test_mse = test_metrics.get("mse", 0)
 
-        metadata = {
-            "created on": str(datetime.now()),
-            "model id": int(self.model_id),
-            "round number": int(global_round),
-            "partitions file": partitions_file,
-            "problem type": self.problem_type,
-        }
+        metadata = {"created on": str(datetime.now()), "model id": int(self.model_id),
+                    "round number": int(global_round), "partitions file": partitions_file,
+                    "problem type": self.problem_type}
 
-        self.task.add_task_report_metadata(
-            metadata,
-            class_labels=self.class_labels,
-            accuracy_tolerance=self.accuracy_tolerance,
-        )
+        self.task.add_task_report_metadata(metadata, class_labels=self.class_labels, 
+                                           accuracy_tolerance=self.accuracy_tolerance)
 
         metadata.update({
             "train accuracy": float(train_acc),
@@ -842,19 +681,12 @@ class XGBoostModel(BaseModel):
             "test indices": test_indices,
             "train predictions": train_predictions,
             "test predictions": test_predictions,
-            "hyperparameters": {
-                **self.params,
-                "seed": seed,
-                "test_fraction": test_fraction,
-                "test fraction": test_fraction,
-            },
+            "hyperparameters": {**self.params, "seed": seed, "test_fraction": test_fraction, "test fraction": test_fraction},
         })
 
         if self.problem_type == "regression":
-            metadata.update({
-                "train mean squared error": float(train_mse),
-                "test mean squared error": float(test_mse),
-            })
+            metadata.update({"train mean squared error": float(train_mse),
+                             "test mean squared error": float(test_mse)})
 
         self.task.add_report_metrics(metadata, train_metrics, test_metrics)
         self.add_epoch_report_metrics(
@@ -868,38 +700,17 @@ class XGBoostModel(BaseModel):
             train_precision=self.train_precision_per_epoch if self.problem_type == "classification" else None,
             test_precision=self.test_precision_per_epoch if self.problem_type == "classification" else None,
             train_recall=self.train_recall_per_epoch if self.problem_type == "classification" else None,
-            test_recall=self.test_recall_per_epoch if self.problem_type == "classification" else None,
-        )
+            test_recall=self.test_recall_per_epoch if self.problem_type == "classification" else None)
         return metadata, train_acc, test_acc
 
-    def save_client_output(
-        self,
-        train_data,
-        test_data,
-        train_indices,
-        test_indices,
-        partitions_file,
-        seed,
-        test_fraction,
-        global_round,
-        output_dir,
-    ):
-        metadata, train_acc, test_acc = self.client_metadata(
-            train_data,
-            test_data,
-            train_indices,
-            test_indices,
-            partitions_file,
-            seed,
-            test_fraction,
-            global_round,
-        )
-        self.save_model(
-            metadata,
-            f"xgboost_client_{self.model_id}",
-            global_round,
-            output_dir,
-        )
+    def save_client_output(self, train_data, test_data, train_indices, test_indices, partitions_file,
+                           seed, test_fraction, global_round, output_dir):
+        
+        metadata, train_acc, test_acc = self.client_metadata(train_data, test_data, train_indices,
+                                                             test_indices, partitions_file, seed,
+                                                             test_fraction, global_round)
+        
+        self.save_model(metadata, f"xgboost_client_{self.model_id}", global_round, output_dir)
         return train_acc, test_acc
 
     def predict(self, model, data):
