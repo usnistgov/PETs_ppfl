@@ -1,0 +1,159 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Client Classification Outputs",
+    "description": "Schema defining the output of classification client reports",
+    "type": "object",
+    "properties":
+        {
+            "created on":
+                {
+                    "description": "The timestamp of when the report was created",
+                    "type": "string"
+                },
+            "model id":
+                {
+                    "description": "The id of the model trained",
+                    "type": "integer"
+                },
+            "round number":
+                {
+                    "description": "The round of training",
+                    "type": "integer"
+                },
+            "partitions file":
+                {
+                    "description": "The file used to partition the data for training",
+                    "type": "string"
+                },
+            "problem type":
+                {
+                    "description": "The modeling problem type",
+                    "const": "classification"
+                },
+            "class labels":
+                {
+                    "description": "Allowed class labels for classification tasks",
+                    "type": "array",
+                    "items": {"type": ["string", "number", "boolean"]},
+                    "minItems": 2
+                },
+            "train accuracy":
+                {
+                    "description": "Training accuracy for this client and round",
+                    "type": "number"
+                },
+            "test accuracy":
+                {
+                    "description": "Test accuracy for this client and round",
+                    "type": "number"
+                },
+            "train loss":
+                {
+                    "description": "Train loss for this client and round",
+                    "type": "number"
+                },
+            "test loss":
+                {
+                    "description": "Test loss for this client and round",
+                    "type": "number"
+                },
+            "train precision macro":
+                {
+                    "description": "Macro-averaged training precision for this client and round",
+                    "type": "number"
+                },
+            "train recall macro":
+                {
+                    "description": "Macro-averaged training recall for this client and round",
+                    "type": "number"
+                },
+            "test precision macro":
+                {
+                    "description": "Macro-averaged test precision for this client and round",
+                    "type": "number"
+                },
+            "test recall macro":
+                {
+                    "description": "Macro-averaged test recall for this client and round",
+                    "type": "number"
+                },
+            "train indices":
+                {
+                    "description": "Indices used for training",
+                    "$ref": "#/$defs/integerArray"
+                },
+            "test indices":
+                {
+                    "description": "Indices used for testing",
+                    "$ref": "#/$defs/integerArray"
+                },
+            "train predictions":
+                {
+                    "description": "The predicted values for the training set",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "test predictions":
+                {
+                    "description": "The predicted values for the test set",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "hyperparameters":
+                {
+                    "description": "The hyperparameters the client used during its training process",
+                    "type": "object"
+                },
+            "train accuracy per epoch":
+                {
+                    "description": "Accuracy over epochs for training",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "test accuracy per epoch":
+                {
+                    "description": "Accuracy over epochs for testing",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "losses per epoch":
+                {
+                    "description": "Loss values for each epoch in this client round",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "train precision macro per epoch":
+                {
+                    "description": "Macro-averaged training precision over epochs",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "test precision macro per epoch":
+                {
+                    "description": "Macro-averaged test precision over epochs",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "train recall macro per epoch":
+                {
+                    "description": "Macro-averaged training recall over epochs",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "test recall macro per epoch":
+                {
+                    "description": "Macro-averaged test recall over epochs",
+                    "$ref": "#/$defs/numberArray"
+                },
+            "epsilon per epoch":
+                {
+                    "description": "The epsilon values for each epoch in this client round",
+                    "$ref": "#/$defs/numberArray"
+                }
+        },
+    "$defs":
+        {
+            "numberArray":
+                {
+                    "type": "array",
+                    "items": {"type": "number"}
+                },
+            "integerArray":
+                {
+                    "type": "array",
+                    "items": {"type": "integer"}
+                }
+        }
+}

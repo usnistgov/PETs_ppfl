@@ -13,11 +13,14 @@ import pytest
 
 
 RUN_PY = Path(
-    os.environ.get("RUN_PY", Path(__file__).resolve().parents[0] / "run.py")
+    os.environ.get("RUN_PY", Path(__file__).resolve().parents[1] / "run.py")
 ).resolve()
 
 DEFAULT_SCHEMA = (RUN_PY.parent / "configuration-schema.json").resolve()
-
+DATA_ROOT = (RUN_PY.parent.parent / "data").resolve()
+OIL_DATA_DIR = DATA_ROOT / "Oil_binned5"
+SCC_DATA_DIR = DATA_ROOT / "gpd_scc"
+SCC_PARTITIONS_FILE = SCC_DATA_DIR / "ppfl_SCC_c4c5_5clients_2025_01_14.npz"
 
 COMMON_BASE_CONFIG: Dict[str, Any] = {
     "model_type": "dpcnn",
@@ -42,7 +45,7 @@ COMMON_BASE_CONFIG: Dict[str, Any] = {
     "delta": 0.0,
     "max_grad_norm": 1.0,
     "output_dir": "../reports",
-    "data_dir": "../data/Oil_binned5",
+    "data_dir": str(OIL_DATA_DIR),
 }
 
 BASE_CONFIG: Dict[str, Any] = {
@@ -506,11 +509,15 @@ CASES: List[Any] = [
     pytest.param(
         Case(
             "37. data_partitions_file provided; partitioner_type invalid",
-            _base_with(data_partitions_file="parts.json", partitioner_type="log"),
-            allowed_exit_codes={0, 1, 2},
+            _base_with(
+                data_dir=str(SCC_DATA_DIR),
+                data_partitions_file=str(SCC_PARTITIONS_FILE),
+                partitioner_type="log",
+            ),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"partitioner_type", r"log", r"uniform|exponential"],
         ),
         id="t37",
-        marks=pytest.mark.skip(reason="No data partitions file to test with yet"),
     ),
     pytest.param(
         Case(
@@ -643,11 +650,14 @@ CASES: List[Any] = [
     pytest.param(
         Case(
             "49. With partitions file",
-            _base_with(data_partitions_file="./fixtures/partitions.json"),
-            allowed_exit_codes={0, 1, 2},
+            _base_with(
+                data_dir=str(SCC_DATA_DIR),
+                data_partitions_file=str(SCC_PARTITIONS_FILE),
+            ),
+            allowed_exit_codes={0},
+            stdout_must_match=[r"data_partitions_file=.*ppfl_SCC_c4c5_5clients_2025_01_14\.npz"],
         ),
         id="t49",
-        marks=pytest.mark.skip(reason="Requires a real partitions file"),
     ),
     pytest.param(
         Case(
@@ -656,7 +666,6 @@ CASES: List[Any] = [
             allowed_exit_codes={0},
         ),
         id="t50_uniform",
-        marks=pytest.mark.skip(reason="Requires a real partitions file"),
     ),
 
     # F. Regressions added for schema/effective-schema/CLI behavior
@@ -823,12 +832,11 @@ CASES: List[Any] = [
     ),
     pytest.param(
         Case(
-            "[NEW] 65. Branch-specific CLI arg is accepted by parser but rejected by effective schema for dpcnn",
+            "[NEW] 65. Branch-specific CLI arg for another model is ignored for dpcnn",
             config=_base_with(model_type="dpcnn"),
             cli_args=["--train_method", "cyclic"],
-            allowed_exit_codes={1},
-            stdout_must_match=[r"train_method"],
-            stdout_must_not_match=[r"Unknown parameter name\(s\) in CLI", r"unrecognized|invalid option|no such option"],
+            allowed_exit_codes={0},
+            stdout_must_not_match=[r"train_method", r"Unknown parameter", r"unrecognized|invalid option|no such option"],
         ),
         id="t65",
     ),
@@ -851,6 +859,15 @@ CASES: List[Any] = [
             stdout_must_not_match=[r"argument --model_type", r"invalid choice", r"not valid under any of the given schemas"],
         ),
         id="t67",
+    ),
+    pytest.param(
+        Case(
+            "[NEW] 68. Branch-specific config key for another model is ignored for cnn",
+            config=_cnn_base_with(eta=0.1),
+            allowed_exit_codes={0},
+            stdout_must_not_match=[r"\beta\b", r"Unknown parameter"],
+        ),
+        id="t68",
     ),
 ]
 
@@ -920,7 +937,7 @@ def test_check_only_print_order_follows_effective_schema_top_level(tmp_path: Pat
 
     expected_scalar_keys = [
         key for key in expected_top_level_order
-        if key in {"model_type", "num_cpus", "num_gpus", "output_dir", "data_dir"}
+        if key in {"model_type", "num_cpus", "num_gpus", "print_warning_logs", "output_dir", "data_dir"}
     ]
     expected_scalar_keys.append("check_only")
 

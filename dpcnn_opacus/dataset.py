@@ -31,13 +31,22 @@ class IndexedArrayDataset(TorchDataset):
     their historical meaning: first tt rows, then ho rows.
     """
 
-    def __init__(self, tt_features, tt_labels, ho_features, ho_labels, indices):
+    def __init__(
+        self,
+        tt_features,
+        tt_labels,
+        ho_features,
+        ho_labels,
+        indices,
+        label_to_index=None,
+    ):
         self.tt_features = tt_features
         self.tt_labels = tt_labels.reshape(-1)
         self.ho_features = ho_features
         self.ho_labels = ho_labels.reshape(-1)
         self.tt_len = len(tt_features)
         self.indices = np.asarray(indices)
+        self.label_to_index = label_to_index
 
     def __len__(self):
         return len(self.indices)
@@ -46,10 +55,20 @@ class IndexedArrayDataset(TorchDataset):
         row_idx = int(self.indices[idx])
 
         if row_idx < self.tt_len:
-            return self.tt_features[row_idx], self.tt_labels[row_idx]
+            label = self.tt_labels[row_idx]
+            return self.tt_features[row_idx], self.encode_label(label)
 
         ho_idx = row_idx - self.tt_len
-        return self.ho_features[ho_idx], self.ho_labels[ho_idx]
+        label = self.ho_labels[ho_idx]
+        return self.ho_features[ho_idx], self.encode_label(label)
+
+    def encode_label(self, label):
+        if self.label_to_index is None:
+            return label
+        key = normalize_label(label)
+        if key not in self.label_to_index:
+            raise ValueError(f"Label {key!r} is not present in class_labels")
+        return self.label_to_index[key]
 
 CORRELATION_TO_PARTITIONER = {
     "uniform": IidPartitioner,
@@ -57,6 +76,16 @@ CORRELATION_TO_PARTITIONER = {
     "square": SquarePartitioner,
     "exponential": ExponentialPartitioner,
 }
+
+
+def normalize_label(label):
+    return label.item() if hasattr(label, "item") else label
+
+
+def build_label_to_index(class_labels):
+    if class_labels is None:
+        return None
+    return {normalize_label(label): i for i, label in enumerate(class_labels)}
 
 
 def load_pickle_data(data_path):
@@ -141,7 +170,14 @@ def get_split_labels(tt_labels, ho_labels, indices):
 
     return out
 
-def train_test_split_backed_indices(tt_labels, ho_labels, indices, test_frac, seed):
+def train_test_split_backed_indices(
+    tt_labels,
+    ho_labels,
+    indices,
+    test_frac,
+    seed,
+    problem_type,
+):
     selected_labels = get_split_labels(tt_labels, ho_labels, indices)
     local_indices = np.arange(len(selected_labels))
 
@@ -150,6 +186,7 @@ def train_test_split_backed_indices(tt_labels, ho_labels, indices, test_frac, se
         local_indices,
         test_frac,
         seed,
+        problem_type,
     )
 
     indices = np.asarray(indices)
@@ -200,7 +237,11 @@ def train_test_partition_split(
 
 
 def train_test_indices_split(
-    dataset: np.ndarray, indices: np.ndarray, test_frac: float, seed: int
+    dataset: np.ndarray,
+    indices: np.ndarray,
+    test_frac: float,
+    seed: int,
+    problem_type: str,
 ) -> Tuple[List[int], List[int]]:
     """
     Split dataset indices into train and test sets for regression tasks.
@@ -212,10 +253,13 @@ def train_test_indices_split(
     # Get labels from the dataset
     labels = dataset[indices, -1]
 
-    # Create quantile bins for stratification
-    num_bins = min(10, len(np.unique(labels)))  # Adjust number of bins
-    bins = np.linspace(np.min(labels), np.max(labels), num_bins + 1)
-    binned_labels = np.digitize(labels, bins) - 1
+    if problem_type == "classification":
+        binned_labels = [int(x) for x in np.asarray(labels)]
+    else:
+        # Create quantile bins for stratification
+        num_bins = min(10, len(np.unique(labels)))  # Adjust number of bins
+        bins = np.linspace(np.min(labels), np.max(labels), num_bins + 1)
+        binned_labels = np.digitize(labels, bins) - 1
 
     # Count occurrences of each bin
     bin_counts = Counter(binned_labels)
@@ -269,6 +313,8 @@ def load_random_partitions(
     num_partitions,
     partitioner_type,
     data_directory,
+    problem_type,
+    class_labels=None,
 ) -> Tuple[DataLoader, DataLoader, List[int], List[int]]:
     """
     Load data using flower dataset partitioner
@@ -293,21 +339,35 @@ def load_random_partitions(
     test_indices = test_indices.to_pandas().to_numpy().flatten().tolist()
 
     # Split into train and test based on the indices
+    label_to_index = (
+        build_label_to_index(class_labels)
+        if problem_type == "classification"
+        else None
+    )
     train_data = IndexedArrayDataset(
-        tt_features, tt_labels, ho_features, ho_labels, train_indices
+        tt_features, tt_labels, ho_features, ho_labels, train_indices, label_to_index
     )
     test_data = IndexedArrayDataset(
-        tt_features, tt_labels, ho_features, ho_labels, test_indices
+        tt_features, tt_labels, ho_features, ho_labels, test_indices, label_to_index
     )
 
     # count labels in train and test set
     train_labels = get_split_labels(tt_labels, ho_labels, train_indices)
     test_labels = get_split_labels(tt_labels, ho_labels, test_indices)
-
-    print('Train dataset binned label counts')
-    print_binned_counts(train_labels.reshape(-1, 1), np.arange(len(train_labels)))
-    print('Test dataset binned label counts')
-    print_binned_counts(test_labels.reshape(-1, 1), np.arange(len(test_labels)))
+    if problem_type == "classification":
+        print(f"Client {data_partition_id}: Train dataset label counts")
+        train_counts = Counter(int(x) for x in np.asarray(train_labels))
+        for cls, count in sorted(train_counts.items()):
+            print(f"class {cls}: {count} records")
+        print(f"Client {data_partition_id}: Test dataset label counts")
+        test_counts = Counter(int(x) for x in np.asarray(test_labels))
+        for cls, count in sorted(test_counts.items()):
+            print(f"class {cls}: {count} records")
+    else:
+        print(f'Client {data_partition_id}: Train dataset binned label counts')
+        print_binned_counts(train_labels.reshape(-1, 1), np.arange(len(train_labels)))
+        print(f'Client {data_partition_id}: Test dataset binned label counts')
+        print_binned_counts(test_labels.reshape(-1, 1), np.arange(len(test_labels)))
 
     # create data loaders
     train_data_loader = DataLoader(
@@ -330,6 +390,8 @@ def load_custom_partitions(
     batch_size,
     test_fraction,
     seed,
+    problem_type,
+    class_labels=None,
 ) -> Tuple[DataLoader, DataLoader, List[int], List[int]]:
     # Check if data partition id is available in the data partitions
     data_partition_ids = sorted(
@@ -353,23 +415,38 @@ def load_custom_partitions(
         partition_indices,
         test_fraction,
         seed,
+        problem_type,
     )
 
+    label_to_index = (
+        build_label_to_index(class_labels)
+        if problem_type == "classification"
+        else None
+    )
     train_data = IndexedArrayDataset(
-        tt_features, tt_labels, ho_features, ho_labels, train_indices
+        tt_features, tt_labels, ho_features, ho_labels, train_indices, label_to_index
     )
     test_data = IndexedArrayDataset(
-        tt_features, tt_labels, ho_features, ho_labels, test_indices
+        tt_features, tt_labels, ho_features, ho_labels, test_indices, label_to_index
     )
 
     # count labels in train and test set
     train_labels = get_split_labels(tt_labels, ho_labels, train_indices)
     test_labels = get_split_labels(tt_labels, ho_labels, test_indices)
-
-    print('Train dataset binned label counts')
-    print_binned_counts(train_labels.reshape(-1, 1), np.arange(len(train_labels)))
-    print('Test dataset binned label counts')
-    print_binned_counts(test_labels.reshape(-1, 1), np.arange(len(test_labels)))
+    if problem_type == "classification":
+        print(f"Client {data_partition_id}: Train dataset label counts")
+        train_counts = Counter(int(x) for x in np.asarray(train_labels))
+        for cls, count in sorted(train_counts.items()):
+            print(f"class {cls}: {count} records")
+        print(f"Client {data_partition_id}: Test dataset label counts")
+        test_counts = Counter(int(x) for x in np.asarray(test_labels))
+        for cls, count in sorted(test_counts.items()):
+            print(f"class {cls}: {count} records")
+    else:
+        print(f'Client {data_partition_id}: Train dataset binned label counts')
+        print_binned_counts(train_labels.reshape(-1, 1), np.arange(len(train_labels)))
+        print(f'Client {data_partition_id}: Test dataset binned label counts')
+        print_binned_counts(test_labels.reshape(-1, 1), np.arange(len(test_labels)))
 
     # create dataloaders
     train_loader = DataLoader(

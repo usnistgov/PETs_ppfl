@@ -1,30 +1,44 @@
-from typing import Dict, Any
-from collections import OrderedDict
+from typing import Any, Dict
 from pathlib import Path
-import json
 from datetime import datetime
-
+from logging import INFO
 import flwr as fl
-from flwr.common import Context
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from opacus import PrivacyEngine
+from flwr.common import (
+    Code,
+    Context,
+    EvaluateIns,
+    EvaluateRes,
+    FitIns,
+    FitRes,
+    GetParametersIns,
+    GetParametersRes,
+    Parameters,
+    Status,
+)
+from flwr.common.logger import log
+from xgboost.core import DMatrix
 
 from dataset import (
-    load_random_partitions,
     load_custom_partitions,
     load_npy_feature_label_data,
+    load_random_partitions,
 )
-
-from model import Net, eval_cnn, save_cnn, train_cnn
-from utils import get_device
-
+from model import CNNModel, DPCNNModel, XGBoostModel
+from utils import configure_warning_logging, get_device
 
 DEVICE = get_device()
-print('USING DEVICE: ', DEVICE)
+print("DEVICE:", DEVICE)
 
+def empty_evaluate_res(message="No model parameters available for evaluation.") -> EvaluateRes:
+    return EvaluateRes(
+        status=Status(code=Code.OK, message=message),
+        loss=0.0,
+        num_examples=0,
+        metrics={"accuracy": 0.0, "mse": 0.0},
+    )
 
 def create_dataloaders(
     client_id: int,
@@ -35,13 +49,13 @@ def create_dataloaders(
     test_fraction,
     seed,
     batch_divisor,
+    problem_type,
+    class_labels=None,
 ):
     tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(data_directory)
     num_data_features = tt_vcf.shape[1]
-    total_rows = len(tt_vcf) + len(ho_vcf)
-    batch_size = max(1, total_rows // batch_divisor)
+    batch_size = max(1, (len(tt_vcf) + len(ho_vcf)) // batch_divisor)
 
-    # Check if data partitions file is provided and exists
     data_partitions = None
     if data_partitions_file and Path(data_partitions_file).exists():
         data_partitions = np.load(data_partitions_file)
@@ -53,201 +67,100 @@ def create_dataloaders(
         )
 
     if data_partitions is not None:
-        # if data partitions available, train a model for each data partition
-        train_loader, test_loader, train_indices, test_indices = (
-            load_custom_partitions(
-                client_id,
-                tt_vcf,
-                tt_pheno,
-                ho_vcf,
-                ho_pheno,
-                data_partitions,
-                batch_size,
-                test_fraction,
-                seed,
-            )
+        loaders = load_custom_partitions(
+            client_id,
+            tt_vcf,
+            tt_pheno,
+            ho_vcf,
+            ho_pheno,
+            data_partitions,
+            batch_size,
+            test_fraction,
+            seed,
+            problem_type,
+            class_labels,
         )
+        partitions_path = Path(data_partitions_file).name
     else:
-        # Partition data into n_models randomly to train N client models
-        train_loader, test_loader, train_indices, test_indices = (
-            load_random_partitions(
-                client_id,
-                tt_vcf,
-                tt_pheno,
-                ho_vcf,
-                ho_pheno,
-                batch_size,
-                test_fraction,
-                seed,
-                num_partitions,
-                partitioner_type,
-                data_directory,
-            )
+        loaders = load_random_partitions(
+            client_id,
+            tt_vcf,
+            tt_pheno,
+            ho_vcf,
+            ho_pheno,
+            batch_size,
+            test_fraction,
+            seed,
+            num_partitions,
+            partitioner_type,
+            data_directory,
+            problem_type,
+            class_labels,
         )
+        partitions_path = "none"
 
-    partitions_path = (
-        Path(data_partitions_file).name if data_partitions is not None else 'none'
+    train_loader, test_loader, train_indices, test_indices = loaders
+    return num_data_features, partitions_path, train_loader, test_loader, train_indices, test_indices
+
+def loader_to_dmatrix(loader):
+    features, labels = [], []
+    for batch_features, batch_labels in loader:
+        features.append(np.asarray(batch_features))
+        labels.append(np.asarray(batch_labels).reshape(-1))
+    return DMatrix(data=np.concatenate(features), label=np.concatenate(labels))
+
+def create_xgboost_data(
+    client_id: int,
+    data_partitions_file,
+    data_directory,
+    num_partitions,
+    partitioner_type,
+    test_fraction,
+    seed,
+    batch_divisor,
+    problem_type,
+    class_labels=None,
+):
+    _, partitions_file, train_loader, test_loader, train_indices, test_indices = create_dataloaders(
+        client_id,
+        data_partitions_file,
+        data_directory,
+        num_partitions,
+        partitioner_type,
+        test_fraction,
+        seed,
+        batch_divisor,
+        problem_type,
+        class_labels,
     )
     return (
-        num_data_features,
-        partitions_path,
-        train_loader,
-        test_loader,
+        loader_to_dmatrix(train_loader),
+        loader_to_dmatrix(test_loader),
+        partitions_file,
         train_indices,
         test_indices,
     )
 
-
-def init_model(
-    optimizer_name,
-    learning_rate,
-    weight_decay,
-    num_data_features,
-    opacus_params,
-):
-    model = Net(num_data_features).to(DEVICE)
-    criterion = nn.MSELoss()
-    if optimizer_name == "sgd":
-        optimizer = optim.SGD(
-            model.parameters(), lr=learning_rate, weight_decay=weight_decay
-        )
-    elif optimizer_name == "adamax":
-        optimizer = optim.Adamax(
-            model.parameters(), lr=learning_rate, weight_decay=weight_decay
-        )
-    else:
-        raise ValueError(f"Invalid optimizer name: {optimizer_name}")
-    privacy_engine = PrivacyEngine(
-        accountant='rdp',
-        secure_mode=opacus_params.get('secure_mode', False),
-    )
-    model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
-        epochs=opacus_params.get('epochs', 1),
-        target_epsilon=opacus_params.get('epsilon', 1.0),
-        target_delta=opacus_params.get('delta', 1e-5),
-        module=model,
-        optimizer=optimizer,
-        data_loader=opacus_params.get('train_loader', None),
-        max_grad_norm=opacus_params.get('max_grad_norm', 1.0),
-    )
-    privacy_engine.accountant.alphas = [1 + x / 10.0 for x in range(1000)]
-
-    return model, criterion, optimizer, privacy_engine
-
-
-def save_client(
-    output_dir: str,
-    federated_round: int,
-    client_id: int,
-    model,
-    partitions_path: str,
-    train_indices: list,
-    test_indices: list,
-    train_metrics: dict,
-    test_metrics: dict,
-    per_epoch_metrics: dict,
-    predictions: dict,
-    hyperparams: dict,
-):
-    metadata = {
-        "created on": str(datetime.now()),
-        "model id": client_id,
-        "round number": federated_round,
-        "partitions file": partitions_path,
-        "train accuracy": float(train_metrics["accuracy"]),
-        "test accuracy": float(test_metrics["accuracy"]),
-        "train mean squared error": float(train_metrics["mse"]),
-        "test mean squared error": float(test_metrics["mse"]),
-        "train loss": float(train_metrics["loss"]),
-        "test loss": float(test_metrics["loss"]),
-        "train indices": train_indices,
-        "test indices": test_indices,
-        "train accuracy per epoch": np.array(per_epoch_metrics["train_acc"]),
-        "test accuracy per epoch": np.array(per_epoch_metrics["test_acc"]),
-        "train mse per epoch": np.array(per_epoch_metrics["train_mse"]),
-        "test mse per epoch": np.array(per_epoch_metrics["test_mse"]),
-        "losses per epoch": np.array(per_epoch_metrics["losses"]),
-        "epsilon per epoch": np.array(per_epoch_metrics["eps_spent"]),
-        "train predictions": np.array(predictions["train"]),
-        "test predictions": np.array(predictions["test"]),
-        "hyperparameters": hyperparams
-    }
-
-    filename = f'dpcnn{hyperparams["epsilon"]}_opacus_oil_{client_id}'
-    save_cnn(model, metadata, filename, federated_round, output_dir)
-
-
-def train_partition(
-    client_id,
-    model,
-    optimizer,
-    criterion,
-    train_loader,
-    test_loader,
-    epochs,
-    delta,
-    privacy_engine,
-    accuracy_tolerance,
-):
-    model.to(DEVICE)
-    (
-        train_mse_epochs,
-        test_mse_epochs,
-        train_acc_epochs,
-        test_acc_epochs,
-        losses_epochs,
-        eps_spent_epochs,
-    ) = train_cnn(
-        client_id,
-        train_loader,
-        test_loader,
-        epochs,
-        model,
-        optimizer,
-        criterion,
-        delta,
-        privacy_engine,
-        accuracy_tolerance,
-        DEVICE,
-    )
-
-    return (
-        train_mse_epochs,
-        test_mse_epochs,
-        train_acc_epochs,
-        test_acc_epochs,
-        eps_spent_epochs,
-        losses_epochs,
-    )
-
-
-# Define Flower client
-class FlowerClient(fl.client.NumPyClient):
-    def __init__(
-        self, context: Context, client_id: int, params: Dict[str, Any]
-    ):
-        self.seed = params.get('seed', 42)
-        torch.manual_seed(self.seed)
-        self.current_round = 0
+class TorchFlowerClient(fl.client.NumPyClient):
+    def __init__(self, context: Context, client_id: int, params: Dict[str, Any]):
+        self.context = context
         self.client_state = context.state
         self.client_id = client_id
-        self.partitions_type = params.get('partitions_type', 'uniform')
-        self.num_partitions = params.get('num_partitions', 4)
-        self.partition_id = params.get('partition_id', 0)
-        self.batch_divisor = params.get('batch_divisor', 40)
-        self.learning_rate = params.get('learning_rate', 0.003)
-        self.weight_decay = params.get('weight_decay', 0.0001)
-        self.test_fraction = params.get('test_fraction', 0.2)
-        self.epochs = params.get('epochs', 10)
-        self.accuracy_tolerance = params.get('accuracy_tolerance', 0.0)
-        self.data_partitions_file = params.get('data_partitions_file', None)
-        self.optimizer_name = params.get('optimizer_name', 'adamax')
-        self.epsilon = params.get('epsilon', 1.0)
-        self.delta = params.get('delta', 1e-5)
-        self.max_grad_norm = params.get('max_grad_norm', 1.0)
-        self.opacus_secure_mode = params.get('opacus_secure_mode', False)
-        self.output_dir = params.get('output_dir', None)
-        self.data_dir=params.get('data_dir', None)
+        self.params = params
+        p = params
+
+        self.current_round = 0
+        self.output_dir = p["output_dir"]
+        self.problem_type = p["problem_type"]
+        self.class_labels = p.get("class_labels")
+        self.num_classes = p.get("num_classes")
+        self.accuracy_tolerance = p.get("accuracy_tolerance", 0.1)
+        self.use_dp = p.get("model_type") == "dpcnn"
+        self.eps_per_epoch = []
+
+        torch.manual_seed(p["seed"])
+        if not p.get("print_warning_logs"):
+            configure_warning_logging(self.output_dir)
 
         (
             self.num_data_features,
@@ -257,165 +170,228 @@ class FlowerClient(fl.client.NumPyClient):
             self.train_indices,
             self.test_indices,
         ) = create_dataloaders(
-            self.client_id,
-            self.data_partitions_file,
-            self.data_dir,
-            self.num_partitions,
-            self.partitions_type,
-            self.test_fraction,
-            self.seed,
-            self.batch_divisor,
+            client_id=self.client_id,
+            data_partitions_file=p.get("data_partitions_file"),
+            data_directory=p.get("data_dir"),
+            num_partitions=p.get("num_partitions"),
+            partitioner_type=p.get("partitions_type"),
+            test_fraction=p.get("test_fraction"),
+            seed=p.get("seed"),
+            batch_divisor=p.get("batch_divisor"),
+            problem_type=self.problem_type,
+            class_labels=self.class_labels,
         )
 
-        self.opacus_params = {
-            'epochs': self.epochs,
-            'epsilon': self.epsilon,
-            'delta': self.delta,
-            'max_grad_norm': self.max_grad_norm,
-            'secure_mode': self.opacus_secure_mode,
-            'train_loader': self.train_loader,
-        }
-        self.model = None
-        self.criterion = None
-        self.optimizer = None
+        model_class = DPCNNModel if self.use_dp else CNNModel
+        self.cnn_model = model_class(
+            model_id=self.client_id,
+            output_dir=self.output_dir,
+            problem_type=self.problem_type,
+        )
+        self.cnn_model.build_model(
+            self.num_data_features,
+            output_dim=self.num_classes if self.problem_type == "classification" else 1,
+        )
+        self.cnn_model.model.to(DEVICE)
+
+        self.criterion = nn.CrossEntropyLoss() if self.problem_type == "classification" else nn.MSELoss()
+        self.optimizer = self.cnn_model.build_optimizer(
+            p.get("optimizer_name"),
+            p.get("learning_rate"),
+            p.get("weight_decay"),
+        )
+
         self.privacy_engine = None
+        if self.use_dp:
+            opacus_params = {
+                "epochs": p.get("epochs"),
+                "epsilon": p.get("epsilon"),
+                "delta": p.get("delta"),
+                "max_grad_norm": p.get("max_grad_norm"),
+                "secure_mode": p.get("opacus_secure_mode"),
+            }
+            self.optimizer, self.train_loader, self.privacy_engine = self.cnn_model.attach_privacy_engine(
+                self.optimizer,
+                self.train_loader,
+                opacus_params,
+            )
+
+        self.train_acc_per_epoch = []
+        self.test_acc_per_epoch = []
+        self.train_mse_per_epoch = []
+        self.test_mse_per_epoch = []
+        self.train_precision_per_epoch = []
+        self.test_precision_per_epoch = []
+        self.train_recall_per_epoch = []
+        self.test_recall_per_epoch = []
+        self.losses = []
+
+    def hyperparameters_metadata(self):
+        p = self.params
+        hyperparameters = {
+            "learning rate": float(p.get("learning_rate")),
+            "weight decay": float(p.get("weight_decay")),
+            "batch divisor": int(p.get("batch_divisor")),
+            "epochs": int(p.get("epochs")),
+            "seed": int(p.get("seed")),
+            "test fraction": float(p.get("test_fraction")),
+        }
+        if self.use_dp:
+            hyperparameters.update({
+                "epsilon": float(p.get("epsilon")),
+                "delta": float(p.get("delta")),
+                "max grad norm": float(p.get("max_grad_norm")),
+                "opacus secure mode": bool(p.get("opacus_secure_mode")),
+            })
+        return hyperparameters
+
+    def epoch_metrics_path(self):
+        return Path(
+            self.output_dir,
+            f".client_{self.client_id}_round_{self.current_round}_epoch_metrics.npz",
+        )
+
+    def save_epoch_metrics(self):
+        path = self.epoch_metrics_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(
+            path,
+            train_acc=self.train_acc_per_epoch,
+            test_acc=self.test_acc_per_epoch,
+            train_mse=self.train_mse_per_epoch,
+            test_mse=self.test_mse_per_epoch,
+            train_precision=self.train_precision_per_epoch,
+            test_precision=self.test_precision_per_epoch,
+            train_recall=self.train_recall_per_epoch,
+            test_recall=self.test_recall_per_epoch,
+            losses=self.losses,
+            eps=self.eps_per_epoch,
+        )
+
+    def load_epoch_metrics(self):
+        path = self.epoch_metrics_path()
+        if not path.exists():
+            return {
+                "train_acc": self.train_acc_per_epoch,
+                "test_acc": self.test_acc_per_epoch,
+                "train_mse": self.train_mse_per_epoch,
+                "test_mse": self.test_mse_per_epoch,
+                "train_precision": self.train_precision_per_epoch,
+                "test_precision": self.test_precision_per_epoch,
+                "train_recall": self.train_recall_per_epoch,
+                "test_recall": self.test_recall_per_epoch,
+                "losses": self.losses,
+                "eps": self.eps_per_epoch,
+            }
+        metrics = dict(np.load(path, allow_pickle=True))
+        path.unlink(missing_ok=True)
+        return metrics
+
+    def build_metadata(self, train_eval, test_eval, epoch_metrics):
+        train_acc, test_acc, train_loss, test_loss, train_mse, test_mse, train_preds, test_preds, train_metrics, test_metrics = (
+            train_eval[0], test_eval[0], train_eval[1], test_eval[1],
+            train_eval[2], test_eval[2], train_eval[3], test_eval[3],
+            train_eval[4], test_eval[4],
+        )
+
+        metadata = {
+            "created on": str(datetime.now()),
+            "model id": int(self.client_id),
+            "round number": int(self.current_round),
+            "partitions file": self.partitions_file,
+            "train accuracy": float(train_acc),
+            "test accuracy": float(test_acc),
+            "train loss": float(train_loss),
+            "test loss": float(test_loss),
+            "train indices": self.train_indices,
+            "test indices": self.test_indices,
+            "train predictions": train_preds,
+            "test predictions": test_preds,
+            "hyperparameters": self.hyperparameters_metadata(),
+        }
+
+        self.cnn_model.add_task_report_metadata(
+            metadata,
+            self.problem_type,
+            self.class_labels,
+            self.accuracy_tolerance,
+        )
+
+        if self.problem_type == "regression":
+            metadata.update({
+                "train mean squared error": float(train_mse),
+                "test mean squared error": float(test_mse),
+            })
+
+        self.cnn_model.add_epoch_report_metrics(
+            metadata,
+            epoch_metrics["train_acc"],
+            epoch_metrics["test_acc"],
+            epoch_metrics["losses"],
+            self.problem_type,
+            train_mse=epoch_metrics["train_mse"],
+            test_mse=epoch_metrics["test_mse"],
+            train_precision=epoch_metrics["train_precision"] if self.problem_type == "classification" else None,
+            test_precision=epoch_metrics["test_precision"] if self.problem_type == "classification" else None,
+            train_recall=epoch_metrics["train_recall"] if self.problem_type == "classification" else None,
+            test_recall=epoch_metrics["test_recall"] if self.problem_type == "classification" else None,
+        )
+
+        if self.use_dp:
+            metadata["epsilon per epoch"] = np.array(epoch_metrics["eps"])
+
+        self.cnn_model.task.add_report_metrics(metadata, train_metrics, test_metrics)
+        return metadata
 
     def get_parameters(self, config):
-        self.model.eval()
-        return [
-            val.detach().cpu().numpy()
-            for name, val in self.model.state_dict().items()
-            if "batch_norm" not in name
-        ]
+        return self.cnn_model.get_parameters(config)
 
     def set_parameters(self, parameters):
-        keys = [
-            k for k in self.model.state_dict().keys() if "batch_norm" not in k
-        ]
-        params_dict = zip(keys, parameters)
-        state_dict = OrderedDict(
-            {k: torch.tensor(v).float().to(DEVICE) for k, v in params_dict}
-        )
-        self.model.load_state_dict(state_dict, False)
+        self.cnn_model.set_parameters(parameters)
 
     def fit(self, parameters, config):
-        self.model, self.criterion, self.optimizer, self.privacy_engine = (
-            init_model(
-                self.optimizer_name,
-                self.learning_rate,
-                self.weight_decay,
-                self.num_data_features,
-                self.opacus_params,
-            )
-        )
-
-        self.current_round = config.get('server_round', None) - 1
-        if self.current_round > 0:
+        self.current_round = config.get("server_round", 1) - 1
+        if not self.use_dp or self.current_round > 0:
             self.set_parameters(parameters)
+
+        fit_kwargs = {
+            "problem_type": self.problem_type,
+            "accuracy_tolerance": self.accuracy_tolerance,
+        }
+        if self.use_dp:
+            fit_kwargs.update({
+                "privacy_engine": self.privacy_engine,
+                "delta": self.params.get("delta"),
+            })
+
         (
-            train_mse_epochs,
-            test_mse_epochs,
-            train_acc_epochs,
-            test_acc_epochs,
-            losses_epochs,
-            eps_spent_epochs,
-        ) = train_partition(
-            self.client_id,
-            self.model,
+            self.train_mse_per_epoch,
+            self.test_mse_per_epoch,
+            self.train_acc_per_epoch,
+            self.test_acc_per_epoch,
+            self.train_precision_per_epoch,
+            self.test_precision_per_epoch,
+            self.train_recall_per_epoch,
+            self.test_recall_per_epoch,
+            self.losses,
+            extra_history,
+        ) = self.cnn_model.fit(
+            self.train_loader,
+            self.test_loader,
+            self.params.get("epochs"),
             self.optimizer,
             self.criterion,
-            self.train_loader,
-            self.test_loader,
-            self.epochs,
-            self.delta,
-            self.privacy_engine,
-            self.accuracy_tolerance,
-        )
-        (
-            train_acc,
-            test_acc,
-            train_loss,
-            test_loss,
-            train_mse,
-            test_mse,
-            train_preds,
-            test_preds,
-        ) = eval_cnn(
-            self.client_id,
-            self.train_loader,
-            self.test_loader,
-            self.model,
-            self.criterion,
-            self.accuracy_tolerance,
+            DEVICE,
+            **fit_kwargs,
         )
 
-        save_client(
-            output_dir=self.output_dir,
-            federated_round=self.current_round,
-            client_id=self.client_id,
-            model=self.model,
-            partitions_path=self.partitions_file,
-            train_indices=self.train_indices,
-            test_indices=self.test_indices,
-            train_metrics={
-                "accuracy": train_acc,
-                "mse": train_mse,
-                "loss": train_loss,
-            },
-            test_metrics={
-                "accuracy": test_acc,
-                "mse": test_mse,
-                "loss": test_loss,
-            },
-            per_epoch_metrics={
-                "train_acc": train_acc_epochs,
-                "test_acc": test_acc_epochs,
-                "train_mse": train_mse_epochs,
-                "test_mse": test_mse_epochs,
-                "losses": losses_epochs,
-                "eps_spent": eps_spent_epochs,
-            },
-            predictions={
-                "train": train_preds,
-                "test": test_preds,
-            },
-            hyperparams={
-                "learning rate": self.learning_rate,
-                "weight decay": self.weight_decay,
-                "batch divisor": self.batch_divisor,
-                "epochs": self.epochs,
-                "seed": self.seed,
-                "test fraction": self.test_fraction,
-                "accuracy tolerance": self.accuracy_tolerance,
-                "optimizer": self.optimizer_name,
-                "epsilon": self.epsilon,
-                "delta": self.delta,
-                "max grad norm": self.max_grad_norm,
-            },
-        )
-
-        return (
-            self.get_parameters(config=config),
-            len(self.train_loader.dataset),
-            {},
-        )
+        self.eps_per_epoch = extra_history.get("epsilon_spent", [])
+        self.save_epoch_metrics()
+        return self.get_parameters(config), len(self.train_loader.dataset), {}
 
     def evaluate(self, parameters, config):
-        self.model, self.criterion, self.optimizer, self.privacy_engine = (
-            init_model(
-                self.optimizer_name,
-                self.learning_rate,
-                self.weight_decay,
-                self.num_data_features,
-                self.opacus_params,
-            )
-        )
         self.set_parameters(parameters)
-        self.current_round = config.get('server_round', None) - 1
-        print(
-            f"Client {self.client_id} | Evaluating model "
-            f"| Round {self.current_round}"
-        )
+
         (
             train_acc,
             test_acc,
@@ -425,18 +401,153 @@ class FlowerClient(fl.client.NumPyClient):
             test_mse,
             train_preds,
             test_preds,
-        ) = eval_cnn(
-            self.client_id,
+            train_metrics,
+            test_metrics,
+        ) = self.cnn_model.evaluate(
             self.train_loader,
             self.test_loader,
-            self.model,
             self.criterion,
-            self.accuracy_tolerance,
+            problem_type=self.problem_type,
+            accuracy_tolerance=self.accuracy_tolerance,
         )
 
-        # convert loss to float to avoid Flower-Numpy type error
-        return (
-            float(test_loss),
-            len(self.test_loader.dataset),
-            {"mse": test_mse},
+        epoch_metrics = self.load_epoch_metrics()
+        metadata = self.build_metadata(
+            train_eval=(train_acc, train_loss, train_mse, train_preds, train_metrics),
+            test_eval=(test_acc, test_loss, test_mse, test_preds, test_metrics),
+            epoch_metrics=epoch_metrics,
         )
+
+        name = f"dpcnn{self.params.get('epsilon')}_opacus_oil_{self.client_id}" if self.use_dp else f"flcnn_{self.client_id}"
+        self.cnn_model.save_model(metadata, name, self.current_round, self.output_dir)
+
+        return float(test_loss), len(self.test_loader.dataset), {
+            "accuracy": float(test_acc),
+            "mse": float(test_mse),
+        }
+
+class XGBoostFlowerClient(fl.client.Client):
+    def __init__(self, context: Context, client_id: int, params: Dict[str, Any]):
+        self.context = context
+        self.client_id = client_id
+        self.params = params
+        p = params
+
+        self.output_dir = p.get("output_dir")
+        self.seed = p.get("seed")
+        self.train_method = p.get("train_method")
+        self.num_partitions = p.get("num_partitions")
+        self.num_local_round = p.get("epochs")
+        self.test_fraction = p.get("test_fraction")
+        self.problem_type = p.get("problem_type")
+        self.class_labels = p.get("class_labels")
+        self.accuracy_tolerance = p.get("accuracy_tolerance", 0.1)
+
+        if not p.get("print_warning_logs"):
+            configure_warning_logging(self.output_dir)
+
+        (
+            self.train_data,
+            self.test_data,
+            self.partitions_file,
+            self.train_indices,
+            self.test_indices,
+        ) = create_xgboost_data(
+            self.client_id,
+            p.get("data_partitions_file"),
+            p.get("data_dir"),
+            self.num_partitions,
+            p.get("partitions_type"),
+            self.test_fraction,
+            self.seed,
+            p.get("batch_divisor"),
+            self.problem_type,
+            self.class_labels,
+        )
+
+        self.xgb_model = XGBoostModel(
+            model_id=self.client_id,
+            output_dir=self.output_dir,
+            params=XGBoostModel.client_params(
+                seed=self.seed,
+                num_partitions=self.num_partitions,
+                train_method=self.train_method,
+                scaled_lr=p.get("scaled_lr"),
+                base_params=p.get("xgboost_params"),
+            ),
+            problem_type=self.problem_type,
+            class_labels=self.class_labels,
+            accuracy_tolerance=self.accuracy_tolerance,
+        )
+
+    def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:
+        return GetParametersRes(
+            status=Status(code=Code.OK, message="OK"),
+            parameters=Parameters(tensor_type="", tensors=[]),
+        )
+
+    def fit(self, ins: FitIns) -> FitRes:
+        global_round = int(ins.config["global_round"])
+        local_model_bytes = self.xgb_model.fit_round(
+            self.train_data,
+            self.test_data,
+            self.num_local_round,
+            self.train_method,
+            global_round,
+            ins.parameters.tensors,
+        )
+        train_acc, test_acc = self.xgb_model.save_client_output(
+            self.train_data,
+            self.test_data,
+            self.train_indices,
+            self.test_indices,
+            self.partitions_file,
+            self.seed,
+            self.test_fraction,
+            global_round,
+            self.output_dir,
+        )
+
+        print(f"client {self.client_id} Train accuracy: {train_acc * 100:.2f}%", flush=True)
+        print(f"client {self.client_id} Test accuracy: {test_acc * 100:.2f}%", flush=True)
+
+        return FitRes(
+            status=Status(code=Code.OK, message="OK"),
+            parameters=Parameters(tensor_type="", tensors=[local_model_bytes]),
+            num_examples=len(self.test_indices),
+            metrics={},
+        )
+
+    def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
+        if not ins.parameters.tensors:
+            return empty_evaluate_res()
+
+        self.xgb_model.set_parameters(ins.parameters.tensors)
+
+        labels = self.test_data.get_label()
+        predictions = self.xgb_model.predict(self.xgb_model.model, self.test_data)
+        test_metrics = self.xgb_model.task.metrics(labels, predictions, self.accuracy_tolerance)
+
+        accuracy = test_metrics["accuracy"]
+        mse = test_metrics.get("mse", 0.0)
+        loss = self.xgb_model.evaluate(self.test_data)[1] if self.problem_type == "classification" else mse
+
+        log(INFO, f"accuracy = {accuracy:.4f}, mse = {mse:.4f} at round {ins.config['global_round']}")
+
+        return EvaluateRes(
+            status=Status(code=Code.OK, message="OK"),
+            loss=float(loss),
+            num_examples=len(self.test_indices),
+            metrics={"accuracy": float(accuracy), "mse": float(mse)},
+        )
+
+class FlowerClient:
+    def __init__(self, context: Context, client_id: int, params: Dict[str, Any]):
+        self.context = context
+        self.client_id = client_id
+        self.params = params
+
+    def to_client(self):
+        client_cls = XGBoostFlowerClient if self.params.get("model_type") == "xgboost" else TorchFlowerClient
+        client = client_cls(self.context, self.client_id, self.params)
+        return client if client_cls is XGBoostFlowerClient else client.to_client()

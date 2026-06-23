@@ -6,10 +6,12 @@ import json
 from copy import deepcopy
 from distutils.util import strtobool
 from pathlib import Path
-from typing import Any, Dict, Tuple, List, Set
+from typing import Any, Dict, Tuple, List, Set,  Union
+from xgboost import XGBClassifier, Booster
 import os
 import pickle
 import re
+from report import Report
 
 from jsonschema.validators import validator_for
 
@@ -28,19 +30,19 @@ def get_device():
 #   purpose: Validate that the discovered train/holdout dataset files are large enough for the requested batch divisor.
 ###
 def validate_data_size(data_path, batch_divisor):
-    pattern = ["_tt_vcf.dat", "_ho_vcf.dat"]
-    for pat in pattern: 
-        matches = [f for f in os.listdir(data_path) if f.endswith(pat)]
-        if not matches:
-            raise FileNotFoundError(f"No file found in {data_path} matching {pat}")
-        if len(matches) > 1:
-            raise ValueError(f"Multiple files found in {data_path} matching {pat}: {matches}")
+    suffixes = ["_tt_vcf", "_ho_vcf"]
+    for suffix in suffixes:
+        npy_matches = [f for f in os.listdir(data_path) if f.endswith(f"{suffix}.npy")]
+        if len(npy_matches) > 1:
+            raise ValueError(f"Multiple files found in {data_path} matching {suffix}.npy: {npy_matches}")
 
-        file_path = os.path.relpath(os.path.join(data_path, matches[0]))
-        with open(file_path, "rb") as f:
-            num_data_rows = pickle.load(f).shape[0]
+        if npy_matches:
+            file_path = os.path.relpath(os.path.join(data_path, npy_matches[0]))
+            num_data_rows = np.load(file_path, mmap_mode="r").shape[0]
             if batch_divisor > num_data_rows:
                 raise ValueError(f"Batch divisor (batch_divisor={batch_divisor}) is greater than train/test dataset size (num_rows={num_data_rows})")
+            continue
+
 
 
 def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, num_bins: int = 10):
@@ -72,6 +74,33 @@ def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, nu
                 f"{bins[bin_idx]:.2f} - {bins[bin_idx + 1]:.2f}: "
                 f"{count} records"
             )
+
+###
+#   configure_warning_logging(output_dir)
+#   purpose: Route Python warnings into a warnings.log file under output_dir instead of printing them to the terminal.
+###
+def configure_warning_logging(output_dir):
+    import logging
+    import warnings
+    from pathlib import Path
+
+    #Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    logging.captureWarnings(True)
+
+    warning_logger = logging.getLogger("py.warnings")
+    warning_logger.setLevel(logging.WARNING)
+    warning_logger.propagate = False
+
+    if not any(isinstance(h, logging.FileHandler) for h in warning_logger.handlers):
+        handler = logging.FileHandler(Path(output_dir) / "PETs_warnings.log")
+        handler.setLevel(logging.WARNING)
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(process)d %(levelname)s %(message)s"
+        ))
+        warning_logger.addHandler(handler)
+
+    warnings.simplefilter("default")
 
 ###
 #   _is_object_schema(sch)
@@ -171,6 +200,53 @@ def _build_schema_path_index(schema: Dict[str, Any]):
             by_name[name] = next(iter(paths))
 
     return by_name, by_dot
+
+###
+#   _model_param_keys_by_model_type(schema)
+#   purpose: Collect the model_params keys declared for each model_type branch.
+###
+def _model_param_keys_by_model_type(schema: Dict[str, Any]) -> Dict[str, Set[str]]:
+    keys_by_model: Dict[str, Set[str]] = {}
+
+    for sub in schema.get("allOf", []) or []:
+        for branch in sub.get("oneOf", []) or []:
+            props = branch.get("properties", {})
+            model_type = props.get("model_type", {}).get("const")
+            model_params = props.get("model_params", {})
+            param_props = model_params.get("properties", {})
+            if isinstance(model_type, str) and isinstance(param_props, dict):
+                keys_by_model[model_type] = set(param_props.keys())
+
+    return keys_by_model
+
+###
+#   _prune_inactive_model_params(cfg, schema)
+#   purpose: Drop known model_params that do not apply to the selected model_type.
+###
+def _prune_inactive_model_params(cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+    if cfg.get("problem_type") != "classification":
+        cfg.pop("class_labels", None)
+    if cfg.get("problem_type") != "regression":
+        cfg.pop("accuracy_tolerance", None)
+
+    model_type = cfg.get("model_type")
+    model_params = cfg.get("model_params")
+    if not isinstance(model_type, str) or not isinstance(model_params, dict):
+        return cfg
+
+    keys_by_model = _model_param_keys_by_model_type(schema)
+    active_keys = keys_by_model.get(model_type)
+    if active_keys is None:
+        return cfg
+
+    all_known_keys = set().union(*keys_by_model.values()) if keys_by_model else set()
+    pruned_params = {}
+    for key, value in model_params.items():
+        if key in active_keys or key not in all_known_keys:
+            pruned_params[key] = value
+
+    cfg["model_params"] = pruned_params
+    return cfg
 
 ###
 #   _flatten_config_items(data, prefix=())
@@ -524,11 +600,43 @@ def _coerce_cli_value(raw_value: str, sch: Dict[str, Any]) -> Any:
 
     return raw_value
 
+def save_xgb(
+    model: Union[XGBClassifier, Booster],
+    metadata: Dict[str, any],
+    name: str,
+    round_number: int | None = None,
+    output_dir: str | Path | None = None,
+):
+    out_name = (
+        f"{name}_round_{round_number}" if round_number is not None else name
+    )
+    parent_path = Path(output_dir).absolute() if output_dir is not None else Path(__file__).parent
+    parent_path.mkdir(parents=True, exist_ok=True)
+    model_path = Path(parent_path, f"{out_name}.ubj")
+    model.save_model(model_path)
+    print(f"Model saved to {model_path}")
+    metadata_path_name = f"{out_name}_meta.npz"
+    metadata_path = Path(parent_path, metadata_path_name)
+    np.savez(metadata_path, **metadata, allow_pickle=True)
+    report = Report(metadata)
+    report.save_to_file(Path(parent_path, f"{out_name}.json"))
+    print(f"Model metadata saved to {metadata_path}")
+
 class UnknownParameterError(ValueError):
     """Exception raised for unknown parameters."""
-    def __init__(self, parameters, message="Unknown parameter name(s). Please check the spelling of the inputs above and try again."):
-        self.parameters = parameters
-        super().__init__(message)
+    def __init__(self, issues, where="config"):
+        self.issues = issues
+        self.parameters = [name for name, _ in issues]
+
+        details = []
+        for name, suggestion in issues:
+            if suggestion:
+                details.append(f"'{name}' (did you mean '{suggestion}'?)")
+            else:
+                details.append(f"'{name}'")
+
+        msg = f"Unknown parameter name(s) in {where}: " + ", ".join(details)
+        super().__init__(msg)
 
 class ConfigArgs(argparse.Namespace):
     def __init__(self, schema: Dict[str, Any] | None = None, **kwargs):
@@ -619,14 +727,22 @@ class ConfigPipeline:
             if unknown:
                 bad_cli_params = [elem for elem in unknown if elem.startswith("--")]
                 if bad_cli_params:
-                    raise UnknownParameterError(bad_cli_params, message="Unknown parameter name(s) in CLI. Please check the spelling of the inputs above and try again.")
-                raise UnknownParameterError(unknown, message="Unknown parameter name(s) in CLI. Please check the spelling of the inputs above and try again.")
+                    issues = [
+                        (elem[2:].split("=", 1)[0].split(".")[-1], None)
+                        for elem in bad_cli_params
+                    ]
+                    raise UnknownParameterError(issues, where="CLI")
+                raise UnknownParameterError(
+                    [(elem.split("=", 1)[0].split(".")[-1], None) for elem in unknown],
+                    where="CLI",
+                )
             
             # layer + apply schema defaults
             cfg = _to_layered_config(raw_cfg, schema)
             cfg = self._apply_cli_overrides(cfg, args)
             cfg = _sync_enabled_flags(cfg, schema)
             cfg = apply_defaults(schema=schema, instance=cfg)
+            cfg = _prune_inactive_model_params(cfg, schema)
 
             validation_cfg = _validation_instance(cfg)
             effective_schema = _effective_schema(schema, validation_cfg)
@@ -653,20 +769,12 @@ class ConfigPipeline:
             validate_data_size(cfg["data_dir"], cfg["model_params"]["batch_divisor"])
 
             # your equalization logic
-            if cfg["model_params"]["partition_id"] > cfg["model_params"]["num_partitions"]:
+            if cfg["model_params"]["partition_id"] > cfg["num_partitions"]:
                 raise ValueError("partition_id must be <= num_partitions.")
 
             if cfg.get("federated", {}).get("federated_enabled", False):
-                fed = cfg["federated"]
-                if not (fed["min_available_clients"] == fed["min_evaluate_clients"] == fed["min_fit_clients"]):
-                    print(f"Normalizing min_available_clients, min_evaluate_clients, and min_fit_clients to their minimum value.")
-                    min_val = min(fed["min_available_clients"], fed["min_evaluate_clients"], fed["min_fit_clients"])
-                    fed["min_available_clients"] = min_val
-                    fed["min_evaluate_clients"] = min_val
-                    fed["min_fit_clients"] = min_val
-
-                if fed["min_fit_clients"] > cfg["model_params"]["num_partitions"]:
-                    raise ValueError("min_*_clients must be <= num_partitions.")
+                if cfg["federated"]["num_clients"] > cfg["num_partitions"]:
+                    raise ValueError("num_clients must be <= num_partitions.")
 
             if cfg.get("dp", {}).get("dp_enabled", False) and cfg["dp"].get("opacus_secure_mode", False):
                 cfg["dp"]["opacus_secure_mode"] = False

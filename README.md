@@ -22,9 +22,9 @@ Throughout the beta development process, these capabilities are expected to expa
 - Testing using any dataset provided in the `data/` folder (or any other folder specified by the --data_dir CLI or data_dir field in the configuration file)
 
 ### Privacy and Training
-- Applying differential privacy (DP) to data prior to training through the Opacus framework
-- Centralized training for models (CNN models only)
-- Federated training (CNN models only)
+- Applying differential privacy (DP) during DPCNN training through the Opacus framework
+- Federated training for CNN, DPCNN, and XGBoost models
+- Regression and classification workflows controlled by the `problem_type` parameter
 
 ### User Interaction
 - Modifying model and privacy parameters through the provided `config.json` file
@@ -36,15 +36,14 @@ Throughout the beta development process, these capabilities are expected to expa
 _*Please note that users are expected to have already preprocessed their data prior to uploading it to the `data/` folder.*_
 
 ## Currently In-Progress Capabilities <a name="future_supported"></a>
-- Generation of human-readable and machine-readable reports
 - Improvement of report organization
-- Support for setting the `opacus_secure_mode` parameter to true in DP
+- Support for setting the `opacus_secure_mode` parameter to turn on DP
 
 ## Setting Up the Testbed <a name="setup"></a>
 
 1. Download the zip file containing the data and code.
 
-   The testbed expects ho (holdout) and tt (train-test) datasets to be present. While this is the expectation, please note that all data will be aggregated and then split between the provided clients. This is behavior is different than the names suggest; however, it was beneficial due to the original size limitations of the Oil dataset. 
+   The testbed expects ho (holdout) and tt (train-test) datasets to be present. While this is the expectation, please note that all data will be aggregated and then split between the provided clients. This behavior is different than the names suggest; however, it was beneficial due to the original size limitations of the Oil dataset. 
    - If using the provided Oil_binned5 test data, ensure the following files exist in the `data/Oil_binned5` directory (and your data path matches):
       1. `Oil_QTL_ho_pheno.dat`
       2. `Oil_QTL_ho_vcf.dat`
@@ -126,21 +125,21 @@ Regardless of how the parameter values are input, the values will be validated a
 | Parameter | Description | Type | Limits / Allowed Values |
 |---|---|---|---|
 | `model_type` | The model family to run | string | `"dpcnn"`, `"cnn"`, `"xgboost"` |
+| `problem_type` | Selects the prediction task | string | `"regression"`, `"classification"` |
+| `class_labels` | Ordered list of allowed labels for classification tasks. Required when `problem_type` is `"classification"` | array | At least 2 unique string, number, integer, or boolean values |
+| `accuracy_tolerance` | Error tolerance used to count a regression prediction as accurate. Ignored for classification runs. | number | min: 0 |
 | `num_cpus` | The number of CPUs available to the run | integer | min: 1, max: 100 |
 | `num_gpus` | The number of GPUs available to the run | integer | min: 0, max: 100 |
 | `num_rounds` | The number of rounds of federated learning | integer | min: 1, max: 100 |
-| `min_fit_clients` | The minimum number of clients that must contribute to the federated training rounds. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
-| `min_available_clients` | The minimum number of clients that must be connected to the server for federated learning to begin. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
-| `min_evaluate_clients` | The minimum number of clients that must participate in a federated evaluation round for the round to be successful. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
+| `num_clients` | The number of clients that will be sampled. Please note that providing a data partition file will overwrite this value | integer | min: 1, max: 100 |
 | `data_partitions_file` | A path to a file that contains the data partitions | string | — |
 | `partitioner_type` | The type of partitioner to use if a data partition file was not provided | string | `"uniform"`, `"linear"`, `"square"`, `"exponential"` |
-| `num_partitions` | The number of data partitions. If this value is less than `min_fit_clients`, `min_available_clients`, or `min_evaluate_clients`, then those values may be lowered accordingly. | integer | min: 1, max: 100 |
+| `num_partitions` | The number of data partitions. If this value is less than `num_clients` then those values may be lowered accordingly. | integer | min: 1, max: 100 |
 | `partition_id` | Partition ID used for the current client | integer | min: 0, max: 100 |
 | `client_id` | Client ID used for the current client | integer | min: 0, max: 100 |
 | `seed` | The seed used to randomize training and testing | integer | min: 1, max: 1000 |
 | `epochs` | The number of model training epochs. An epoch is one full pass through a training dataset. | integer | min: 1, max: 100 |
 | `batch_divisor` | The divisor used to determine the number of batches (`num_batches = dataset_size / batch_divisor`) | integer | min: 1 |
-| `n_models` | The number of models to train. This can be useful if simulating federated learning locally. | integer | min: 1, max: 100 |
 | `test_fraction` | The fraction of the dataset to set aside for testing | number | exclusive min: 0, exclusive max: 1 |
 | `learning_rate` | Sets the model’s learning rate. This defines how much a model changes at each iteration. | number | exclusive min: 0, exclusive max: 1 |
 | `weight_decay` | Sets the model’s weight decay. This is a regularization method that penalizes high weights. | number | exclusive min: 0, exclusive max: 0.1 |
@@ -149,14 +148,53 @@ Regardless of how the parameter values are input, the values will be validated a
 | `epsilon` | Determines the amount of privacy added to the data | number | exclusive min: 0, exclusive max: 50 |
 | `delta` | Measures the chance of a data breach. It defines the probability that the noise does not add sufficient privacy. | number | min: 0, max: 1 |
 | `max_grad_norm` | Clips the gradients to be under this maximum before adding noise | number | min: 0, max: 100 |
-| `accuracy_tolerance` | Legacy parameter retained for compatibility. Current DPCNN accuracy uses rounded scalar predictions clamped to the valid class range. | number | min: 0, max: 1 |
 | `check_only` | A flag to turn on the check-only feature, which ensures all parameter values are within the appropriate range and have the correct type. When `true`, the testbed will not run. Execution will stop after the parameters are validated. | boolean | — |
-| `config` | A way to specify a different configuration file path | string | — |
 | `data_dir` | The path to the intended data files to run the testbed on | string | — |
 | `output_dir` | The path to the intended report directory. | string | - |
+| `objective` | XGBoost objective. If classification uses the default regression objective, the code changes it to `multi:softprob`. | string | XGBoost objective string |
+| `eta` | XGBoost learning rate | number | exclusive min: 0, max: 1 |
+| `max_depth` | Maximum XGBoost tree depth | integer | min: 1, max: 100 |
+| `eval_metric` | XGBoost evaluation metric. If classification uses the default `rmse`, the code changes it to `mlogloss`. | string | XGBoost metric string |
+| `nthread` | Number of XGBoost threads | integer | min: 1, max: 100 |
+| `num_parallel_tree` | Number of parallel trees per boosting round | integer | min: 1, max: 100 |
+| `subsample` | Fraction of rows sampled for each XGBoost tree | number | exclusive min: 0, max: 1 |
+| `tree_method` | XGBoost tree construction method | string | `"auto"`, `"exact"`, `"approx"`, `"hist"` |
+| `colsample_bylevel` | Fraction of columns sampled at each tree level | number | exclusive min: 0, max: 1 |
+| `colsample_bytree` | Fraction of columns sampled for each tree | number | exclusive min: 0, max: 1 |
+| `gamma` | Minimum loss reduction required for an XGBoost split | number | min: 0 |
+| `max_delta_step` | Maximum delta step for XGBoost tree weights | number | min: 0 |
+| `min_child_weight` | Minimum child weight for XGBoost splitting | number | min: 0 |
+| `reg_alpha` | XGBoost L1 regularization term | number | min: 0 |
+| `reg_lambda` | XGBoost L2 regularization term | number | min: 0 |
+| `scale_pos_weight` | XGBoost class-balancing weight | number | exclusive min: 0 |
 | `train_method` | The XGBoost training method | string | `"bagging"`, `"cyclic"` |
 | `centralised_eval` | Whether centralized evaluation is enabled for XGBoost | boolean | — |
 | `scaled_lr` | Whether scaled learning rate behavior is enabled for XGBoost | boolean | — |
+| `print_warning_logs` | Set to True to have warning logs print to the terminal. Set to False to have them directed to a log file in the output directory | boolean | - |
+
+### Switching Between Regression and Classification
+
+Use `problem_type` to choose the task:
+
+```json
+{
+  "problem_type": "regression",
+  "accuracy_tolerance": 0.1
+}
+```
+
+```json
+{
+  "problem_type": "classification",
+  "class_labels": [0, 1, 2, 3]
+}
+```
+
+Regression assumes the phenotype labels are continuous numeric values. Regression accuracy is the fraction of predictions within `accuracy_tolerance` of the true label. For example, with `accuracy_tolerance` set to `0.1`, a prediction is counted as accurate if `abs(prediction - label) <= 0.1`.
+
+Classification assumes the phenotype labels belong to a fixed set of classes. `class_labels` is required for classification so labels can be encoded consistently. The order of `class_labels` defines the encoded class indices used by CNN/DPCNN and XGBoost. Classification reports use class predictions and macro precision, macro recall, and macro F1 in addition to accuracy.
+
+For XGBoost classification, if the default regression settings are still present, the run updates `objective` from `reg:squarederror` to `multi:softprob` and `eval_metric` from `rmse` to `mlogloss`.
 
 ### Parameter settings
 To approximate centralized training from `run.py`, you should be able to use the following parameter values. Please note that the output may still look like federated learning training rounds, even though it is only one client, one round, and one data partition:
@@ -167,10 +205,7 @@ To approximate centralized training from `run.py`, you should be able to use the
 | `num_partitions` | `1` |
 | `partition_id` | `0` |
 | `client_id` | `0` |
-| `min_fit_clients` | `1` |
-| `min_available_clients` | `1` |
-| `min_evaluate_clients` | `1` |
-| `n_models` | `1` |
+| `num_clients` | `1` |
 | `num_rounds` | `1` |
 | `num_cpus` | `4` |
 | `seed` | `673` |
@@ -180,10 +215,13 @@ To approximate centralized training from `run.py`, you should be able to use the
 | `batch_divisor` | `5` |
 | `weight_decay` | `0.0001` |
 | `optimizer` | `"sgd"` |
+| `problem_type` | `"regression"` |
+| `accuracy_tolerance` | `0.1` |
 | `opacus_secure_mode` | `false` |
 | `epsilon` | `0.2` |
 | `delta` | `1e-05` |
 | `max_grad_norm` | `1.0` |
+| `print_warning_logs` | `false` |
 
 Example `config.json`:
 
@@ -193,10 +231,7 @@ Example `config.json`:
    "num_partitions": 1,
    "partition_id": 0,
    "client_id": 0,
-   "min_fit_clients": 1,
-   "min_available_clients": 1,
-   "min_evaluate_clients": 1,
-   "n_models": 1,
+   "num_clients": 1,
    "num_rounds": 1,
    "num_cpus": 4,
    "seed": 673 ,
@@ -206,19 +241,22 @@ Example `config.json`:
    "batch_divisor": 5, 
    "weight_decay": 0.0001, 
    "optimizer": "sgd", 
+   "problem_type": "regression",
+   "accuracy_tolerance": 0.1,
    "opacus_secure_mode": false, 
    "epsilon": 0.2, 
    "delta": 1e-05, 
-   "max_grad_norm":1.0
+   "max_grad_norm":1.0,
+   "print_warning_logs": false
 }
 ```
 
-There is currently no way to fully turn off DP. This will be added in a later beta release.
+Use `model_type: "cnn"` for non-DP CNN training. Use `model_type: "dpcnn"` for the Opacus DP CNN workflow.
 
 ## Understanding the Output <a name="output"></a>
 
 ### Files
-There are three types of output files: `.npz` files, `.json` files, and `.torch` files. Within the `.npz` files, there is metadata on the model's global and client/round based performance. This is captured in the `.json` file format as well for human-readable purposes. Schemas can be found for this in the [schemas](schemas) directory, and sample outputs can be found in the [sampleReports](sampleReports) directory. Additionally in the `.json` file format is a file containing the input parameters used for a run, following the `configuration-schema.json` file, located at [dpcnn_opacus/configuration-schema.json](dpcnn_opacus/configuration-schema.json) at the time of writing. In the .torch files, there are model weights that can be loaded for further inference with the trained model.
+Output files include `.npz` metadata files, `.json` human-readable reports, `.torch` CNN/DPCNN model files, and `.ubj` XGBoost model files. Within the `.npz` files, there is metadata on the model's global and client/round based performance. This is captured in the `.json` file format as well for human-readable purposes. The run also writes `input_parameters.json`, which records the resolved input parameters after schema/default processing. In the `.torch` and `.ubj` files, there are model weights that can be loaded for further inference with the trained model.
 
 ### Metric Definitions
 
@@ -229,20 +267,22 @@ There are three types of output files: `.npz` files, `.json` files, and `.torch`
 | `model id` | The id of the model being developed | integer |
 | `round number` | The current round that the metrics are reporting on | integer |
 | `partitions file` | The file used to partition the data for training | string |
-| `train accuracy` | Rounded-class training accuracy for this client and round. The scalar model output is rounded and clamped to the valid class range before comparison to the label. | number |
-| `test accuracy` | Rounded-class test accuracy for this client and round. The scalar model output is rounded and clamped to the valid class range before comparison to the label. | number |
-| `train mean squared error` | Train MSE for this client and round | number |
-| `test mean squared error` | Test MSE for this client and round | number |
+| `problem type` | The task type used for the run | string |
+| `class labels` | The configured class label order for classification runs, or `null` for regression | array or null |
+| `train accuracy` | For classification, class prediction accuracy. For regression, fraction of predictions within `accuracy_tolerance`. | number |
+| `test accuracy` | For classification, class prediction accuracy. For regression, fraction of predictions within `accuracy_tolerance`. | number |
+| `train mean squared error` | Train MSE for this client and round. Classification reports set this to `0`. | number |
+| `test mean squared error` | Test MSE for this client and round. Classification reports set this to `0`. | number |
 | `train loss` | Train loss for this client and round | number |
 | `test loss` | Test loss for this client and round | number |
 | `train indices` | Indices used for training | integer array |
 | `test indices` | Indices used for testing | integer array |
-| `train accuracy per epoch` | Rounded-class training accuracy over epochs | number array |
-| `test accuracy per epoch` | Rounded-class test accuracy over epochs | number array |
-| `train mse per epoch` | MSE over epochs for training | number array |
-| `test mse per epoch` | MSE over epochs for testing | number array |
-| `losses per epoch` | Loss values for each epoch in this client round | number array |
-| `epsilon per epoch` | The epsilon values for each epoch in this client round | number array |
+| `train accuracy per epoch` | Per-epoch training accuracy for CNN/DPCNN runs | number array |
+| `test accuracy per epoch` | Per-epoch test accuracy for CNN/DPCNN runs | number array |
+| `train mse per epoch` | Per-epoch training MSE for CNN/DPCNN regression runs. Classification reports use `0` values. | number array |
+| `test mse per epoch` | Per-epoch test MSE for CNN/DPCNN regression runs. Classification reports use `0` values. | number array |
+| `losses per epoch` | Loss values for each epoch in this client round. Present for CNN/DPCNN reports. | number array |
+| `epsilon per epoch` | The epsilon values for each epoch in this client round. Present for DPCNN reports. | number array |
 | `train predictions` | The predicted values for the training set | number array |
 | `test predictions` | The predicted values for the test set | number array |
 | `hyperparameters` | The hyperparameters the client used during its training process | object of the following properties: |
@@ -252,7 +292,9 @@ There are three types of output files: `.npz` files, `.json` files, and `.torch`
 | `hyperparameters.epochs` | The number of model training epochs. An epoch is one full pass through a training dataset | integer |
 | `hyperparameters.seed` | The seed used to randomize training/testing | integer | 
 | `hyperparameters.test fraction` | The fraction of the data set to set aside for testing | number |
-| `hyperparameters.accuracy tolerance` | Legacy parameter retained for compatibility. Current DPCNN accuracy uses rounded scalar predictions clamped to the valid class range. | number |
+| `hyperparameters.problem type` | The task type used for the run | string |
+| `hyperparameters.class labels` | The configured class label order for classification runs, or `null` for regression | array or null |
+| `hyperparameters.accuracy tolerance` | Regression accuracy tolerance. `null` for classification runs. | number or null |
 | `hyperparameters.optimizer` | The optimizer is responsible for adjusting model parameters based on the value of the loss function | string |
 | `hyperparameters.epsilon` | Determines the amount of privacy added to the data. | number |
 | `hyperparameters.delta` | Measures the chance of a data breach. It defines the probability of the noise not adding sufficient privacy | number |
@@ -263,30 +305,24 @@ There are three types of output files: `.npz` files, `.json` files, and `.torch`
 |---|---|---|
 | `created on` | The datetime that the report was generated | string |
 | `loss per round` | Loss values across rounds | number array |
-| `accuracy per round` | Rounded-class accuracy values across rounds | number array |
-| `mse per round` | MSE values across rounds | number array |
+| `accuracy per round` | For classification, class prediction accuracy across rounds. For regression, tolerance-based accuracy across rounds for CNN/DPCNN and rounded-prediction accuracy for current XGBoost global evaluation. | number array |
+| `mse per round` | MSE values across rounds. Classification reports use `0` values. | number array |
 
 ### Accuracy Calculations and Model Implications
-Currently, this codebase trains a regression model, then rounds the output to obtain integer labels. This implies the following assumptions:
-   - The dataset used to train the model has integer labels
-   - The user of the testbed is asking classification questions. 
 
-This modified the binning funcion previously found in the codebase, which was:
-```
-correct += torch.sum(
-                    torch.abs(outputs - labels)
-                    <= (tolerance * labels + tol_offset)).item()
-```
-Where outputs were the regression model outputs, labels were the integer true labels, tolerance was a modifiable parameter (mapped to accuracy_tolerance, default of 0.1), and tol_offset was a 0.01 offset. This previous function penalized classes with low integer labels, especially the 0 label, making accuracy appear to be very low. The new binning function is a simple rounding of the output:
-```
-pred_classes = torch.round(outputs)
-pred_correct = pred_classes == labels
-pred_correct_test += pred_correct.sum().item()
-#where pred_correct_[test, train] now replaces correct
-```
-This prevents bias towards higher-label classes and penalization of lower-label classes. This also ensures that the "accurate" range of each of the labels is consistent (not class dependent) for fair evaluation.
+Accuracy is calculated differently depending on `problem_type`.
 
-In the future, this binning function will be re-evaluated, and the user-specified option to use the legacy binning function may be added in. Additionally, future work will look to exand the testbed to support both classification and regression based problems. 
+For regression, model outputs are continuous numeric predictions. Accuracy is the fraction of predictions within the configured `accuracy_tolerance`:
+
+```python
+np.mean(np.abs(predictions - labels) <= accuracy_tolerance)
+```
+
+Regression reports also include MAE, MSE, RMSE, R2, the label mean, and RMSE as a percentage of the label mean.
+
+For classification, labels are encoded from `class_labels`, and predictions are class indices. CNN/DPCNN classification uses the largest output logit as the predicted class. XGBoost classification uses `multi:softprob` probabilities when the default classification conversion is applied, then selects the class with the largest probability. Classification reports include accuracy, macro precision, macro recall, and macro F1. Regression-only metrics such as MSE are set to `0` in classification reports.
+
+The older behavior of treating a regression output as a rounded class prediction is no longer the default task model. Use `problem_type: "classification"` for class labels and `problem_type: "regression"` for continuous numeric targets.
 
 ## Regression Testing <a name="regression"></a>
 
@@ -354,7 +390,7 @@ pytest.param(
 pytest.param(
     Case(
         "36. client_id uniqueness in local sim (if enforced)",
-        _base_with(n_models=2, client_id=1),
+        _base_with(client_id=1),
         cli_args=["--client_id", "1"],
         allowed_exit_codes={0},
     ),
@@ -387,10 +423,9 @@ This codebase currently follows the standard Flower simulation pattern:
 
 ### Parameters that affect how many clients train
 
-- `model_params.num_partitions` controls how many simulated client partitions are available when random partitioning is used.
-- When `model_params.data_partitions_file` is provided, the code reads the number of `client_*` entries in that file and uses those as the available client partitions.
-- `federated.min_fit_clients`, `federated.min_evaluate_clients`, and `federated.min_available_clients` control how many clients Flower requires for fit/evaluate rounds.
-- `federated.n_models` exists in the schema, but the current implementation does not train multiple inner models per client. Going forward, this should either be renamed/documented as a client-count control or wired explicitly if repeated local models are desired.
+- `num_partitions` controls how many simulated client partitions are available when random partitioning is used.
+- `num_clients` determines how many clients are trained when no data partition file is provided.
+- When `data_partitions_file` is provided, the code reads the number of `num_client` entries in that file and uses those as the available clients and client data partitions.
 
 ### Parameters that affect concurrency
 
@@ -415,7 +450,6 @@ It means multiple client processes are training concurrently, and Ray prints log
 
 To reduce confusion in a future non-hotfix change:
 
-- Clarify `n_models` in the configuration schema, or replace it with a parameter name that reflects current behavior.
 - Document the relationship between partition files, Flower clients, and federated rounds directly in the configuration docs.
 - Keep memory-related changes separate from naming/logging cleanup to avoid expanding the current hotfix scope.
 
