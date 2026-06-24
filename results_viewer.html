@@ -1,0 +1,1819 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Experiment Viewer</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --card: #ffffff;
+      --border: #dde3ee;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --accent-soft: #eff6ff;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      background: linear-gradient(135deg, #0f172a, #1e3a8a);
+      color: white;
+      padding: 28px 24px;
+      display: flex;
+      justify-content: center;
+    }
+    .header-inner {
+      width: 100%;
+      max-width: 1400px;
+    }
+    header h1 { margin: 0 0 8px 0; font-size: 28px; }
+    header p { margin: 0; color: rgba(255,255,255,0.82); max-width: 960px; line-height: 1.5; }
+    main { max-width: 1400px; margin: 0 auto; padding: 20px 16px 40px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+    .card h2 { margin: 0 0 12px 0; font-size: 24px; font-weight: 800; }
+    .section-title { margin: 0 0 12px 0; font-size: 22px; font-weight: 800; }
+    .subtle { color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .button-row, .home-grid, .toolbar { display: flex; flex-wrap: wrap; gap: 12px; }
+    .home-grid { margin-top: 16px; }
+    .mode-card, .run-card {
+      border: 1px solid var(--border);
+      background: white;
+      border-radius: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      padding: 16px;
+    }
+    .mode-card { flex: 1 1 320px; min-height: 170px; display: flex; flex-direction: column; gap: 12px; }
+    .mode-card button { margin-top: auto; align-self: center; }
+    .mode-card h3, .run-card h3 { margin: 0; font-size: 18px; }
+    .mode-card .meta, .run-card .meta { color: var(--muted); font-size: 13px; line-height: 1.5; }
+    button, .ghost-button {
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: white;
+      border-radius: 12px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .ghost-button { background: white; color: var(--accent); }
+    .primary-submit {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 140px;
+      padding: 11px 18px;
+      font-size: 14px;
+      font-weight: 800;
+      border-radius: 12px;
+      margin-top: 16px;
+    }
+    .submit-row {
+      display: flex;
+      justify-content: flex-start;
+      margin-top: 8px;
+    }
+    .back-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 14px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    button:hover, .ghost-button:hover { filter: brightness(0.97); }
+    .select-wrap { display: flex; flex-direction: column; gap: 6px; min-width: 320px; }
+    .select-wrap label { font-size: 12px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .select-wrap select, .select-wrap input[type="file"] {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 14px;
+      background: white;
+      color: var(--text);
+    }
+    .kv-table, .plain-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin-top: 10px;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: visible;
+    }
+    .kv-table th, .kv-table td, .plain-table th, .plain-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #eef2f7;
+      vertical-align: top;
+      text-align: left;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .kv-table th, .plain-table th {
+      width: 260px;
+      background: #fcfdff;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .metric-card {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+    }
+    .metric-title {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    .metric-value {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.25;
+      word-break: break-word;
+    }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .value-inline { font-size: 12px; line-height: 1.6; word-break: break-word; }
+    .more-toggle {
+      display: inline;
+      margin-left: 6px;
+      border: none;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+    .more-hidden { display: none; }
+    details {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: white;
+      padding: 10px 12px;
+      margin-top: 12px;
+    }
+    details summary { cursor: pointer; font-weight: 800; font-size: 16px; }
+    .raw-json {
+      margin-top: 10px;
+      max-height: 460px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      line-height: 1.5;
+      background: #0b1220;
+      color: #e5eefc;
+      padding: 14px;
+      border-radius: 14px;
+    }
+    .file-section { margin-top: 16px; }
+    .field-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .info-tip {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: help;
+      line-height: 1;
+      flex: none;
+      border: none;
+      outline: none;
+    }
+    .info-tip::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 8px);
+      transform: translateX(-50%);
+      min-width: 220px;
+      max-width: 340px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #0f172a;
+      color: #ffffff;
+      font-size: 12px;
+      line-height: 1.45;
+      font-weight: 500;
+      text-align: left;
+      white-space: normal;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.24);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      z-index: 50;
+    }
+    .info-tip::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 2px);
+      transform: translateX(-50%);
+      border-width: 0 7px 7px 7px;
+      border-style: solid;
+      border-color: transparent transparent #0f172a transparent;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      z-index: 51;
+    }
+    .info-tip:hover::after,
+    .info-tip:hover::before,
+    .info-tip:focus::after,
+    .info-tip:focus::before,
+    .info-tip:focus-visible::after,
+    .info-tip:focus-visible::before {
+      opacity: 1;
+      visibility: visible;
+    }
+    .modal-title-error {
+      color: #b91c1c;
+    }
+    .validation-box {
+      margin-top: 14px;
+      border-radius: 14px;
+      padding: 12px 14px;
+      border: 1px solid;
+      line-height: 1.5;
+    }
+    .validation-box h4 {
+      margin: 0 0 6px 0;
+      font-size: 14px;
+    }
+    .validation-box ul {
+      margin: 8px 0 0 18px;
+      padding: 0;
+    }
+    .validation-success {
+      border-color: #86efac;
+      background: #f0fdf4;
+      color: #14532d;
+    }
+    .validation-warning {
+      border-color: #fbbf24;
+      background: #fffbeb;
+      color: #92400e;
+    }
+    .validation-error {
+      border-color: #fca5a5;
+      background: #fef2f2;
+      color: #991b1b;
+    }
+    @media (max-width: 1100px) {
+      .two-col { grid-template-columns: 1fr; }
+      .select-wrap { min-width: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <h1>PETs Testbed Results Viewer</h1>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<div id="modalBackdrop" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:1000; padding:24px; overflow:auto;">
+  <div style="max-width:1200px; margin:40px auto; background:white; border-radius:20px; box-shadow:0 20px 60px rgba(0,0,0,0.3); overflow:hidden;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 20px; border-bottom:1px solid #e5e7eb;">
+      <div>
+        <div id="modalTitle" style="font-size:20px; font-weight:800; margin-bottom:4px;">Details</div>
+        <div id="modalSubtitle" class="subtle"></div>
+      </div>
+      <div id="modalActions" style="display:flex; gap:10px; align-items:center;"></div>
+    </div>
+    <div id="modalContent" style="padding:20px;"></div>
+  </div>
+</div>
+
+
+<script>
+// =====================================
+// App state and DOM references
+// =====================================
+const state = {
+  view: 'home', // home | pick | batch | single | loading
+  selectionMode: null, // batch | single
+  folderName: '',
+  bundle: null,
+  error: '',
+  pendingFiles: [],
+  validation: null,
+  modalMode: null, // details | issue | null
+  activeReportKind: 'classification',
+};
+
+const app = document.getElementById('app');
+const modal = document.getElementById('modalBackdrop');
+const modalTitle = document.getElementById('modalTitle');
+const modalSubtitle = document.getElementById('modalSubtitle');
+const modalContent = document.getElementById('modalContent');
+const modalActions = document.getElementById('modalActions');
+
+const SPECIAL_FILENAMES = new Set([
+  'experiment_inputs.json',
+  'input_parameters.json',
+  'global_metadata.json',
+]);
+
+const ROUND_FILE_RE = /(?:^|_)round_\d+\.json$/i;
+
+
+const SCHEMA_SOURCES = {
+  classification: {
+    client: './schemas/ClientClassificationReportSchema.json',
+    global: './schemas/GlobalClassificationReportSchema.json',
+  },
+  regression: {
+    client: './schemas/ClientRegressionReportSchema.json',
+    global: './schemas/GlobalRegressionReportSchema.json',
+  },
+};
+
+let SCHEMA_TIPS = {
+  classification: { client: {}, global: {} },
+  regression: { client: {}, global: {} },
+};
+
+let SCHEMA_DEFINITIONS = {
+  classification: { client: null, global: null },
+  regression: { client: null, global: null },
+};
+
+let SCHEMA_LOAD_ERROR = '';
+
+// Load human-readable descriptions from a JSON schema so the UI can show info tips.
+function createSchemaTipMap(schema) {
+  const tips = {};
+
+  function walk(properties, prefix = '') {
+    for (const [key, value] of Object.entries(properties || {})) {
+      const path = prefix ? `${prefix}.${key}` : key;
+      if (value && typeof value.description === 'string' && value.description.trim()) {
+        tips[path] = value.description.trim();
+      }
+      if (value && value.properties) {
+        walk(value.properties, path);
+      }
+    }
+  }
+
+  walk(schema?.properties || {});
+  return tips;
+}
+
+function normalizeReportKind(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'classification' || normalized === 'regression') {
+    return normalized;
+  }
+  return '';
+}
+
+// Normalize a report kind and fall back to the viewer state when the caller does not provide one.
+function getEffectiveReportKind(reportKind = null) {
+  return normalizeReportKind(reportKind || state.activeReportKind) || 'classification';
+}
+
+// Convert the internal kind into a label suitable for titles and cards.
+function getReportKindLabel(reportKind) {
+  return normalizeReportKind(reportKind) === 'regression' ? 'Regression report' : 'Classification report';
+}
+
+// Read the loaded schema for the current report family.
+function getSchemaDefinition(reportKind, scope) {
+  const kind = getEffectiveReportKind(reportKind);
+  return SCHEMA_DEFINITIONS?.[kind]?.[scope] || null;
+}
+
+// Fetch one schema file and cache both its structure and its description text.
+async function loadSchemaArtifact(kind, scope, url) {
+  const resolvedUrl = new URL(url, window.location.href).href;
+  const response = await fetch(resolvedUrl, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`Failed to load ${resolvedUrl} (${response.status})`);
+  }
+
+  const schema = await response.json();
+  if (!SCHEMA_DEFINITIONS[kind]) {
+    SCHEMA_DEFINITIONS[kind] = { client: null, global: null };
+  }
+  if (!SCHEMA_TIPS[kind]) {
+    SCHEMA_TIPS[kind] = { client: {}, global: {} };
+  }
+
+  SCHEMA_DEFINITIONS[kind][scope] = schema;
+  SCHEMA_TIPS[kind][scope] = createSchemaTipMap(schema);
+}
+
+// Load every schema variant at startup. If one fails, keep the app working and surface the issue later.
+async function loadSchemaArtifacts() {
+  SCHEMA_LOAD_ERROR = '';
+  const tasks = [];
+
+  for (const [kind, scopes] of Object.entries(SCHEMA_SOURCES)) {
+    for (const [scope, url] of Object.entries(scopes)) {
+      tasks.push(
+        loadSchemaArtifact(kind, scope, url).catch((error) => {
+          SCHEMA_LOAD_ERROR += (SCHEMA_LOAD_ERROR ? '; ' : '') + `${kind}/${scope}: ${error?.message || String(error)}`;
+        })
+      );
+    }
+  }
+
+  await Promise.all(tasks);
+}
+
+// Lazy-load schemas only when the viewer needs them.
+async function ensureSchemaArtifactsLoaded() {
+  if (
+    SCHEMA_DEFINITIONS.classification.client &&
+    SCHEMA_DEFINITIONS.classification.global &&
+    SCHEMA_DEFINITIONS.regression.client &&
+    SCHEMA_DEFINITIONS.regression.global
+  ) {
+    return;
+  }
+  await loadSchemaArtifacts();
+}
+
+function isExperimentInputsFile(pathStr) {
+  const name = normalizeName(fileName(pathStr));
+  return name === 'experiment_inputs.json';
+}
+
+// Resolve local "$ref" pointers inside the loaded schema file.
+function resolveSchemaRef(ref, rootSchema) {
+  if (typeof ref !== 'string' || !ref.startsWith('#/')) {
+    return null;
+  }
+
+  const pointer = ref.slice(2).split('/').map((segment) =>
+    segment.replaceAll('~1', '/').replaceAll('~0', '~')
+  );
+
+  let current = rootSchema;
+  for (const segment of pointer) {
+    if (!current || typeof current !== 'object' || !(segment in current)) {
+      return null;
+    }
+    current = current[segment];
+  }
+  return current || null;
+}
+
+// Minimal type-checking helper used by the lightweight schema validator below.
+function matchesSchemaType(value, schemaType) {
+  if (Array.isArray(schemaType)) {
+    return schemaType.some((item) => matchesSchemaType(value, item));
+  }
+
+  switch (schemaType) {
+    case 'string':
+      return typeof value === 'string';
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value);
+    case 'integer':
+      return Number.isInteger(value);
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'array':
+      return Array.isArray(value);
+    case 'object':
+      return value !== null && typeof value === 'object' && !Array.isArray(value);
+    case 'null':
+      return value === null;
+    default:
+      return true;
+  }
+}
+
+// Compare const values from the schema without pulling in a full validation library.
+function valueEquals(a, b) {
+  if (Object.is(a, b)) {
+    return true;
+  }
+  if (typeof a !== typeof b) {
+    return false;
+  }
+  if (a && b && typeof a === 'object') {
+    try {
+      return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+// Recursively validate only the schema rules that the viewer needs: type, const, arrays, and nested objects.
+function validateSchemaValue(value, schema, path = 'value', rootSchema = schema) {
+  const errors = [];
+
+  if (!schema) {
+    errors.push(`${path}: schema is unavailable.`);
+    return errors;
+  }
+
+  if (schema.$ref) {
+    const resolved = resolveSchemaRef(schema.$ref, rootSchema);
+    if (!resolved) {
+      errors.push(`${path}: unresolved schema reference ${schema.$ref}.`);
+      return errors;
+    }
+    return validateSchemaValue(value, resolved, path, rootSchema);
+  }
+
+  if (schema.const !== undefined && !valueEquals(value, schema.const)) {
+    errors.push(`${path}: expected ${JSON.stringify(schema.const)}.`);
+    return errors;
+  }
+
+  if (schema.type && !matchesSchemaType(value, schema.type)) {
+    errors.push(`${path}: expected ${Array.isArray(schema.type) ? schema.type.join(' or ') : schema.type}.`);
+    return errors;
+  }
+
+  if (schema.type === 'object') {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      errors.push(`${path}: expected object.`);
+      return errors;
+    }
+
+    for (const [key, childSchema] of Object.entries(schema.properties || {})) {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) {
+        continue;
+      }
+      errors.push(...validateSchemaValue(value[key], childSchema, `${path}.${key}`, rootSchema));
+    }
+
+    return errors;
+  }
+
+  if (schema.type === 'array') {
+    if (!Array.isArray(value)) {
+      errors.push(`${path}: expected array.`);
+      return errors;
+    }
+
+    if (typeof schema.minItems === 'number' && value.length < schema.minItems) {
+      errors.push(`${path}: expected at least ${schema.minItems} item(s).`);
+    }
+
+    if (schema.items) {
+      value.forEach((item, index) => {
+        errors.push(...validateSchemaValue(item, schema.items, `${path}[${index}]`, rootSchema));
+      });
+    }
+
+    return errors;
+  }
+
+  return errors;
+}
+// Retrieve the tooltip text for a field from the active schema family.
+function getSchemaTip(scope, key, reportKind = null) {
+  const kind = getEffectiveReportKind(reportKind);
+  return SCHEMA_TIPS?.[kind]?.[scope]?.[key] || '';
+}
+
+// Render the small question-mark bubble that reveals field help on hover.
+function renderInfoTip(description) {
+  if (!description) return '';
+  const escaped = escapeHtml(description);
+  return `<span class="info-tip" tabindex="0" role="button" aria-label="${escaped}" data-tooltip="${escaped}">?</span>`;
+}
+
+// Render a label with an optional info tip.
+function renderFieldLabel(label, description = '') {
+  return `<span class="field-label">${escapeHtml(label)}${renderInfoTip(description)}</span>`;
+}
+
+// Render a single key/value row for tables.
+function renderRow(label, value, description = '') {
+  return `<tr><th>${renderFieldLabel(label, description)}</th><td>${value}</td></tr>`;
+}
+
+function setModalActionButtons(mode) {
+  if (!modalActions) return;
+
+  if (mode === 'issue') {
+    modalActions.innerHTML = `
+      <button type="button" id="modalBackToSplash" class="primary-submit">Back to splash</button>
+    `;
+    qs('#modalBackToSplash')?.addEventListener('click', () => {
+      closeModal();
+      resetToHome();
+    });
+    return;
+  }
+
+  modalActions.innerHTML = `
+    <button type="button" id="modalCloseButton" class="ghost-button">Close</button>
+  `;
+  qs('#modalCloseButton')?.addEventListener('click', closeModal);
+}
+
+// =====================================
+// Shared utilities
+// =====================================
+function qs(selector, root = document) {
+  return root.querySelector(selector);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function fmt(value) {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? String(value) : value.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+  }
+  return String(value ?? '');
+}
+
+function fileName(pathStr) {
+  const parts = String(pathStr || '').split('/').filter(Boolean);
+  return parts[parts.length - 1] || '';
+}
+
+function folderName(pathStr) {
+  const parts = String(pathStr || '').split('/').filter(Boolean);
+  return parts[0] || 'Selected folder';
+}
+
+function isJsonFile(file) {
+  return String(file?.name || '').toLowerCase().endsWith('.json');
+}
+
+function normalizeName(name) {
+  return String(name || '').toLowerCase();
+}
+
+function isSpecialFile(pathStr) {
+  return SPECIAL_FILENAMES.has(normalizeName(fileName(pathStr)));
+}
+
+function isGlobalMetadataFile(pathStr) {
+  const name = normalizeName(fileName(pathStr));
+  return name === 'global_metadata.json' || name.endsWith('_global_metadata.json');
+}
+
+function isRoundFile(pathStr) {
+  return ROUND_FILE_RE.test(fileName(pathStr));
+}
+
+
+// Inspect uploaded JSON and look for clues that tell us whether this is a classification or regression report.
+function collectReportTypeHints(objs = []) {
+  const keys = new Set();
+  const problemTypes = new Set();
+
+  for (const obj of objs) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+      continue;
+    }
+
+    const problemType = normalizeReportKind(obj['problem type']);
+    if (problemType) {
+      problemTypes.add(problemType);
+    }
+
+    for (const key of Object.keys(obj)) {
+      keys.add(key);
+    }
+  }
+
+  return { keys, problemTypes };
+}
+
+// Decide which schema family to use based on explicit problem type fields first, then fallback hints.
+function detectReportKind(metadataEntry, roundEntries = []) {
+  const { keys, problemTypes } = collectReportTypeHints([
+    metadataEntry?.data,
+    ...roundEntries.map((entry) => entry?.data),
+  ]);
+
+  if (problemTypes.size === 1) {
+    return { reportKind: [...problemTypes][0], source: 'problem type' };
+  }
+
+  if (problemTypes.size > 1) {
+    return { reportKind: '', conflict: [...problemTypes].join(', ') };
+  }
+
+  let classificationScore = 0;
+  let regressionScore = 0;
+
+  const classificationKeys = new Set([
+    'class labels',
+    'train precision macro',
+    'test precision macro',
+    'train recall macro',
+    'test recall macro',
+    'precision macro per round',
+    'recall macro per round',
+    'train precision macro per epoch',
+    'test precision macro per epoch',
+    'train recall macro per epoch',
+    'test recall macro per epoch',
+  ]);
+
+  const regressionKeys = new Set([
+    'accuracy tolerance',
+    'train mean squared error',
+    'test mean squared error',
+    'mse per round',
+    'train mse per epoch',
+    'test mse per epoch',
+  ]);
+
+  for (const key of keys) {
+    if (classificationKeys.has(key)) {
+      classificationScore += 2;
+    }
+    if (regressionKeys.has(key)) {
+      regressionScore += 2;
+    }
+  }
+
+  if (classificationScore > regressionScore) {
+    return { reportKind: 'classification', source: 'field hints' };
+  }
+  if (regressionScore > classificationScore) {
+    return { reportKind: 'regression', source: 'field hints' };
+  }
+
+  return { reportKind: '' };
+}
+
+// Validate the uploaded folder against one schema family at a time.
+function scoreReportVariant(reportKind, metadataEntry, roundEntries = []) {
+  const kind = normalizeReportKind(reportKind) || 'classification';
+  const errors = [];
+
+  const globalSchema = getSchemaDefinition(kind, 'global');
+  const clientSchema = getSchemaDefinition(kind, 'client');
+
+  if (!globalSchema || !clientSchema) {
+    errors.push(`Schema definitions for ${getReportKindLabel(kind)} could not be loaded.`);
+    return { reportKind: kind, errors };
+  }
+
+  if (metadataEntry) {
+    const metadataErrors = validateSchemaValue(
+      metadataEntry.data,
+      globalSchema,
+      fileName(metadataEntry.path),
+      globalSchema
+    );
+    errors.push(...metadataErrors.map((error) => `global metadata: ${error}`));
+  }
+
+  for (const roundEntry of roundEntries) {
+    const roundErrors = validateSchemaValue(
+      roundEntry.data,
+      clientSchema,
+      fileName(roundEntry.path),
+      clientSchema
+    );
+    errors.push(...roundErrors.map((error) => `round file ${fileName(roundEntry.path)}: ${error}`));
+  }
+
+  return { reportKind: kind, errors };
+}
+
+// Prefer the explicit report kind when it is present; otherwise choose the better-fitting schema family.
+// This returns the best schema family to use for validation.
+function chooseReportVariant(metadataEntry, roundEntries = []) {
+  const detected = detectReportKind(metadataEntry, roundEntries);
+
+  if (detected.conflict) {
+    return {
+      reportKind: '',
+      errors: [`Conflicting problem types found: ${detected.conflict}.`],
+    };
+  }
+
+  if (detected.reportKind) {
+    return scoreReportVariant(detected.reportKind, metadataEntry, roundEntries);
+  }
+
+  const classification = scoreReportVariant('classification', metadataEntry, roundEntries);
+  const regression = scoreReportVariant('regression', metadataEntry, roundEntries);
+
+  if (classification.errors.length <= regression.errors.length) {
+    return classification;
+  }
+  return regression;
+}
+
+// Validate the singular-run folder shape and then validate the content against the chosen client/global schemas.
+function validateSingularRunEntries(entries = []) {
+  const jsonEntries = Array.from(entries || []).filter(isJsonFile);
+  const inputEntries = jsonEntries.filter((entry) => normalizeName(fileName(entry.path)) === 'input_parameters.json');
+  const metadataEntries = jsonEntries.filter((entry) => isGlobalMetadataFile(entry.path));
+  const roundEntries = jsonEntries.filter((entry) => isRoundFile(entry.path));
+
+  const ignoredEntries = jsonEntries.filter((entry) =>
+    !inputEntries.includes(entry) &&
+    !metadataEntries.includes(entry) &&
+    !roundEntries.includes(entry)
+  );
+
+  const problems = [];
+  if (inputEntries.length !== 1) {
+    problems.push(`Expected exactly one input_parameters.json file, found ${inputEntries.length}.`);
+  }
+  if (metadataEntries.length !== 1) {
+    problems.push(`Expected exactly one global metadata file, found ${metadataEntries.length}.`);
+  }
+  if (roundEntries.length < 1) {
+    problems.push('Expected at least one round file in the form {partition_number}_round_{round_number}.json.');
+  }
+
+  const reportVariant = chooseReportVariant(metadataEntries[0] || null, roundEntries);
+  const schemaErrors = Array.isArray(reportVariant.errors) ? reportVariant.errors : [];
+  problems.push(...schemaErrors);
+
+  const valid = problems.length === 0;
+  const status = valid ? (ignoredEntries.length ? 'warning' : 'success') : 'error';
+  const kindLabel = reportVariant.reportKind ? getReportKindLabel(reportVariant.reportKind).toLowerCase() : 'report';
+  const message = valid
+    ? (ignoredEntries.length
+      ? `This folder looks valid as a ${kindLabel}. I will ignore ${ignoredEntries.length} unrelated file(s).`
+      : `This folder looks valid as a ${kindLabel}.`)
+    : `This folder does not contain the correct files. ${problems.join(' ')}`;
+
+  return {
+    valid,
+    status,
+    message,
+    report_kind: reportVariant.reportKind || '',
+    inputEntry: inputEntries[0] || null,
+    metadataEntry: metadataEntries[0] || null,
+    roundEntries,
+    ignoredEntries,
+    schemaErrors,
+  };
+}
+
+// Identify folders that look like valid singular-run folders.
+function hasSingularRunSignals(entries = []) {
+  return Array.from(entries || []).some((entry) => {
+    const name = normalizeName(fileName(entry.path));
+    return name === 'input_parameters.json' || isGlobalMetadataFile(entry.path) || isRoundFile(entry.path);
+  });
+}
+
+// Validate the batch root and then validate each nested run folder as if it were a singular run.
+function validateBatchExperimentEntries(entries = []) {
+  const jsonEntries = Array.from(entries || []).filter(isJsonFile);
+  const experimentEntries = jsonEntries.filter((entry) => isExperimentInputsFile(entry.path));
+  const nonExperimentEntries = jsonEntries.filter((entry) => !isExperimentInputsFile(entry.path));
+  const groupedEntries = Array.from(groupBatchEntries(nonExperimentEntries).entries());
+
+  const problems = [];
+  if (experimentEntries.length !== 1) {
+    problems.push(`Expected exactly one experiment_inputs.json file, found ${experimentEntries.length}.`);
+  }
+
+  const runValidations = [];
+  const ignoredEntries = [];
+  let runCount = 0;
+
+  for (const [groupKey, groupEntries] of groupedEntries) {
+    if (!hasSingularRunSignals(groupEntries)) {
+      ignoredEntries.push(...groupEntries);
+      continue;
+    }
+
+    runCount += 1;
+    const validation = validateSingularRunEntries(groupEntries);
+    runValidations.push({ groupKey, ...validation });
+    if (!validation.valid) {
+      const prefix = groupKey ? `Run folder "${groupKey}"` : 'A run folder';
+      return {
+        valid: false,
+        status: 'error',
+        message: `${prefix} does not contain the correct files. ${validation.message}`,
+        inputEntry: experimentEntries[0] || null,
+        runValidations,
+        ignoredEntries: validation.ignoredEntries || [],
+        schemaErrors: validation.schemaErrors || [],
+        report_kind: validation.report_kind || '',
+      };
+    }
+    if (validation.ignoredEntries?.length) {
+      ignoredEntries.push(...validation.ignoredEntries);
+    }
+  }
+
+  if (!runCount) {
+    problems.push('No run folders were found.');
+  }
+
+  const reportKinds = [...new Set(runValidations.map((item) => normalizeReportKind(item.report_kind)).filter(Boolean))];
+  const report_kind = reportKinds.length === 1 ? reportKinds[0] : (reportKinds.length > 1 ? 'mixed' : '');
+
+  const valid = problems.length === 0;
+  const status = valid ? (ignoredEntries.length ? 'warning' : 'success') : 'error';
+  const message = valid
+    ? (ignoredEntries.length
+      ? `This folder looks valid. I will ignore ${ignoredEntries.length} unrelated file(s).`
+      : 'This folder looks valid.')
+    : `This folder does not contain the correct files. ${problems.join(' ')}`;
+
+  return {
+    valid,
+    status,
+    message,
+    report_kind,
+    inputEntry: experimentEntries[0] || null,
+    runValidations,
+    ignoredEntries,
+    schemaErrors: problems.filter((msg) => msg.includes('Schema') || msg.includes('Expected') || msg.includes('No run folders')),
+  };
+}
+
+function inferParameterName(folderOrGroup, inputParameters = {}) {
+  if (inputParameters?.dp && Object.prototype.hasOwnProperty.call(inputParameters.dp, 'epsilon')) {
+    return 'epsilon';
+  }
+  const match = String(folderOrGroup || '').match(/([A-Za-z0-9]+)\s*[:=_-]\s*([A-Za-z0-9.+-]+)/);
+  return match ? match[1] : 'run';
+}
+
+function inferParameterValue(folderOrGroup, inputParameters = {}) {
+  if (inputParameters?.dp && Object.prototype.hasOwnProperty.call(inputParameters.dp, 'epsilon')) {
+    return inputParameters.dp.epsilon;
+  }
+  const match = String(folderOrGroup || '').match(/([A-Za-z0-9]+)\s*[:=_-]\s*([A-Za-z0-9.+-]+)/);
+  return match ? match[2] : (folderOrGroup || '1');
+}
+
+function sortRunFiles(files = []) {
+  return [...files].sort((a, b) => String(a?._filename || a?.path || a?.name || '').localeCompare(
+    String(b?._filename || b?.path || b?.name || ''),
+    undefined,
+    { numeric: true, sensitivity: 'base' }
+  ));
+}
+function renderValueList(values, maxItems = 20) {
+  if (!Array.isArray(values)) {
+    return `<span class="value-inline">${escapeHtml(fmt(values))}</span>`;
+  }
+
+  const visible = values.slice(0, maxItems).map(fmt).join(', ');
+  const remaining = values.slice(maxItems).map(fmt).join(', ');
+  const extraCount = Math.max(0, values.length - maxItems);
+  if (extraCount === 0) {
+    return `<span class="value-inline">${escapeHtml(visible)}</span>`;
+  }
+
+  const id = `more-${Math.random().toString(36).slice(2, 9)}`;
+  return `
+    <span class="value-inline">${escapeHtml(visible)}</span>
+    <span class="more-hidden" id="${id}">${remaining ? `, ${escapeHtml(remaining)}` : ''}</span>
+    <button
+      type="button"
+      class="more-toggle"
+      data-target-id="${id}"
+      data-extra-count="${extraCount}"
+    >+ ${extraCount} more</button>
+  `;
+}
+
+function renderTable(rows) {
+  return `
+    <div class="table-wrap">
+      <table class="plain-table">
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderMetrics(items, descriptions = {}) {
+  return `
+    <div class="metric-grid">
+      ${items.map(([label, value]) => {
+        const tip = descriptions[label] || '';
+        return `
+          <div class="metric-card">
+            <div class="metric-title">${renderFieldLabel(label, tip)}</div>
+            <div class="metric-value">${escapeHtml(value)}</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function rawJsonDetails(obj) {
+  return `
+    <details>
+      <summary>Show raw JSON</summary>
+      <pre class="raw-json">${escapeHtml(JSON.stringify(obj, null, 2))}</pre>
+    </details>
+  `;
+}
+
+// Show folder-level validation results at the top of the page.
+function renderValidationBanner(validation) {
+  if (!validation) return '';
+
+  const statusClass = validation.status === 'error'
+    ? 'validation-error'
+    : validation.status === 'warning'
+      ? 'validation-warning'
+      : 'validation-success';
+
+  const ignoredNames = (validation.ignoredEntries || []).map((entry) => fileName(entry.path));
+  const visibleIgnored = ignoredNames.slice(0, 5);
+  const extraIgnoredCount = Math.max(0, ignoredNames.length - visibleIgnored.length);
+
+  const schemaErrors = (validation.schemaErrors || []).slice(0, 5);
+
+  return `
+    <div class="validation-box ${statusClass}">
+      <h4>Folder validation</h4>
+      <div>${escapeHtml(validation.message)}</div>
+      ${validation.report_kind ? `<div style="margin-top:8px; font-weight:700;">Detected report type: ${escapeHtml(getReportKindLabel(validation.report_kind))}</div>` : ''}
+      ${schemaErrors.length ? `
+        <div style="margin-top:8px; font-weight:700;">Schema issues:</div>
+        <ul>
+          ${schemaErrors.map((message) => `<li>${escapeHtml(message)}</li>`).join('')}
+        </ul>
+      ` : ''}
+      ${validation.ignoredEntries && validation.ignoredEntries.length ? `
+        <div style="margin-top:8px;">Ignored files:</div>
+        <ul>
+          ${visibleIgnored.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}
+          ${extraIgnoredCount ? `<li>and ${extraIgnoredCount} more...</li>` : ''}
+        </ul>
+      ` : ''}
+    </div>
+  `;
+}
+
+// =====================================
+// Detail renderers
+// =====================================
+// Render the batch-level experiment_inputs.json payload.
+function renderExperimentInputsSection(data) {
+  return `
+    <table class="kv-table">
+      <tbody>
+        <tr><th>Timestamp</th><td>${escapeHtml(fmt(data?.initiated_on))}</td></tr>
+        <tr><th>Parameter</th><td>${escapeHtml(fmt(data?.parameter))}</td></tr>
+        <tr><th>Provided values</th><td>${renderValueList(data?.raw_parameter_values, 20)}</td></tr>
+        <tr><th>Validated values</th><td>${renderValueList(data?.validated_parameter_values, 20)}</td></tr>
+      </tbody>
+    </table>
+  `;
+}
+
+// Render the singular run input parameters file.
+function renderInputParametersSection(data) {
+  const model = data?.model_params || {};
+  const federated = data?.federated || {};
+  const dp = data?.dp || {};
+
+  return `
+    <h4 style="margin:0 0 10px 0;">General parameters</h4>
+    <table class="kv-table">
+      <tbody>
+        <tr><th>Model type</th><td>${escapeHtml(fmt(data?.model_type))}</td></tr>
+        <tr><th>Data directory</th><td>${escapeHtml(fmt(data?.data_dir))}</td></tr>
+        <tr><th>Output directory</th><td>${escapeHtml(fmt(data?.output_dir))}</td></tr>
+        <tr><th>Compute</th><td>${escapeHtml(fmt(data?.num_cpus))} CPU(s), ${escapeHtml(fmt(data?.num_gpus))} GPU(s)</td></tr>
+        <tr><th>Check only</th><td>${escapeHtml(fmt(data?.check_only))}</td></tr>
+      </tbody>
+    </table>
+
+    <h4 style="margin:16px 0 10px 0;">Model parameters</h4>
+    <table class="kv-table">
+      <tbody>
+        ${Object.entries(model).map(([key, value]) => `<tr><th>${escapeHtml(key)}</th><td>${escapeHtml(fmt(value))}</td></tr>`).join('')}
+      </tbody>
+    </table>
+
+    <h4 style="margin:16px 0 10px 0;">Federated settings</h4>
+    <table class="kv-table">
+      <tbody>
+        ${Object.entries(federated).map(([key, value]) => `<tr><th>${escapeHtml(key)}</th><td>${escapeHtml(fmt(value))}</td></tr>`).join('')}
+      </tbody>
+    </table>
+
+    <h4 style="margin:16px 0 10px 0;">Differential privacy</h4>
+    <table class="kv-table">
+      <tbody>
+        ${Object.entries(dp).map(([key, value]) => `<tr><th>${escapeHtml(key)}</th><td>${escapeHtml(fmt(value))}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    ${rawJsonDetails(data || {})}
+  `;
+}
+
+
+// Keep the most important fields near the top of the metadata table.
+function getOrderedKeysForGlobalMetadata(reportKind) {
+  const kind = normalizeReportKind(reportKind) || normalizeReportKind(state.activeReportKind) || 'classification';
+  return kind === 'regression'
+    ? ['created on', 'problem type', 'accuracy tolerance', 'loss per round', 'accuracy per round', 'mse per round']
+    : ['created on', 'problem type', 'class labels', 'loss per round', 'accuracy per round', 'precision macro per round', 'recall macro per round'];
+}
+
+// Keep the most important fields near the top of the run-details table.
+function getOrderedKeysForRunReport(reportKind) {
+  const kind = normalizeReportKind(reportKind) || normalizeReportKind(state.activeReportKind) || 'classification';
+  return kind === 'regression'
+    ? ['created on', 'model id', 'round number', 'partitions file', 'problem type', 'accuracy tolerance', 'train accuracy', 'test accuracy', 'train mean squared error', 'test mean squared error', 'train loss', 'test loss']
+    : ['created on', 'model id', 'round number', 'partitions file', 'problem type', 'class labels', 'train accuracy', 'test accuracy', 'train loss', 'test loss', 'train precision macro', 'train recall macro', 'test precision macro', 'test recall macro'];
+}
+
+// Choose the epoch table columns that match the selected report family.
+function getEpochColumns(reportKind) {
+  const kind = normalizeReportKind(reportKind) || normalizeReportKind(state.activeReportKind) || 'classification';
+  return kind === 'regression'
+    ? [
+        ['Train accuracy', 'train accuracy per epoch'],
+        ['Test accuracy', 'test accuracy per epoch'],
+        ['Train MSE', 'train mse per epoch'],
+        ['Test MSE', 'test mse per epoch'],
+        ['Loss', 'losses per epoch'],
+        ['Epsilon', 'epsilon per epoch'],
+      ]
+    : [
+        ['Train accuracy', 'train accuracy per epoch'],
+        ['Test accuracy', 'test accuracy per epoch'],
+        ['Loss', 'losses per epoch'],
+        ['Train precision macro', 'train precision macro per epoch'],
+        ['Test precision macro', 'test precision macro per epoch'],
+        ['Train recall macro', 'train recall macro per epoch'],
+        ['Test recall macro', 'test recall macro per epoch'],
+        ['Epsilon', 'epsilon per epoch'],
+      ];
+}
+
+// Render known keys first, then append any extra fields in alphabetical order.
+function renderOrderedRows(data, keys, reportKind, scope) {
+  const seen = new Set();
+  const rows = [];
+
+  for (const key of keys) {
+    if (!data || !Object.prototype.hasOwnProperty.call(data, key)) {
+      continue;
+    }
+    const value = data[key];
+    const rendered = Array.isArray(value) ? renderValueList(value, 20) : escapeHtml(fmt(value));
+    rows.push(renderRow(key, rendered, getSchemaTip(scope, key, reportKind)));
+    seen.add(key);
+  }
+
+  for (const key of Object.keys(data || {}).sort()) {
+    if (seen.has(key)) {
+      continue;
+    }
+    const value = data[key];
+    const rendered = Array.isArray(value) ? renderValueList(value, 20) : escapeHtml(fmt(value));
+    rows.push(renderRow(key, rendered, getSchemaTip(scope, key, reportKind)));
+  }
+
+  return rows.join('');
+}
+
+// Render the server/global metadata block.
+function renderGlobalMetadataSection(data, reportKind = null) {
+  const kind = getEffectiveReportKind(reportKind);
+  return `
+    <h3 class="section-title">${getReportKindLabel(kind)} — Global metadata</h3>
+    <table class="kv-table">
+      <tbody>
+        ${renderOrderedRows(data || {}, getOrderedKeysForGlobalMetadata(kind), kind, 'global')}
+      </tbody>
+    </table>
+    ${rawJsonDetails(data || {})}
+  `;
+}
+
+// Render the per-epoch metric table.
+function epochTable(run, reportKind = null) {
+  const kind = getEffectiveReportKind(reportKind);
+  const columns = getEpochColumns(kind);
+  const epochs = Math.max(...columns.map(([, key]) => (run?.[key] || []).length), 0);
+
+  const rows = Array.from({ length: epochs }, (_, index) => `
+    <tr>
+      <th>Epoch ${index + 1}</th>
+      ${columns.map(([, key]) => {
+        const value = escapeHtml(fmt(run?.[key]?.[index]));
+        return `<td>${value}</td>`;
+      }).join('')}
+    </tr>
+  `).join('');
+
+  return `
+    <div class="table-wrap">
+      <table class="plain-table">
+        <thead>
+          <tr>
+            <th>Epoch</th>
+            ${columns.map(([label, key]) => `<th>${renderFieldLabel(label, getSchemaTip('client', key, kind))}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+// Render one round file in a collapsible details panel.
+function renderRunFileSection(file, reportKind = null) {
+  const kind = getEffectiveReportKind(reportKind);
+  const hyperRows = Object.entries(file?.hyperparameters || {})
+    .map(([key, value]) => `<tr><th>${renderFieldLabel(key, getSchemaTip('client', `hyperparameters.${key}`, kind))}</th><td>${escapeHtml(fmt(value))}</td></tr>`)
+    .join('');
+  const coreData = { ...(file || {}) };
+  delete coreData.hyperparameters;
+  delete coreData._filename;
+
+  const reportTypeLabel = getReportKindLabel(kind);
+
+  return `
+    <details class="file-section">
+      <summary>${escapeHtml(file?._filename || 'result file')}</summary>
+      <div style="margin-top:14px;">
+        ${renderMetrics(
+          [
+            ['Report type', reportTypeLabel],
+            ['File', file?._filename || ''],
+            ['Created on', fmt(file?.['created on'])],
+          ],
+          {
+            'Report type': 'Determined from the uploaded report content.',
+            'File': 'The filename of this result entry.',
+            'Created on': getSchemaTip('client', 'created on', kind),
+          }
+        )}
+
+        <div class="two-col">
+          <section>
+            <h4 style="margin:0 0 10px 0;">Hyperparameters</h4>
+            ${renderTable(hyperRows)}
+          </section>
+
+          <section>
+            <h4 style="margin:0 0 10px 0;">Core metrics</h4>
+            <table class="kv-table">
+              <tbody>
+                ${renderOrderedRows(coreData, getOrderedKeysForRunReport(kind), kind, 'client')}
+              </tbody>
+            </table>
+          </section>
+        </div>
+
+        <section style="margin-top:16px;">
+          <h4 style="margin:0 0 10px 0;">Training by epoch</h4>
+          ${epochTable(file, kind)}
+        </section>
+
+        <section style="margin-top:16px;">
+          <h4 style="margin:0 0 10px 0;">Indices and predictions</h4>
+          ${renderTable(`
+            ${renderRow('Train indices', renderValueList(file?.['train indices'], 25), getSchemaTip('client', 'train indices', kind))}
+            ${renderRow('Test indices', renderValueList(file?.['test indices'], 25), getSchemaTip('client', 'test indices', kind))}
+            ${renderRow('Train predictions', renderValueList(file?.['train predictions'], 25), getSchemaTip('client', 'train predictions', kind))}
+            ${renderRow('Test predictions', renderValueList(file?.['test predictions'], 25), getSchemaTip('client', 'test predictions', kind))}
+          `)}
+        </section>
+
+        ${rawJsonDetails(file || {})}
+      </div>
+    </details>
+  `;
+}
+
+// Assemble the full detail page for either a singular run or a batch run card.
+function renderPage(page, options = {}) {
+  const kind = getEffectiveReportKind(page?.reportKind || page?.report_kind || options.reportKind);
+  state.activeReportKind = kind;
+
+  const files = Array.isArray(page?.run_files) ? page.run_files : [];
+  const resultFiles = options.batchViewOnlyRoundFiles
+    ? files.filter((file) => isRoundFile(file?._filename || file?.path || file?.name || ''))
+    : files;
+
+  return `
+    <section class="card" style="margin-top:16px;">
+      <h3 class="section-title">${getReportKindLabel(kind)}</h3>
+      <div class="subtle">Detected from the uploaded report content.</div>
+    </section>
+
+    <section class="card">
+      <h3 class="section-title">Input Parameters</h3>
+      <details>
+        <summary>Show input parameters</summary>
+        <div style="margin-top:12px;">
+          ${renderInputParametersSection(page?.input_parameters || {})}
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
+      ${renderGlobalMetadataSection(page?.global_metadata || {}, kind)}
+    </section>
+
+    <section class="card">
+      <h3 class="section-title">Result files</h3>
+      <div class="subtle">Each file is available separately below.</div>
+      ${sortRunFiles(resultFiles).map((file) => renderRunFileSection(file, kind)).join('')}
+    </section>
+  `;
+}
+
+// Open the details modal for one run.
+function openModal(page) {
+  const kind = getEffectiveReportKind(page?.reportKind || page?.report_kind);
+  state.modalMode = 'details';
+  modalTitle.textContent = `${getReportKindLabel(kind)}: ${fmt(page?.sweep_parameter)} = ${fmt(page?.sweep_value)}`;
+  modalTitle.style.color = '';
+  modalSubtitle.textContent = 'Live data loaded from the selected folder.';
+  setModalActionButtons('details');
+  modalContent.innerHTML = renderPage(page, { batchViewOnlyRoundFiles: true, reportKind: kind });
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+// Open a blocking validation modal so the user must restart from the splash screen.
+function openFolderIssueModal(title, message, ignoredEntries = []) {
+  state.modalMode = 'issue';
+  modalTitle.textContent = title;
+  modalTitle.style.color = '#b91c1c';
+  modalSubtitle.textContent = 'Please choose a different folder and try again.';
+  setModalActionButtons('issue');
+  const ignoredNames = ignoredEntries.map((entry) => fileName(entry.path));
+  const ignoredList = ignoredNames.length
+    ? `
+      <div style="margin-top:14px;">
+        <div style="font-weight:800; margin-bottom:8px;">Ignored files</div>
+        <ul style="margin:0; padding-left:20px;">
+          ${ignoredNames.slice(0, 8).map((name) => `<li>${escapeHtml(name)}</li>`).join('')}
+          ${ignoredNames.length > 8 ? `<li>and ${ignoredNames.length - 8} more...</li>` : ''}
+        </ul>
+      </div>
+    `
+    : '';
+
+  modalContent.innerHTML = `
+    <div class="card" style="margin:0; box-shadow:none;">
+      <div style="font-size:15px; line-height:1.6;">${escapeHtml(message)}</div>
+      ${ignoredList}
+    </div>
+  `;
+
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+
+// Close any open modal and restore page scrolling.
+function closeModal() {
+  modal.style.display = 'none';
+  document.body.style.overflow = '';
+  modalTitle.style.color = '';
+  state.modalMode = null;
+  if (modalActions) modalActions.innerHTML = '';
+}
+
+// =====================================
+// Page renderers =====================================
+// Splash screen.
+function renderHome() {
+  return `
+    <section class="card">
+      <h2>Choose a view</h2>
+      <div class="subtle">Choose to view the results from either a batch experiment or a singular run</div>
+      <div class="home-grid">
+        <div class="mode-card">
+          <h3>Batch experiment</h3>
+          <div class="meta">View all the runs associated with a batch experiment.</div>
+          <button type="button" id="pickBatch">Select batch folder</button>
+        </div>
+        <div class="mode-card">
+          <h3>Singular run</h3>
+          <div class="meta">View a singular run.</div>
+          <button type="button" id="pickSingle">Select run folder</button>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+// Folder picker page
+// Folder picker screen.
+function renderPickFolder() {
+  const label = state.selectionMode === 'batch'
+    ? 'batch experiment folder containing experiment_inputs.json plus run folders'
+    : 'singular run';
+  return `
+    <section class="card">
+      <button type="button" class="ghost-button back-nav" id="backHomeFromPicker">← Back to splash</button>
+      <h2 style="margin-top:8px;">Select a folder</h2>
+      <div class="subtle">Choose the folder that contains the ${label} files.</div>
+      <div class="toolbar" style="margin-top:12px;">
+        <label class="select-wrap">
+          <span>Folder</span>
+          <input id="folderInput" type="file" webkitdirectory directory multiple />
+          <div id="folderSelectionSummary" class="subtle">No files selected yet.</div>
+        </label>
+      </div>
+
+      <div class="submit-row">
+        <button type="button" id="submitFolderSelection" class="primary-submit">Load Folder</button>
+      </div>
+
+      ${state.folderName ? `<div class="subtle" style="margin-top:10px;">Last selected: ${escapeHtml(state.folderName)}</div>` : ''}
+    </section>
+  `;
+}
+
+// Batch experiment page
+// Batch-results screen.
+function renderBatchView() {
+  const bundle = state.bundle || { experiment_inputs: {}, sweep_pages: [] };
+  return `
+    <button type="button" class="ghost-button back-nav" id="backHomeBatch">← Back to splash</button>
+
+    <section class="card">
+      <h2>Experiment Inputs</h2>
+      <div class="subtle" style="margin-bottom:14px;">Loaded from ${escapeHtml(state.folderName || 'the selected folder')}.</div>
+      ${renderValidationBanner(state.validation)}
+      <div id="experimentParameters"></div>
+    </section>
+
+    <section class="card">
+      <h2>Experiment Results</h2>
+      <div class="subtle" style="margin-bottom:18px;">Open each run to view details.</div>
+      <div id="batchRuns" class="button-row"></div>
+    </section>
+  `;
+}
+
+// Single run page
+// Singular-run screen.
+function renderSingleView() {
+  const page = state.bundle?.page || null;
+  return `
+    <button type="button" class="ghost-button back-nav" id="backHomeSingle">← Back to splash</button>
+
+    <section class="card">
+      <h2>Singular run</h2>
+      <div class="subtle">Loaded from ${escapeHtml(state.folderName || 'the selected folder')}.</div>
+      ${renderValidationBanner(state.validation)}
+    </section>
+
+    <section class="card">
+      <h2>Run details</h2>
+      <div class="subtle">This view shows one selected run.</div>
+      ${page ? renderPage(page) : '<div class="subtle" style="margin-top:12px;">No run data loaded.</div>'}
+    </section>
+  `;
+}
+
+// Loading state
+// Small loading state while files are parsed and validated.
+function renderLoading() {
+  return `
+    <section class="card">
+      <h2>Loading folder</h2>
+      <div class="subtle">Reading JSON files from ${escapeHtml(state.folderName || 'the selected folder')}...</div>
+    </section>
+  `;
+}
+
+// =====================================
+// Data loading and bundle building
+// =====================================
+
+// Group uploaded files by the run folder they came from.
+function groupBatchEntries(entries) {
+  const groups = new Map();
+  for (const entry of entries) {
+    const parts = String(entry.path || entry.name || '').split('/').filter(Boolean);
+    const groupKey = parts.length > 1 ? parts[1] : '__root__';
+    if (!groups.has(groupKey)) groups.set(groupKey, []);
+    groups.get(groupKey).push(entry);
+  }
+  return groups;
+}
+
+// Turn parsed batch files into the render-friendly bundle used by the UI.
+function buildBatchBundle(entries, validation = null) {
+  const experimentEntry = entries.find((entry) => isExperimentInputsFile(entry.path));
+  const groupedEntries = Array.from(groupBatchEntries(entries.filter((entry) => !isExperimentInputsFile(entry.path))).entries());
+  const validationByGroup = new Map((validation?.runValidations || []).map((item) => [item.groupKey, item]));
+
+  const sweepPages = groupedEntries
+    .filter(([, groupEntries]) => hasSingularRunSignals(groupEntries))
+    .map(([groupKey, groupEntries]) => {
+      const inputEntry = groupEntries.find((entry) => normalizeName(fileName(entry.path)) === 'input_parameters.json');
+      const globalEntry = groupEntries.find((entry) => isGlobalMetadataFile(entry.path));
+      const groupValidation = validationByGroup.get(groupKey) || validateSingularRunEntries(groupEntries);
+      const reportKind = getEffectiveReportKind(groupValidation.report_kind || groupValidation.detected_report_kind);
+
+      return {
+        report_kind: reportKind,
+        sweep_parameter: inferParameterName(groupKey, inputEntry?.data || {}),
+        sweep_value: inferParameterValue(groupKey, inputEntry?.data || {}),
+        input_parameters: inputEntry?.data || {},
+        global_metadata: globalEntry?.data || {},
+        run_files: sortRunFiles(
+          groupEntries
+            .filter((entry) => !isSpecialFile(entry.path))
+            .map((entry) => ({ ...(entry.data && typeof entry.data === 'object' ? entry.data : {}), _filename: fileName(entry.path) }))
+        ),
+      };
+    });
+
+  sweepPages.sort((a, b) => String(a.sweep_value).localeCompare(String(b.sweep_value), undefined, { numeric: true }));
+
+  const reportKinds = [...new Set(sweepPages.map((page) => normalizeReportKind(page.report_kind)).filter(Boolean))];
+  const report_kind = reportKinds.length === 1 ? reportKinds[0] : (reportKinds.length > 1 ? 'mixed' : '');
+
+  return {
+    report_kind,
+    experiment_inputs: experimentEntry?.data || {},
+    sweep_pages: sweepPages,
+  };
+}
+
+// Turn parsed singular-run files into the render-friendly bundle used by the UI.
+function buildSingleBundle(entries, validation = null) {
+  const resolved = validation || validateSingularRunEntries(entries);
+  const inputEntry = resolved.inputEntry || entries.find((entry) => normalizeName(fileName(entry.path)) === 'input_parameters.json');
+  const globalEntry = resolved.metadataEntry || entries.find((entry) => isGlobalMetadataFile(entry.path));
+  const reportKind = getEffectiveReportKind(resolved.report_kind);
+
+  return {
+    report_kind: reportKind,
+    page: {
+      report_kind: reportKind,
+      sweep_parameter: inferParameterName(state.folderName, inputEntry?.data || {}),
+      sweep_value: inferParameterValue(state.folderName, inputEntry?.data || {}),
+      input_parameters: inputEntry?.data || {},
+      global_metadata: globalEntry?.data || {},
+      run_files: sortRunFiles(
+        (resolved.roundEntries || entries.filter((entry) => isRoundFile(entry.path)))
+          .map((entry) => ({ ...(entry.data && typeof entry.data === 'object' ? entry.data : {}), _filename: fileName(entry.path) }))
+      ),
+    },
+  };
+}
+// Read each selected file and parse JSON so downstream code only sees objects.
+async function readJsonEntries(fileList) {
+  const files = Array.from(fileList || []).filter(isJsonFile);
+  if (!files.length) {
+    throw new Error('No JSON files were found in that folder.');
+  }
+
+  const entries = await Promise.all(files.map(async (file) => {
+    const text = await file.text();
+    try {
+      return {
+        path: file.webkitRelativePath || file.name,
+        name: file.name,
+        data: JSON.parse(text),
+      };
+    } catch (error) {
+      return {
+        path: file.webkitRelativePath || file.name,
+        name: file.name,
+        data: null,
+        error: `Failed to parse ${file.name}: ${error.message}`,
+      };
+    }
+  }));
+
+  return entries;
+}
+
+
+// Load, validate, and dispatch the selected folder into the correct view.
+async function loadFolder(fileList) {
+  await ensureSchemaArtifactsLoaded();
+  const entries = await readJsonEntries(fileList);
+  const validation = state.selectionMode === 'batch'
+    ? validateBatchExperimentEntries(entries)
+    : validateSingularRunEntries(entries);
+
+  if (!validation.valid) {
+    state.validation = validation;
+    openFolderIssueModal('Folder validation failed', validation.message, validation.ignoredEntries || []);
+    return false;
+  }
+
+  state.folderName = folderName(entries[0]?.path || entries[0]?.name || '');
+  state.error = '';
+  state.validation = validation;
+  state.view = 'loading';
+  renderApp();
+
+  if (state.selectionMode === 'batch') {
+    state.bundle = buildBatchBundle(entries, validation);
+    state.view = 'batch';
+  } else {
+    state.bundle = buildSingleBundle(entries, validation);
+    state.view = 'single';
+  }
+
+  renderApp();
+  return true;
+}
+// Reset all state so the user can start over from the splash screen.
+function resetToHome() {
+  state.view = 'home';
+  state.selectionMode = null;
+  state.folderName = '';
+  state.bundle = null;
+  state.error = '';
+  state.pendingFiles = [];
+  state.validation = null;
+  closeModal();
+  renderApp();
+}
+
+// Switch from the splash screen into the folder picker for the chosen mode.
+function goToPicker(mode) {
+  state.view = 'pick';
+  state.selectionMode = mode;
+  state.error = '';
+  state.validation = null;
+  state.pendingFiles = [];
+  renderApp();
+}
+
+// Render the current view and wire up the event handlers that belong to that view.
+function renderApp() {
+  if (state.view === 'home') {
+    app.innerHTML = renderHome();
+    qs('#pickBatch')?.addEventListener('click', () => goToPicker('batch'));
+    qs('#pickSingle')?.addEventListener('click', () => goToPicker('single'));
+    return;
+  }
+
+  if (state.view === 'pick') {
+    app.innerHTML = renderPickFolder();
+
+    const input = qs('#folderInput');
+
+    input?.addEventListener('change', (event) => {
+      state.pendingFiles = Array.from(event.target.files || []);
+      state.error = '';
+      state.validation = null;
+
+      const summary = qs('#folderSelectionSummary');
+      if (summary) {
+        summary.textContent = state.pendingFiles.length
+          ? `${state.pendingFiles.length} file(s) selected`
+          : 'No files selected yet.';
+      }
+    });
+
+    qs('#submitFolderSelection')?.addEventListener('click', async () => {
+      if (!state.pendingFiles || state.pendingFiles.length === 0) {
+        openFolderIssueModal('No folder selected', 'Please select a folder first.');
+        return;
+      }
+
+      try {
+        await loadFolder(state.pendingFiles);
+      } catch (error) {
+        openFolderIssueModal('Folder load failed', error?.message || String(error));
+      }
+    });
+
+    qs('#backHomeFromPicker')?.addEventListener('click', resetToHome);
+    return;
+  }
+
+  if (state.view === 'loading') {
+    app.innerHTML = renderLoading();
+    return;
+  }
+
+  if (state.view === 'batch') {
+    app.innerHTML = renderBatchView();
+    const bundle = state.bundle || { experiment_inputs: {}, sweep_pages: [] };
+    qs('#experimentParameters').innerHTML = renderExperimentInputsSection(bundle.experiment_inputs || {});
+
+    const holder = qs('#batchRuns');
+    (bundle.sweep_pages || []).forEach((page) => {
+      const card = document.createElement('div');
+      card.className = 'run-card';
+      card.innerHTML = `
+        <h3>${escapeHtml(fmt(page.sweep_parameter))} = ${escapeHtml(fmt(page.sweep_value))}</h3>
+        <div class="meta">${escapeHtml(getReportKindLabel(page.report_kind))}</div>
+        <button type="button">View details</button>
+      `;
+      qs('button', card)?.addEventListener('click', () => openModal(page));
+      holder.appendChild(card);
+    });
+
+    qs('#backHomeBatch')?.addEventListener('click', resetToHome);
+    return;
+  }
+
+  if (state.view === 'single') {
+    app.innerHTML = renderSingleView();
+    qs('#backHomeSingle')?.addEventListener('click', resetToHome);
+  }
+}
+
+// =====================================
+// Global event bindings
+// These handlers apply across all screens.
+// =====================================
+modal?.addEventListener('click', (event) => {
+  if (state.modalMode === 'issue') {
+    return;
+  }
+  if (event.target === modal) closeModal();
+});
+
+document.addEventListener('keydown', (event) => {
+  if (state.modalMode === 'issue') {
+    return;
+  }
+  if (event.key === 'Escape' && modal.style.display === 'block') {
+    closeModal();
+  }
+});
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest?.('.more-toggle');
+  if (!button) return;
+
+  const targetId = button.getAttribute('data-target-id');
+  const target = document.getElementById(targetId);
+  if (!target) return;
+
+  const hidden = target.classList.contains('more-hidden');
+  if (hidden) {
+    target.classList.remove('more-hidden');
+    button.textContent = 'show less';
+  } else {
+    target.classList.add('more-hidden');
+    button.textContent = `+ ${button.getAttribute('data-extra-count')} more`;
+  }
+});
+
+(async () => {
+  await ensureSchemaArtifactsLoaded();
+  renderApp();
+})();
+</script>
+
+</body>
+</html>
