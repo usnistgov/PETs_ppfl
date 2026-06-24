@@ -3,7 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
-
+from datetime import datetime
 from jsonschema import ValidationError
 from tqdm import tqdm
 
@@ -104,7 +104,7 @@ def get_parameters(schema: dict, batch_experimentation: dict) -> dict:
     # Display the parameters available to experiment for the chosen model type
     print("\n These are the parameters that you can run experiments on:")
     parameter_options = None
-    for model_option in schema["allOf"][0]["oneOf"]:
+    for model_option in schema["allOf"][1]["oneOf"]:
         if model_option["properties"]["model_type"]["const"] == model_choice:
             parameter_options = model_option["properties"]["model_params"]["properties"]
             break
@@ -211,7 +211,7 @@ def validate_parameters(model_choice: str, parameter_choice: str, parameters: li
         List of valid parameters
     """
     # Validate the default configuration without any CLI override
-    result = subprocess.run(["python3", "run.py", f"--model_type={model_choice}", "--check_only"], capture_output=True, text=True, check=True)
+    result = subprocess.run(["python3", "run.py", f"--model_type={model_choice}", "--check_only"], capture_output=False, text=False, check=True)
     if result.returncode != 0:
         print(
             " Unexpected error occurred during validation of your configuration file. Please check your configuration file and try again. Aborting."
@@ -247,7 +247,7 @@ def validate_parameters(model_choice: str, parameter_choice: str, parameters: li
     return valid_parameters
 
 
-def run_experiments(model_choice: str, parameter_choice: str, parameters: list) -> None:
+def run_experiments(parameters: list) -> None:
     """ Executes run.py for each validated parameter
 
     Args:
@@ -255,14 +255,54 @@ def run_experiments(model_choice: str, parameter_choice: str, parameters: list) 
         parameter_choice: name of the parameter being swept
         parameters: validated values
     """
+    model_choice = parameters["model_choice"]
+    parameter_choice = parameters["parameter_choice"]
+    raw_parameters = parameters["raw_parameters"]
+    valid_parameters = parameters["valid_parameters"]
+
     print("\n Starting experiments...\n")
 
+    # Create folder in output_dir to hold 
+
+    current_dir = Path(__file__).resolve().parent
+    config_path = current_dir / "config.json"
+
+    config = load_json_schema(config_path)
+
+    try:
+        output_dir = config["output_dir"]
+    except:
+        schema_path = current_dir / "configuration-schema.json"
+        schema = load_json_schema(schema_path)
+        output_dir = schema["properties"]["output_dir"]["default"]
+
+    timestamp = datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
+
+    appended_output_dir = f"{output_dir}/batch-experiment-{timestamp}" 
+    directory = Path(appended_output_dir)
+    directory.mkdir(parents=True, exist_ok=False)
+
+    print(f"Created directory: {directory}")
+
+    # Create experiment-inputs.json file
+
+    experiment_inputs_path = directory / "experiment_inputs.json"
+    experiment_inputs_json = {
+        "initiated_on": timestamp,
+        "parameter": parameter_choice,
+        "raw_parameter_values": raw_parameters,
+        "validated_parameter_values": valid_parameters
+    }
+
+    with open(experiment_inputs_path, "w") as f:
+        json.dump(experiment_inputs_json, f, indent=4)
+
     # tqdm provides a simple progress bar for the experiment sweep.
-    for value in tqdm(parameters, desc=" Running experiments", unit="exp"):
+    for value in tqdm(valid_parameters, desc=" Running experiments", unit="exp"):
         tqdm.write(f" Running {parameter_choice} = {value}")
 
         try:
-            subprocess.run(["python3", "run.py", f"--model_type={model_choice}", f"--{parameter_choice}={value}"])
+            subprocess.run(["python3", "run.py", f"--model_type={model_choice}", f"--{parameter_choice}={value}", f"--output_dir={appended_output_dir}"])
             tqdm.write(f" Finished {parameter_choice} = {value}")
         except subprocess.CalledProcessError as e:
             tqdm.write(f" Experiment failed for {parameter_choice} = {value}")
@@ -292,7 +332,7 @@ def main() -> None:
         print("\n Aborted.")
         sys.exit(0)
 
-    run_experiments(parameters["model_choice"], parameters["parameter_choice"], parameters["valid_parameters"])
+    run_experiments(parameters)
     print("\n All experiments completed.")
 
 

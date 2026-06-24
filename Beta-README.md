@@ -252,6 +252,10 @@ Example `config.json`:
 
 Use `model_type: "cnn"` for non-DP CNN training. Use `model_type: "dpcnn"` for the Opacus DP CNN workflow.
 
+## Running Batch Experiments
+
+From the dpcnn_opacus directory, run `python run_batch.py`. The batch experimentation script will prompt you for the parameters you would like to test in the experiment, all other parameters are kept constant and are taken from the config.json configuration file. Ensure config.json has all of the other parameteres you would like to use. 
+
 ## Understanding the Output <a name="output"></a>
 
 ### Files
