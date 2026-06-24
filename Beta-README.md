@@ -323,6 +323,18 @@ For classification, labels are encoded from `class_labels`, and predictions are 
 
 The older behavior of treating a regression output as a rounded class prediction is no longer the default task model. Use `problem_type: "classification"` for class labels and `problem_type: "regression"` for continuous numeric targets.
 
+### Results Viewer
+To make it easier for users to view the results of both singular runs and batch experiments, we have created a web-based results viewer that displays the output data in an easy-to-use user interface.
+
+To access the results viewer, run the following command from the genomics_ppfl_base directory. Replace {PORT_NUMBER} with a desired port of your choosing. Ensure the port is not already in use by running `lsof -i :{PORT_NUMBER}`.  
+
+`pyenv exec python3 -m http.server {PORT_NUMBER}`
+
+You can then access the results viewer from your browser at `http://localhost:{PORT_NUMBER}/results_viewer.html`
+
+When you are done using the results viewer, you can shutdown your web server by pressing CTRL + C. 
+Sometimes CTRL + C will not completely kill the process. To ensure your process is killed, run `lsof -i :{PORT_NUMBER}`. Locate the process' PID from output and run `kill {PID}`.
+
 ## Data References <a name="refs"></a>
 
 ### Soybean Trait Prediction Research
