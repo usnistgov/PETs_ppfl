@@ -418,7 +418,7 @@ class TorchFlowerClient(fl.client.NumPyClient):
             epoch_metrics=epoch_metrics,
         )
 
-        name = f"dpcnn{self.params.get('epsilon')}_opacus_oil_{self.client_id}" if self.use_dp else f"flcnn_{self.client_id}"
+        name = f"dpcnn{self.params.get('epsilon')}_client_{self.client_id}" if self.use_dp else f"flcnn_client_{self.client_id}"
         self.cnn_model.save_model(metadata, name, self.current_round, self.output_dir)
 
         return float(test_loss), len(self.test_loader.dataset), {
