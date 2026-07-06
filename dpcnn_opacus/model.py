@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from opacus import PrivacyEngine
+from opacus.utils.batch_memory_manager import BatchMemoryManager
 import numpy as np
 from pathlib import Path
 import torch.nn.functional as F
@@ -357,6 +358,9 @@ class TorchModelBase(BaseModel):
 
     def _after_epoch(self, epoch, fit_context):
         return {}
+    
+    def _after_fit(self, fit_context):
+        return None
 
     def fit(self, train_loader, test_loader, epochs, optimizer, criterion, device, problem_type,
             accuracy_tolerance, **kwargs):
@@ -425,6 +429,7 @@ class TorchModelBase(BaseModel):
                                      epoch_test_acc, fit_context["problem_type"], train_metrics,
                                      test_metrics, mse, epoch_test_mse, **epoch_extras)
 
+        self._after_fit(fit_context)
         return (train_mse, test_mse, train_acc, test_acc, train_precision, test_precision,
             train_recall, test_recall, losses, extra_history)
  
@@ -472,18 +477,46 @@ class DPCNNModel(TorchModelBase):
     
     def _before_fit(self, fit_context):
         opacus_params = fit_context.get("opacus_params")
-        if opacus_params is None:
+        if opacus_params is not None:
+            private_optimizer, private_train_loader, privacy_engine = self.attach_privacy_engine(
+                fit_context["optimizer"], fit_context["train_loader"], opacus_params)
+
+            fit_context["optimizer"] = private_optimizer
+            fit_context["privacy_engine"] = privacy_engine
+            fit_context["delta"] = opacus_params.get("delta")
+            fit_context["train_loader"] = private_train_loader
+
+        if fit_context.get("privacy_engine") is None:
             return fit_context
 
-        private_optimizer, private_train_loader, privacy_engine = self.attach_privacy_engine(
-            fit_context["optimizer"], fit_context["train_loader"], opacus_params)
+        dp_manager = BatchMemoryManager(
+            data_loader=fit_context["train_loader"],
+            max_physical_batch_size=fit_context.get("max_physical_batch", 8),
+            optimizer=fit_context["optimizer"],
+        )
 
-        fit_context["optimizer"] = private_optimizer
-        fit_context["train_loader"] = private_train_loader
-        fit_context["privacy_engine"] = privacy_engine
-        fit_context["delta"] = opacus_params.get("delta")
+        fit_context["train_loader"] = dp_manager.__enter__()
+        fit_context["dp_batch_memory_manager"] = dp_manager
 
         return fit_context
+
+    def fit(self, train_loader, test_loader, epochs, optimizer, criterion, *args, **kwargs):
+        delta = kwargs.pop("delta", None)
+        privacy_engine = kwargs.pop("privacy_engine", None)
+
+        if "device" in kwargs and len(args) >= 2:
+            delta = args[0] if delta is None else delta
+            privacy_engine = args[1] if privacy_engine is None else privacy_engine
+            args = args[2:]
+
+        results = super().fit(train_loader, test_loader, epochs, optimizer, criterion, *args,
+                              delta=delta, privacy_engine=privacy_engine, **kwargs)
+        return results
+
+    def _after_fit(self, fit_context):
+        dp_manager = fit_context.get("dp_batch_memory_manager")
+        if dp_manager is not None:
+            dp_manager.__exit__(None, None, None)
 
     def _after_epoch(self, epoch, fit_context):
         privacy_engine = fit_context.get("privacy_engine")

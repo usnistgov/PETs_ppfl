@@ -26,10 +26,10 @@ def get_device():
         return torch.device("cpu")
 
 ###
-#   validate_data_size(data_path, batch_divisor)
+#   validate_data_size(data_path, batch_size)
 #   purpose: Validate that the discovered train/holdout dataset files are large enough for the requested batch divisor.
 ###
-def validate_data_size(data_path, batch_divisor):
+def validate_data_size(data_path, batch_size):
     suffixes = ["_tt_vcf", "_ho_vcf"]
     for suffix in suffixes:
         npy_matches = [f for f in os.listdir(data_path) if f.endswith(f"{suffix}.npy")]
@@ -39,8 +39,8 @@ def validate_data_size(data_path, batch_divisor):
         if npy_matches:
             file_path = os.path.relpath(os.path.join(data_path, npy_matches[0]))
             num_data_rows = np.load(file_path, mmap_mode="r").shape[0]
-            if batch_divisor > num_data_rows:
-                raise ValueError(f"Batch divisor (batch_divisor={batch_divisor}) is greater than train/test dataset size (num_rows={num_data_rows})")
+            if batch_size > num_data_rows:
+                raise ValueError(f"Batch divisor (batch_divisor={batch_size}) is greater than train/test dataset size (num_rows={num_data_rows})")
             continue
 
 
@@ -82,25 +82,47 @@ def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, nu
 def configure_warning_logging(output_dir):
     import logging
     import warnings
+    import threading
     from pathlib import Path
 
-    #Path(output_dir).mkdir(parents=True, exist_ok=True)
-
     logging.captureWarnings(True)
+    warnings.simplefilter("default")
+
+    log_file = Path(output_dir) / "PETs_warnings.log"
 
     warning_logger = logging.getLogger("py.warnings")
     warning_logger.setLevel(logging.WARNING)
     warning_logger.propagate = False
 
     if not any(isinstance(h, logging.FileHandler) for h in warning_logger.handlers):
-        handler = logging.FileHandler(Path(output_dir) / "PETs_warnings.log")
+        handler = logging.FileHandler(log_file)
         handler.setLevel(logging.WARNING)
         handler.setFormatter(logging.Formatter(
             "%(asctime)s %(process)d %(levelname)s %(message)s"
         ))
         warning_logger.addHandler(handler)
 
-    warnings.simplefilter("default")
+    stderr_copy = os.dup(2)
+    read_fd, write_fd = os.pipe()
+    os.dup2(write_fd, 2)
+    os.close(write_fd)
+
+    pattern = re.compile(r"\[[^\]]+\s[EW]\s\d+\s\d+\]")
+
+    def forward_stderr():
+        with (
+            os.fdopen(read_fd, "r", buffering=1, errors="replace") as src,
+            os.fdopen(stderr_copy, "w", buffering=1, errors="replace") as term,
+            open(log_file, "a", buffering=1) as log,
+        ):
+            for line in src:
+                term.write(line)
+                term.flush()
+                if pattern.search(line):
+                    log.write(line)
+                    log.flush()
+
+    threading.Thread(target=forward_stderr, daemon=True).start()
 
 ###
 #   _is_object_schema(sch)
@@ -765,8 +787,8 @@ class ConfigPipeline:
             #validate_dir_path(cfg["output_dir"])
             validate_dir_path(cfg["data_dir"])
 
-            # ensure batch_divisor size aligns with data size
-            validate_data_size(cfg["data_dir"], cfg["model_params"]["batch_divisor"])
+            # ensure batch_size size aligns with data size
+            validate_data_size(cfg["data_dir"], cfg["model_params"]["batch_size"])
 
             # your equalization logic
             if cfg["model_params"]["partition_id"] > cfg["num_partitions"]:

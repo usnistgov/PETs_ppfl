@@ -45,7 +45,7 @@ accuracy_tolerance = args.accuracy_tolerance if problem_type == "regression" els
 partition_id = args.model_params["partition_id"]
 client_id = args.model_params["client_id"]
 epochs = args.model_params["epochs"]
-batch_divisor = args.model_params["batch_divisor"]
+batch_size = args.model_params["batch_size"]
 test_fraction = args.model_params["test_fraction"]
 
 learning_rate = None; weight_decay = None; optimizer_name = None
@@ -148,7 +148,7 @@ client_params = {
     "model_type": model_type,
     'partitions_type': partitioner_type,
     'num_partitions': num_partitions,
-    'batch_divisor': batch_divisor,
+    'batch_size': batch_size,
     'partition_id': partition_id,
     'learning_rate': learning_rate,
     'weight_decay': weight_decay,
@@ -189,7 +189,7 @@ def server_fn(context: Context) -> ServerAppComponents:
             'accuracy_tolerance': accuracy_tolerance,
             'output_dir': out_dir,
             'data_dir': data_dir,
-            'batch_divisor': batch_divisor,
+            'batch_size': batch_size,
             'train_method': train_method,
             'centralised_eval': centralised_eval,
             'scaled_lr': scaled_lr,
