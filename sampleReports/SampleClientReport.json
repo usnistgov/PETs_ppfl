@@ -980,7 +980,7 @@
     "hyperparameters": {
         "learning rate": 0.003,
         "weight decay": 0.0001,
-        "batch divisor": 40,
+        "batch size": 32,
         "epochs": 1,
         "seed": 42,
         "test fraction": 0.2,

@@ -161,9 +161,9 @@
                                     "description": "Sets the model's weight decay. This is a regularization method that penalizes high weights",
                                     "type": "number"
                                 },
-                            "batch divisor":
+                            "batch size":
                                 {
-                                    "description": "The divisor to determine the number of batches (num_batches = dataset_size/batch_divisor)",
+                                    "description": "The size of the batches used in training",
                                     "type": "integer"
                                 },
                             "epochs":

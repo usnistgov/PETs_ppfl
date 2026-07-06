@@ -7,7 +7,7 @@
         "partition_id": 0,
         "client_id": 0,
         "seed": 42,
-        "batch_divisor": 5,
+        "batch_size": 32,
         "test_fraction": 0.2,
         "learning_rate": 0.003,
         "weight_decay": 0.0001,
