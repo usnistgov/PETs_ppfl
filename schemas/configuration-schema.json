@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example-testbed.com/",
+  "title": "Configuration Validation",
+  "description": "Validate testbed parameters: types, ranges, and conditional requirements.",
+  "type": "object",
+
+  "required": ["model_type"],
+
+  "properties": {
+    "model_type": { "type": "string", "enum": ["xgboost", "dpcnn", "cnn"] },
+
+    "num_cpus": { "description": "Number of CPUs to use during training", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
+    "num_gpus": { "description": "Number of GPUs to use during training", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
+    "seed": { "description": "Seed used to randomize training/testing", "type": "integer", "minimum": 1, "maximum": 1000, "default": 42},
+
+    "print_warning_logs": {"description": "Set to True to have warning logs print to the terminal. Set to False to have them directed to a log file in the output directory", "type": "boolean", "default": false},
+
+    "output_dir": { "description": "Output directory for reports", "type": "string", "default": "../reports"},
+    "data_dir": {"description": "Path to the input data", "type": "string", "default": "../data/Oil_binned5"},
+    "data_partitions_file": { "description": "Path to a file that contains the data partitions", "type": "string", "default": ""},
+    "partitioner_type": { "description": "Partitioner type (optional)", "type": "string", "enum": ["uniform", "linear", "square", "exponential"], "default": "uniform"},
+    "num_partitions": { "description": "Number of data partitions", "type": "integer", "minimum": 1, "maximum": 100, "default": 2},
+    "model_params" : {"type": "object", "default": {}},
+
+    "problem_type": {"description": "The type of mdoe to be trained (regression or classification)", "type":"string", "enum": ["classification", "regression"], "default": "regression"},
+    "class_labels": {"description": "Allowed class labels for classification tasks", "type": "array", "items": {"type": ["string", "number", "integer", "boolean"]}, "minItems": 2, "uniqueItems": true},
+    "accuracy_tolerance": { "description": "Error tolerance to declare prediction correct", "type": "number", "minimum": 0, "default":0.1},
+
+    "federated": {
+      "type": "object",
+      "properties": {
+        "federated_enabled": { "type": "boolean", "default": true },
+        "num_rounds": { "description": "Number of federated learning rounds", "type": "integer", "minimum": 1, "maximum": 100, "default": 3},
+        "num_clients": { "description": "The number of clients used in federated learning", "type": "integer", "minimum": 1, "maximum": 100, "default": 2}
+      }
+    },
+
+    "dp": {
+      "type": "object",
+      "properties": {
+        "dp_enabled": { "type": "boolean", "default": false },
+        "opacus_secure_mode": { "description": "Enable differential privacy", "type": "boolean", "default": false},
+        "epsilon": { "description": "DP epsilon", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 50, "default": 1},
+        "delta": { "description": "DP delta", "type": "number", "minimum": 0, "maximum": 1, "default": 1e-5},
+        "max_grad_norm": { "description": "DP max grad norm", "type": "number", "minimum": 0, "maximum": 100, "default":1}
+      }
+    }
+  },
+  "additionalProperties": false,
+
+
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "problem_type": { "const": "classification" }
+        },
+        "required": ["problem_type"]
+      },
+      "then": {
+        "required": ["class_labels"]
+      }
+    },
+    {
+      "oneOf": [
+        {
+          "properties":
+            {
+              "model_type": {"const": "cnn"},
+              "model_params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties":
+                {
+                  "partition_id": { "description": "Partition ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100 , "default": 0},
+                  "client_id": { "description": "Client ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
+
+                  "epochs": { "description": "Number of training epochs", "type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                  "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 32, "default": 32},
+                  "test_fraction": { "description": "Fraction of dataset set aside for testing", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.2},
+                  "learning_rate": { "description": "Learning rate", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.003},
+                  "weight_decay": { "description": "Weight decay", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 0.1, "default": 0.0001},
+                  "optimizer": { "description": "Optimizer name", "type": "string", "enum": ["sgd", "adamax"], "default": "sgd"}
+                }
+              }
+            }
+        },
+        {
+          "properties":
+            {
+              "model_type": {"const": "dpcnn"},
+              "model_params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties":
+                {
+                  "partition_id": { "description": "Partition ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100 , "default": 0},
+                  "client_id": { "description": "Client ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
+
+                  "epochs": { "description": "Number of training epochs", "type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                  "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 32, "default": 32},
+                  "test_fraction": { "description": "Fraction of dataset set aside for testing", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.2},
+                  "learning_rate": { "description": "Learning rate", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.003},
+                  "weight_decay": { "description": "Weight decay", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 0.1, "default": 0.0001},
+                  "optimizer": { "description": "Optimizer name", "type": "string", "enum": ["sgd", "adamax"], "default": "sgd"}
+                }
+              }
+            }
+        },
+        {
+          "properties":
+            {
+              "model_type": {"const": "xgboost"},
+              "model_params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties":
+                {
+                  "partition_id": { "description": "Partition ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100 , "default": 0},
+                  "client_id": { "description": "Client ID used for the current client", "type": "integer", "minimum": 0, "maximum": 100, "default": 0},
+
+                  "epochs": { "description": "Number of training epochs", "type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                  "batch_divisor": { "description": "num_batches = dataset_size / batch_divisor", "type": "integer", "minimum": 32, "default": 32},
+                  "test_fraction": { "description": "Fraction of dataset set aside for testing", "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.2},
+                  
+                  "objective": {"description": "XGBoost objective", "type": "string", "default": "reg:squarederror"},
+                  "eta": {"description": "XGBoost learning rate", "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.1},
+                  "max_depth": {"description": "Maximum tree depth", "type": "integer", "minimum": 1, "maximum": 100, "default": 8},
+                  "eval_metric": {"description": "XGBoost evaluation metric", "type": "string", "default": "rmse"},
+                  "nthread": {"description": "Number of XGBoost threads", "type": "integer", "minimum": 1, "maximum": 100, "default": 16},
+                  "num_parallel_tree": {"description": "Number of parallel trees per boosting round", "type": "integer", "minimum": 1, "maximum": 100, "default": 1},
+                  "subsample": {"description": "Subsample ratio of training rows", "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 1},
+                  "tree_method": {"description": "XGBoost tree construction algorithm", "type": "string", "enum": ["auto", "exact", "approx", "hist"], "default": "hist"},
+                  "colsample_bylevel": {"description": "Subsample ratio of columns for each tree level", "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 1},
+                  "colsample_bytree": {"description": "Subsample ratio of columns for each tree", "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 1},
+                  "gamma": {"description": "Minimum loss reduction required to make a split", "type": "number", "minimum": 0, "default": 0},
+                  "max_delta_step": {"description": "Maximum delta step allowed for each tree weight estimate", "type": "number", "minimum": 0, "default": 0},
+                  "min_child_weight": {"description": "Minimum sum of instance weight needed in a child", "type": "number", "minimum": 0, "default": 1},
+                  "reg_alpha": {"description": "L1 regularization term on weights", "type": "number", "minimum": 0, "default": 0},
+                  "reg_lambda": {"description": "L2 regularization term on weights", "type": "number", "minimum": 0, "default": 1},
+                  "scale_pos_weight": {"description": "Balance of positive and negative weights", "type": "number", "exclusiveMinimum": 0, "default": 1},
+
+                  "train_method": {"description": "The training method selected", "type": "string", "enum": ["bagging", "cyclic"], "default": "bagging"},
+                  "centralised_eval": { "type": "boolean", "default": false},
+                  "scaled_lr": { "type": "boolean", "default": true}
+                }
+              }
+            }
+        }
+      ]
+    }
+  ]
+}
