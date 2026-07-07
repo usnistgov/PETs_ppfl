@@ -1,3 +1,0 @@
-{
-    "parameter_blacklist": ["num_gpus", "num_cpus", "data_partitions_file", "output_dir", "min_available_clients", "min_evaluate_clients", "min_fit_clients", "partition_id", "client_id", "batch_divisor", "opacus_secure_mode"]
-}
