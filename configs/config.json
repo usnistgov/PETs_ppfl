@@ -1,9 +1,9 @@
 {
   "model_type": "dpcnn",
-  "num_partitions": 1,
+  "num_partitions": 5,
   "partition_id": 0,
   "client_id": 0,
-  "num_clients": 1,
+  "num_clients": 5,
   "num_rounds": 1,
   "num_cpus": 4,
   "seed": 673 ,
@@ -20,6 +20,6 @@
   "problem_type": "classification",
   "class_labels": [0.0, 1.0, 2.0, 3.0],
   "data_dir":"../data/gpd_scc",
-  "data_partitions_file":"../data/gpd_scc/ppfl_SCC_c0c1_5clients_2025_01_14.npz",
+  "data_partitions_file":"",
   "output_dir": "../reports/gpd_scc"
 }

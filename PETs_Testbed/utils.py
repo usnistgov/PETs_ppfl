@@ -82,6 +82,7 @@ def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, nu
     # Create bins for the selected labels
     bins = np.linspace(np.min(labels), np.max(labels), num_bins + 1)
     binned_labels = np.digitize(labels, bins) - 1
+    binned_labels = np.clip(binned_labels, 0, len(bins) - 2)
     # Count occurrences of each bin
     binned_counts = Counter(binned_labels)
     # Print binned label counts with ranges
