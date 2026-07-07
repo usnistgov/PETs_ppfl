@@ -673,8 +673,11 @@ class ConfigPipeline:
         self._cli_dest_to_schema = {}
 
         # "meta" args
-        self.parser.add_argument("--config", default="config.json", type=str)
-        self.parser.add_argument("--schema", default="configuration-schema.json", type=str)
+        base_dir = Path(__file__).resolve().parent.parent
+        default_config = base_dir / "configs" / "config.json"
+        default_schema = base_dir / "schemas" / "configuration-schema.json"
+        self.parser.add_argument("--config", default=str(default_config), type=str)
+        self.parser.add_argument("--schema", default=str(default_schema), type=str)
         self.parser.add_argument("--check_only", action="store_true")
 
     ###
