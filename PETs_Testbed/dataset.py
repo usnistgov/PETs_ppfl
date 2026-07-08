@@ -36,6 +36,7 @@ from flwr_datasets.partitioner import (
 )
 from utils import print_binned_counts
 from torch.utils.data import Dataset as TorchDataset
+import warnings
 
 NPY_SUFFIXES = ("_tt_vcf", "_tt_pheno", "_ho_vcf", "_ho_pheno", "_pub_vcf", "_pub_pheno")
 
@@ -128,7 +129,7 @@ def ensure_npy_feature_label_files(data_path) -> Path:
         suffix for suffix in NPY_SUFFIXES if find_single_npy(data_dir, suffix) is None
     ]
     if still_missing:
-        print(
+        warnings.warn(
             "Missing .npy files after conversion: "
             f"{', '.join(still_missing)} in {data_dir}"
         )
@@ -214,7 +215,7 @@ def load_npy_feature_label_data(data_path):
     def load_one(suffix):
         path = find_single_npy(data_dir, suffix)
         if path is None:
-            print(f"No .npy file found in {data_dir} matching *{suffix}.npy")
+            warnings.warn(f"No .npy file found in {data_dir} matching *{suffix}.npy")
             return np.array([])
         return np.load(path, mmap_mode="r")
 
