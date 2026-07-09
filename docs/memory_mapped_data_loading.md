@@ -1,22 +1,8 @@
-## Memory-mapped data loading
+## Memory-Mapped Data Loading
 
 The Flower simulation path uses memory-mapped `.npy` files for the DPCNN data arrays. This was added to reduce Ray out-of-memory failures caused by each client process loading and copying large genomics arrays.
 
-### Previous behavior
-
-The original Flower/Ray path loaded pickled `.dat` arrays inside each client process. It then built additional NumPy arrays such as:
-
-- `vcf = np.concatenate((tt_vcf, ho_vcf), axis=0)`
-- `pheno = np.concatenate((tt_pheno, ho_pheno), axis=0)`
-- `combined_dataset = np.concatenate((vcf, pheno), axis=1)`
-- client train/test slices such as `combined_dataset[train_indices]`
-
-Those operations create full in-memory copies. With multiple Ray clients, the same large dataset could be loaded and copied several times at once.
-
-### Current behavior
-
-The federated client/server path now uses `load_npy_feature_label_data`, which:
-
+The federated client/server path now:
 - checks for required `.npy` files matching `_tt_vcf`, `_tt_pheno`, `_ho_vcf`, and `_ho_pheno`
 - automatically converts missing `.npy` files from the matching `.dat` files
 - opens the `.npy` arrays with `np.load(..., mmap_mode="r")`
@@ -37,18 +23,14 @@ The `IndexedArrayDataset` class treats those separate arrays as one logical `tt 
 
 This preserves the original partition-file behavior without building large concatenated arrays.
 
-### Automatic conversion
+### Automatic Conversion
 
 If one or more required `.npy` files are missing, `dataset.py` calls `convert_dat_to_npy.convert_dat_to_npy(data_dir)` automatically. Existing `.npy` files are left in place, so conversion should only happen when needed.
 
 The converter only converts `.dat` files that contain NumPy arrays. Non-array pickle files are skipped.
 
-### Expected memory behavior
+### Expected Memory Behavior
 
 This change reduces memory by avoiding repeated full dataset copies across Ray client workers. It does not eliminate all memory use. Training can still use several GB of RAM because PyTorch, Opacus, Ray actors, optimizer state, gradients, and active batches all allocate memory.
 
-A moderate RAM peak during training is expected. The important improvement is that memory should no longer scale as badly with repeated dataset copies per client. If running into OOM issues, try increasing the number of cpus allocated for each Ray/Flwr client (increase the num_cpus parameter from the command line or config.json). This will reduce the number of clients running at any given time and therefore reduce the overall RAM usage.
-
-### Legacy path
-
-The legacy `load_pickle_data` function remains available for older scripts such as centralized training. The federated Flower client/server path should use the mmap-backed loader instead.
+A moderate RAM peak during training is expected. The important improvement is that memory should no longer scale as badly with repeated dataset copies per client. If running into OOM issues, try increasing the number of CPUs allocated for each Ray/Flwr client (increase the num_cpus parameter from the command line or config.json). This will reduce the number of clients running at any given time and therefore reduce the overall RAM usage.

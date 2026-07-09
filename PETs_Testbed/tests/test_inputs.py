@@ -1,3 +1,6 @@
+# For licensing matters, please refer to the licensing statement at:
+# https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
+
 # test_cli_config_regression.py
 import copy
 import json
@@ -27,9 +30,8 @@ COMMON_BASE_CONFIG: Dict[str, Any] = {
     "num_cpus": 2,
     "num_gpus": 0,
     "num_rounds": 1,
-    "min_fit_clients": 1,
-    "min_available_clients": 1,
-    "min_evaluate_clients": 1,
+    "num_clients": 1,
+    "federated_enabled": True,
     "data_partitions_file": "",
     "partitioner_type": "uniform",
     "num_partitions": 1,
@@ -37,9 +39,11 @@ COMMON_BASE_CONFIG: Dict[str, Any] = {
     "client_id": 0,
     "seed": 1,
     "epochs": 1,
-    "batch_divisor": 1,
-    "n_models": 1,
+    "batch_size": 32,
     "test_fraction": 0.2,
+    "print_warning_logs": False,
+    "problem_type": "regression",
+    "dp_enabled": False,
     "opacus_secure_mode": False,
     "epsilon": 1.0,
     "delta": 0.0,
@@ -68,11 +72,26 @@ CNN_BASE_CONFIG: Dict[str, Any] = {
 XGBOOST_BASE_CONFIG: Dict[str, Any] = {
     **COMMON_BASE_CONFIG,
     "model_type": "xgboost",
+    "objective": "reg:squarederror",
+    "eta": 0.1,
+    "max_depth": 8,
+    "eval_metric": "rmse",
+    "nthread": 16,
+    "num_parallel_tree": 1,
+    "subsample": 1.0,
+    "tree_method": "hist",
+    "colsample_bylevel": 1.0,
+    "colsample_bytree": 1.0,
+    "gamma": 0.0,
+    "max_delta_step": 0.0,
+    "min_child_weight": 1.0,
+    "reg_alpha": 0.0,
+    "reg_lambda": 1.0,
+    "scale_pos_weight": 1.0,
     "train_method": "bagging",
     "centralised_eval": True,
     "scaled_lr": True,
 }
-
 
 @dataclass(frozen=True)
 class Case:
@@ -147,10 +166,6 @@ def _load_default_schema() -> Dict[str, Any]:
     if not DEFAULT_SCHEMA.exists():
         pytest.skip(f"Default schema file not found: {DEFAULT_SCHEMA}")
     return json.loads(DEFAULT_SCHEMA.read_text(encoding="utf-8"))
-
-
-def _test_is_object_schema(sch: Dict[str, Any]) -> bool:
-    return isinstance(sch, dict) and (sch.get("type") == "object" or "properties" in sch)
 
 
 def _test_select_oneof_branch(oneof_list: List[Dict[str, Any]], instance: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -243,10 +258,10 @@ CASES: List[Any] = [
     ),
     pytest.param(
         Case(
-            name="2a. Checking that opacus_secure_mode always is false, no matter what input is given",
+            name="2a. opacus_secure_mode accepts true when provided",
             config=_base_with(opacus_secure_mode=True),
             cli_args=["--opacus_secure_mode", "True"],
-            stdout_must_match=[r"opacus_secure_mode=False"],
+            stdout_must_match=[r"opacus_secure_mode=True"],
             allowed_exit_codes={0},
         ),
         id="t02a",
@@ -340,7 +355,8 @@ CASES: List[Any] = [
             name="11. Whitespace/quoting handling for paths",
             config=_base_with(data_partitions_file=""),
             cli_args=["--data_partitions_file", "a b/parts.json"],
-            allowed_exit_codes={1},
+            allowed_exit_codes={0},
+            stdout_must_match=[r"data_partitions_file=a b/parts\.json"],
         ),
         id="t11"
     ),
@@ -361,14 +377,32 @@ CASES: List[Any] = [
         id="t12e"
     ),
 
-    pytest.param(Case("13a. min_fit_clients boundary valid", _base_with(min_fit_clients=1)), id="t13a"),
-    pytest.param(Case("13b. min_fit_clients boundary invalid", _base_with(min_fit_clients=0), allowed_exit_codes={1, 2}), id="t13b"),
+    pytest.param(Case("13a. num_clients boundary valid", _base_with(num_clients=100, num_partitions=100)), id="t13a"),
+    pytest.param(Case("13b. num_clients boundary invalid", _base_with(num_clients=0), allowed_exit_codes={1, 2}), id="t13b"),
 
-    pytest.param(Case("14a. min_available_clients boundary valid", _base_with(min_available_clients=100)), id="t14a"),
-    pytest.param(Case("14b. min_available_clients boundary invalid", _base_with(min_available_clients=101), allowed_exit_codes={1, 2}), id="t14b"),
+    pytest.param(Case("14a. federated_enabled accepts boolean", _base_with(federated_enabled=True)), id="t14a"),
+    pytest.param(
+        Case(
+            "14b. federated_enabled rejects non-boolean",
+            _base_with(federated_enabled="yes"),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"federated_enabled", r"type|boolean"],
+            stdout_must_not_match=[r"not valid under any of the given schemas"],
+        ),
+        id="t14b"
+    ),
 
-    pytest.param(Case("15a. min_evaluate_clients boundary valid", _base_with(min_evaluate_clients=1)), id="t15a"),
-    pytest.param(Case("15b. min_evaluate_clients boundary invalid", _base_with(min_evaluate_clients=0), allowed_exit_codes={1, 2}), id="t15b"),
+    pytest.param(Case("15a. dp_enabled accepts boolean", _base_with(dp_enabled=True)), id="t15a"),
+    pytest.param(
+        Case(
+            "15b. dp_enabled rejects non-boolean",
+            _base_with(dp_enabled="yes"),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"dp_enabled", r"type|boolean"],
+            stdout_must_not_match=[r"not valid under any of the given schemas"],
+        ),
+        id="t15b"
+    ),
 
     pytest.param(Case("16a. num_partitions boundary valid", _base_with(num_partitions=100)), id="t16a"),
     pytest.param(Case("16b. num_partitions boundary invalid", _base_with(num_partitions=0), allowed_exit_codes={1, 2}), id="t16b"),
@@ -385,11 +419,26 @@ CASES: List[Any] = [
     pytest.param(Case("20a. epochs boundary valid", _base_with(epochs=100)), id="t20a"),
     pytest.param(Case("20b. epochs boundary invalid", _base_with(epochs=101), allowed_exit_codes={1, 2}), id="t20b"),
 
-    pytest.param(Case("21a. batch_divisor min valid", _base_with(batch_divisor=1)), id="t21a"),
-    pytest.param(Case("21b. batch_divisor invalid (0)", _base_with(batch_divisor=0), allowed_exit_codes={1, 2}), id="t21b"),
+    pytest.param(Case("21a. batch_size min valid", _base_with(batch_size=8)), id="t21a"),
+    pytest.param(Case("21b. batch_size invalid (1)", _base_with(batch_size=1), allowed_exit_codes={1, 2}), id="t21b"),
 
-    pytest.param(Case("22a. n_models boundary valid", _base_with(n_models=100)), id="t22a"),
-    pytest.param(Case("22b. n_models boundary invalid", _base_with(n_models=0), allowed_exit_codes={1, 2}), id="t22b"),
+    pytest.param(
+        Case(
+            "22a. classification accepts class_labels",
+            _base_with(problem_type="classification", class_labels=[0, 1]),
+            allowed_exit_codes={0},
+        ),
+        id="t22a"
+    ),
+    pytest.param(
+        Case(
+            "22b. classification requires class_labels",
+            _base_with(problem_type="classification"),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"class_labels", r"Missing required parameter|required"],
+        ),
+        id="t22b"
+    ),
 
     pytest.param(Case("23a. test_fraction valid interior", _base_with(test_fraction=0.9999)), id="t23a"),
     pytest.param(Case("23b. test_fraction invalid at 0", _base_with(test_fraction=0), allowed_exit_codes={1, 2}), id="t23b"),
@@ -410,8 +459,8 @@ CASES: List[Any] = [
     pytest.param(Case("28a. max_grad_norm valid boundaries", _base_with(max_grad_norm=0)), id="t28a"),
     pytest.param(Case("28b. max_grad_norm invalid (negative)", _base_with(max_grad_norm=-0.01), allowed_exit_codes={1, 2}), id="t28b"),
 
-    pytest.param(Case("29a. accuracy_tolerance valid boundaries", _base_with(accuracy_tolerance=1)), id="t29a"),
-    pytest.param(Case("29b. accuracy_tolerance invalid (>1)", _base_with(accuracy_tolerance=2), allowed_exit_codes={1, 2}), id="t29b"),
+    pytest.param(Case("29a. accuracy_tolerance min valid", _base_with(accuracy_tolerance=0)), id="t29a"),
+    pytest.param(Case("29b. accuracy_tolerance invalid (negative)", _base_with(accuracy_tolerance=-0.1), allowed_exit_codes={1, 2}), id="t29b"),
 
     pytest.param(Case("30a. partitioner_type accepts allowed value", _base_with(partitioner_type="exponential")), id="t30a"),
     pytest.param(
@@ -437,21 +486,14 @@ CASES: List[Any] = [
         id="t31b"
     ),
 
-    pytest.param(Case("52a. lower one bad value", _base_with(min_available_clients=2)), id="t52a"),
-    pytest.param(Case("52b. lower two bad values", _base_with(min_evaluate_clients=2, min_fit_clients=2)), id="t52b"),
-    pytest.param(Case("52c. reject too high num clients", _base_with(min_evaluate_clients=2, min_fit_clients=2)), id="t52c"),
-    pytest.param(Case("52d. lower one value and reject too high num clients", _base_with(min_available_clients=2, min_evaluate_clients=3, min_fit_clients=2, num_partitions=1), allowed_exit_codes={1, 2}), id="t52d"),
-    pytest.param(Case("52e. lower two values and reject too high num clients", _base_with(min_available_clients=2, min_evaluate_clients=3, min_fit_clients=3, num_partitions=1), allowed_exit_codes={1, 2}), id="t52e"),
-    pytest.param(Case("51a. num_cpus invalid at 0", _base_with(num_cpus=0), allowed_exit_codes={1, 2}), id="t51a"),
-    pytest.param(Case("51b. num_gpus valid at 1", _base_with(num_gpus=1)), id="t51b"),
-
     pytest.param(Case("53. bad data directory path", _base_with(data_dir="foo_bar"), allowed_exit_codes={1, 2}), id="t53"),
 
     pytest.param(
         Case(
             "32a. data_partitions_file accepts string",
             _base_with(data_partitions_file="parts.json"),
-            allowed_exit_codes={1},
+            allowed_exit_codes={0},
+            stdout_must_match=[r"data_partitions_file=parts\.json"],
         ),
         id="t32a"
     ),
@@ -481,10 +523,10 @@ CASES: List[Any] = [
     # C. Cross-parameter interactions
     pytest.param(
         Case(
-            "34. num_partitions lowers min_*_clients",
-            _base_with(num_partitions=5, min_fit_clients=10, min_available_clients=8, min_evaluate_clients=7),
+            "34. class_labels must contain at least two items",
+            _base_with(problem_type="classification", class_labels=[0]),
             allowed_exit_codes={1},
-            stdout_must_match=[r"<=|num_partitions"],
+            stdout_must_match=[r"class_labels", r"2|least|short|minItems"],
         ),
         id="t34"
     ),
@@ -499,10 +541,10 @@ CASES: List[Any] = [
     ),
     pytest.param(
         Case(
-            "36. client_id uniqueness in local sim (if enforced)",
-            _base_with(n_models=2, client_id=1),
-            cli_args=["--client_id", "1"],
-            allowed_exit_codes={0},
+            "36. class_labels must be unique",
+            _base_with(problem_type="classification", class_labels=[0, 0]),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"class_labels", r"unique|duplicate|non-unique"],
         ),
         id="t36"
     ),
@@ -529,8 +571,8 @@ CASES: List[Any] = [
     ),
     pytest.param(
         Case(
-            "39. batch_divisor vs dataset_size runtime behavior",
-            _base_with(batch_divisor=1_000_000),
+            "39. batch_size vs dataset_size runtime behavior",
+            _base_with(batch_size=1_000_000),
             allowed_exit_codes={1, 2},
         ),
         id="t39"
@@ -602,16 +644,13 @@ CASES: List[Any] = [
                 num_cpus=100,
                 num_gpus=100,
                 num_rounds=100,
-                min_fit_clients=100,
-                min_available_clients=100,
-                min_evaluate_clients=100,
+                num_clients=100,
                 num_partitions=100,
-                partition_id=100,
+                partition_id=99,
                 client_id=100,
                 seed=1000,
                 epochs=100,
-                batch_divisor=1,
-                n_models=100,
+                batch_size=32,
                 test_fraction=0.9999,
                 learning_rate=0.9999,
                 weight_decay=0.09999,
@@ -631,13 +670,10 @@ CASES: List[Any] = [
             "48. Typical FL config (representative)",
             _base_with(
                 num_rounds=10,
-                min_fit_clients=5,
-                min_available_clients=5,
-                min_evaluate_clients=5,
+                num_clients=5,
                 num_partitions=20,
                 epochs=3,
-                batch_divisor=32,
-                n_models=1,
+                batch_size=32,
                 test_fraction=0.2,
                 learning_rate=0.01,
                 weight_decay=0.0005,
@@ -666,6 +702,23 @@ CASES: List[Any] = [
             allowed_exit_codes={0},
         ),
         id="t50_uniform",
+    ),
+
+    pytest.param(Case("51a. num_cpus invalid at 0", _base_with(num_cpus=0), allowed_exit_codes={1, 2}), id="t51a"),
+    pytest.param(Case("51b. num_gpus valid at 1", _base_with(num_gpus=1)), id="t51b"),
+
+    pytest.param(Case("52a. xgboost eta valid at max", _xgb_base_with(eta=1.0)), id="t52a"),
+    pytest.param(Case("52b. xgboost eta invalid at 0", _xgb_base_with(eta=0), allowed_exit_codes={1, 2}), id="t52b"),
+    pytest.param(Case("52c. xgboost tree_method accepts allowed value", _xgb_base_with(tree_method="approx")), id="t52c"),
+    pytest.param(
+        Case(
+            "52d. xgboost tree_method rejects bad enum",
+            _xgb_base_with(tree_method="gpu_hist"),
+            allowed_exit_codes={1},
+            stdout_must_match=[r"tree_method", r"enum|one of|auto|exact|approx|hist"],
+            stdout_must_not_match=[r"not valid under any of the given schemas"],
+        ),
+        id="t52d"
     ),
 
     # F. Regressions added for schema/effective-schema/CLI behavior
@@ -737,11 +790,11 @@ CASES: List[Any] = [
     ),
     pytest.param(
         Case(
-            "[NEW] 58. Unknown nested config key is reported via schema validation",
-            config={**_base_with(), "model_params": {"badleaf": 123}},
+            "[NEW] 58. print_warning_logs rejects non-boolean",
+            config=_base_with(print_warning_logs="yes"),
             allowed_exit_codes={1},
-            stdout_must_match=[r"badleaf", r"Unknown parameter"],
-            stdout_must_not_match=[r"Additional properties are not allowed", r"was unexpected", r"check_only -> Unknown parameter"],
+            stdout_must_match=[r"print_warning_logs", r"boolean|type"],
+            stdout_must_not_match=[r"not valid under any of the given schemas"],
         ),
         id="t58",
     ),

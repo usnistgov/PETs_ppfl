@@ -1,19 +1,5 @@
-# This Software (PETs Testbed) is being made available as a public service by the
-# National Institute of Standards and Technology (NIST), an Agency of the United
-# States Department of Commerce. This software was developed in part by employees of
-# NIST and in part by NIST contractors. Copyright in portions of this software that
-# were developed by NIST contractors has been licensed or assigned to NIST. Pursuant
-# to Title 17 United States Code Section 105, works of NIST employees are not
-# subject to copyright protection in the United States. However, NIST may hold
-# international copyright in software created by its employees and domestic
-# copyright (or licensing rights) in portions of software that were assigned or
-# licensed to NIST. To the extent that NIST holds copyright in this software, it is
-# being made available under the Creative Commons Attribution 4.0 International
-# license (CC BY 4.0). The disclaimers of the CC BY 4.0 license apply to all parts
-# of the software developed or licensed by NIST.
-#
-# ACCESS THE FULL CC BY 4.0 LICENSE HERE:
-# https://creativecommons.org/licenses/by/4.0/legalcode
+# For licensing matters, please refer to the licensing statement at:
+# https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
 
 from typing import Any, Dict
 from pathlib import Path
@@ -65,13 +51,19 @@ def create_dataloaders(
     partitioner_type,
     test_fraction,
     seed,
-    batch_divisor,
+    batch_size,
     problem_type,
     class_labels=None,
+    use_public_data=False
 ):
-    tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(data_directory)
+    tt_vcf, tt_pheno, _, _, pub_vcf, pub_pheno = load_npy_feature_label_data(data_directory)
+    if use_public_data:
+        vcf = [tt_vcf, pub_vcf]
+        pheno = [tt_pheno, pub_pheno]
+    else:
+        vcf = [tt_vcf]
+        pheno = [tt_pheno]
     num_data_features = tt_vcf.shape[1]
-    batch_size = max(1, (len(tt_vcf) + len(ho_vcf)) // batch_divisor)
 
     data_partitions = None
     if data_partitions_file and Path(data_partitions_file).exists():
@@ -86,10 +78,8 @@ def create_dataloaders(
     if data_partitions is not None:
         loaders = load_custom_partitions(
             client_id,
-            tt_vcf,
-            tt_pheno,
-            ho_vcf,
-            ho_pheno,
+            vcf,
+            pheno,
             data_partitions,
             batch_size,
             test_fraction,
@@ -101,10 +91,8 @@ def create_dataloaders(
     else:
         loaders = load_random_partitions(
             client_id,
-            tt_vcf,
-            tt_pheno,
-            ho_vcf,
-            ho_pheno,
+            vcf,
+            pheno,
             batch_size,
             test_fraction,
             seed,
@@ -134,7 +122,7 @@ def create_xgboost_data(
     partitioner_type,
     test_fraction,
     seed,
-    batch_divisor,
+    batch_size,
     problem_type,
     class_labels=None,
 ):
@@ -146,7 +134,7 @@ def create_xgboost_data(
         partitioner_type,
         test_fraction,
         seed,
-        batch_divisor,
+        batch_size,
         problem_type,
         class_labels,
     )
@@ -194,7 +182,7 @@ class TorchFlowerClient(fl.client.NumPyClient):
             partitioner_type=p.get("partitions_type"),
             test_fraction=p.get("test_fraction"),
             seed=p.get("seed"),
-            batch_divisor=p.get("batch_divisor"),
+            batch_size=p.get("batch_size"),
             problem_type=self.problem_type,
             class_labels=self.class_labels,
         )
@@ -248,7 +236,7 @@ class TorchFlowerClient(fl.client.NumPyClient):
         hyperparameters = {
             "learning rate": float(p.get("learning_rate")),
             "weight decay": float(p.get("weight_decay")),
-            "batch divisor": int(p.get("batch_divisor")),
+            "batch size": int(p.get("batch_size")),
             "epochs": int(p.get("epochs")),
             "seed": int(p.get("seed")),
             "test fraction": float(p.get("test_fraction")),
@@ -477,7 +465,7 @@ class XGBoostFlowerClient(fl.client.Client):
             p.get("partitions_type"),
             self.test_fraction,
             self.seed,
-            p.get("batch_divisor"),
+            p.get("batch_size"),
             self.problem_type,
             self.class_labels,
         )

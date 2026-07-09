@@ -1,19 +1,5 @@
-# This Software (PETs Testbed) is being made available as a public service by the
-# National Institute of Standards and Technology (NIST), an Agency of the United
-# States Department of Commerce. This software was developed in part by employees of
-# NIST and in part by NIST contractors. Copyright in portions of this software that
-# were developed by NIST contractors has been licensed or assigned to NIST. Pursuant
-# to Title 17 United States Code Section 105, works of NIST employees are not
-# subject to copyright protection in the United States. However, NIST may hold
-# international copyright in software created by its employees and domestic
-# copyright (or licensing rights) in portions of software that were assigned or
-# licensed to NIST. To the extent that NIST holds copyright in this software, it is
-# being made available under the Creative Commons Attribution 4.0 International
-# license (CC BY 4.0). The disclaimers of the CC BY 4.0 license apply to all parts
-# of the software developed or licensed by NIST.
-#
-# ACCESS THE FULL CC BY 4.0 LICENSE HERE:
-# https://creativecommons.org/licenses/by/4.0/legalcode
+# For licensing matters, please refer to the licensing statement at:
+# https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
 
 from typing import List, Tuple
 from typing import Dict
@@ -22,6 +8,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from collections import Counter
 import flwr as fl
 from flwr.common import Metrics
 from flwr.common import ndarrays_to_parameters
@@ -31,7 +18,7 @@ from xgboost.core import DMatrix
 from dataset import IndexedArrayDataset, load_npy_feature_label_data
 from model import BaseModel, CNNModel, DPCNNModel, XGBoostModel
 from report import Report
-from utils import get_device
+from utils import get_device, print_binned_counts
 
 def get_torch_model_class(model_type: str):
     return DPCNNModel if model_type == "dpcnn" else CNNModel
@@ -81,17 +68,29 @@ def save_global_outputs(
     save_model_fn(Path(output_dir, f"{prefix}_global"))
 
 def build_xgboost_test_data(strategy_params):
-    tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(
+    _, _, ho_vcf, ho_pheno, _, _ = load_npy_feature_label_data(
         strategy_params["data_dir"]
     )
-    test_features = np.concatenate([tt_vcf, ho_vcf])
-    test_labels = np.concatenate([tt_pheno, ho_pheno]).reshape(-1)
+    test_features = ho_vcf
+    test_labels = ho_pheno.reshape(-1)
 
     if strategy_params.get("problem_type") == "classification":
         label_to_index = {
             label: i for i, label in enumerate(strategy_params.get("class_labels"))
         }
         test_labels = np.array([label_to_index[label] for label in test_labels])
+
+        # count labels in train and test set
+    print("\n\nHOLDOUT DATASET FOR EVALUATION")
+    if strategy_params.get("problem_type") == "classification":
+        print(f"Holdout dataset label counts")
+        test_counts = Counter(int(x) for x in np.asarray(ho_pheno))
+        for cls, count in sorted(test_counts.items()):
+            print(f"class {cls}: {count} records")
+    else:
+        print(f'Holdout dataset binned label counts')
+        print_binned_counts(ho_pheno.reshape(-1, 1), np.arange(len(ho_pheno)))
+    print("\n\n")
 
     return DMatrix(data=test_features, label=test_labels)
 
@@ -339,9 +338,9 @@ def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
     if strategy_params.get("model_type") == "xgboost":
         return create_xgboost_strategy(strategy_params)
 
-    tt_vcf, tt_pheno, ho_vcf, ho_pheno = load_npy_feature_label_data(strategy_params['data_dir'])
-    num_data_features = tt_vcf.shape[1]
-    all_indices = np.arange(len(tt_vcf) + len(ho_vcf))
+    _, _, ho_vcf, ho_pheno, _, _ = load_npy_feature_label_data(strategy_params['data_dir'])
+    num_data_features = ho_vcf.shape[1]
+    all_indices = np.arange(len(ho_vcf))
     problem_type = strategy_params.get("problem_type", "regression")
     num_classes = strategy_params.get("num_classes", 1)
     label_to_index = (
@@ -350,16 +349,24 @@ def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
         else None
     )
     test_dataset = IndexedArrayDataset(
-        tt_vcf,
-        tt_pheno,
-        ho_vcf,
-        ho_pheno,
+        [ho_vcf],
+        [ho_pheno],
         all_indices,
         label_to_index,
     )
-    total_rows = len(tt_vcf) + len(ho_vcf)
-    batch_size = max(1, total_rows // strategy_params['batch_divisor'])
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=strategy_params['batch_size'], shuffle=False)
+
+    # count labels in train and test set
+    print("\n\nHOLDOUT DATASET FOR EVALUATION")
+    if problem_type == "classification":
+        print(f"Holdout dataset label counts")
+        test_counts = Counter(int(x) for x in np.asarray(ho_pheno))
+        for cls, count in sorted(test_counts.items()):
+            print(f"class {cls}: {count} records")
+    else:
+        print(f'Holdout dataset binned label counts')
+        print_binned_counts(ho_pheno.reshape(-1, 1), np.arange(len(ho_pheno)))
+    print("\n\n")
 
     model_type = strategy_params.get("model_type")
     model_class = DPCNNModel if model_type == "dpcnn" else CNNModel
