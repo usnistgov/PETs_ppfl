@@ -10,7 +10,8 @@
 5. [Datasets and Data Behavior](#data)
 6. [Modifying the Parameters](#params)
 7. [Output](#output)
-8. [Developer's Guide](#dev)
+8. [Results Viewer](#viewer)
+9. [Developer's Guide](#dev)
 
 ## Quickstart <a name="quick"></a>
 
@@ -363,6 +364,33 @@ Regression reports also include MAE, MSE, RMSE, R2, the label mean, and RMSE as 
 For classification, labels are encoded from `class_labels`, and predictions are class indices. CNN/DPCNN classification uses the largest output logit as the predicted class. XGBoost classification uses `multi:softprob` probabilities when the default classification conversion is applied, then selects the class with the largest probability. Classification reports include accuracy, macro precision, macro recall, and macro F1. Regression-only metrics such as MSE are set to `0` in classification reports.
 
 The older behavior of treating a regression output as a rounded class prediction is no longer the default task model. Use `problem_type: "classification"` for class labels and `problem_type: "regression"` for continuous numeric targets.
+
+## Results Viewer <a name="viewer"></a>
+
+To make it easier for users to view the results of both singular runs and batch experiments, we have created a web-based results viewer that displays the output data in an easy-to-use user interface.
+
+To access the results viewer, run the following command from the genomics_ppfl_base directory while replacing {PORT_NUMBER} with a desired port of your choosing. Ensure the port is not already in use by running `lsof -i :{PORT_NUMBER}`.  
+
+`python3 -m http.server {PORT_NUMBER}`
+
+You can then access the results viewer from your browser at `http://localhost:{PORT_NUMBER}/results_viewer.html`
+
+When you are done using the results viewer, you can shutdown your web server by pressing CTRL + C. 
+Sometimes CTRL + C will not completely kill the process. To ensure your process is killed, run `lsof -i :{PORT_NUMBER}`. Locate the process' PID from output and run `kill -9 {PID}`.
+
+### Accessing the Results Viewer located remotely
+
+If the machine that the PETs Testbed and test results are located on does not have a desktop interface (ex. CLI-only VM), you will need to copy your results files to your local machine and use SSH tunneling to access the results viewer.
+
+On your remote VM:
+1. Ensure the port is not already in use by running `lsof -i :{PORT_NUMBER}`
+1. Start your web server by running `pyenv exec python3 -m http.server {PORT_NUMBER}`
+
+On your local machine:
+1. Ensure you have a local copy of the PETs_Testbed code 
+1. Move your results files to you local machine by running `scp '{REMOTE_USER}@{REMOTE_IP}:{REMOTE_PETS_TESTBED_DIRECTORY_PATH}/reports/*' {LOCAL_PETS_TESTBED_DIRECTORY_PATH}/reports/`. If your VM does not have password authentication enabled, you may need to specify your SSH key by running `scp -i {SSH_KEY_PATH} '{REMOTE_USER}@{REMOTE_IP}:{REMOTE_PETS_TESTBED_DIRECTORY_PATH}/reports/*' {LOCAL_PETS_TESTBED_DIRECTORY_PATH}/reports/`.
+1. Initiate your SSH tunnel by running `ssh -L {PORT_NUMBER}:localhost:{PORT_NUMBER} {REMOTE_USER}@{REMOTE_IP}`
+1. As long as your SSH tunnel session is active, you should now be able to access and use the results viewer on your local machine's browser at `http://localhost:{PORT_NUMBER}/results_viewer.html`
 
 ## Developer's Guide <a name="dev"></a>
 

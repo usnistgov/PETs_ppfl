@@ -1,81 +1,99 @@
 # Privacy-Enhancing Technologies (PETs) Testbed
 
-Welcome to the NIST genomics PETs testbed (beta version). This testbed aims to provide tools that help you evaluate the efficacy of different data privacy technologies on your genomics data.
+> **Welcome to the NIST genomics PETs testbed (beta version).** This testbed aims to provide tools that help you evaluate the efficacy of different data privacy technologies on your genomics data.
 
 # Table of Contents
-1. [Currently Supported Capabilities](#current)
-1. [Currently In-Progress Capabilities](#future_supported)
-1. [Setting Up the Testbed](#setup)
-1. [Running the Testbed](#running)
-1. [Modifying the Parameters](#params)
-1. [Batch Experiments](#batch)
-1. [Output](#output)
-1. [Results Viewer](#viewer)
-1. [Data References](#refs)
-1. [Flower/Ray client, model, and logging behavior](#flwr)
-1. [Ray Memory Optimization](#mem)
+1. [Quickstart](#quick)
+2. [Overview](#overview)
+3. [Installation and Setup](#setup)
+4. [Running the Testbed](#running)
+5. [Datasets and Data Behavior](#data)
+6. [Modifying the Parameters](#params)
+7. [Output](#output)
+8. [Results Viewer](#viewer)
 
-## Currently Supported Capabilities <a name="current"></a>
+## Quickstart <a name="quick"></a>
+
+1. Download the zip file containing the code and data.
+2. Confirm that Python 3.10 is installed:
+   ```bash
+   python -V
+   # or
+   python3 -V
+   ```
+3. Create and activate a virtual environment:
+   ```bash
+   python3.10 -m venv .venv
+   source .venv/bin/activate
+   ```
+4. Install dependencies:
+   ```bash
+   python -m pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+5. Change into the testbed directory:
+   ```bash
+   cd PETs_Testbed
+   ```
+6. Run the testbed:
+   ```bash
+   python run.py
+   ```
+
+To validate parameters without running training:
+```bash
+python run.py --check_only
+```
+
+## Currently Supported Capabilities <a name="overview"></a>
+
+This testbed supports:
+- Differential privacy (DP) during DPCNN training through Opacus
+- Federated training for CNN, DPCNN, and XGBoost models
+- Regression and classification workflows controlled by the `problem_type` parameter
+- Configuration through `config.json` and command-line arguments
+- Validation of parameters against a JSON schema
+- Validation of file paths against the currently visible directory
+- Machine-readable and JSON reports, with some values printed to the terminal, in timestamped directories
+
+> Users are expected to preprocess their data before uploading it to the `data/` folder.
 
 Throughout the beta development process, these capabilities are expected to expand. Feedback on additional features and discovered issues is welcome and encouraged.
 
-### Data
-- Testing using any dataset provided in the `data/` folder (or any other folder specified by the --data_dir CLI or data_dir field in the configuration file)
+## Installation and Setup <a name="setup"></a>
 
-### Privacy and Training
-- Applying differential privacy (DP) during DPCNN training through the Opacus framework
-- Federated training for CNN, DPCNN, and XGBoost models
-- Regression and classification workflows controlled by the `problem_type` parameter
+### Python version
 
-### User Interaction
-- Modifying model and privacy parameters through the provided `config.json` file
-- Modifying model and privacy parameters through command-line arguments
-- Validation of provided parameters against the provided JSON schema
-- Validation of provided file paths against the currently visible directory
-- Generation of machine-readable and JSON reports, with some values printed out to the terminal, in timestamped directories
+The testbed expects Python 3.10. Other versions may cause errors with the `torch` library.
 
-_*Please note that users are expected to have already preprocessed their data prior to uploading it to the `data/` folder.*_
+If Python 3.10 is not installed, try running the `setup.sh` bash script, which downloads Python 3.10 from the deadsnakes repository.
 
-## Currently In-Progress Capabilities <a name="future_supported"></a>
-- Improvement of report organization
-- Support for setting the `opacus_secure_mode` parameter to true in DP
-
-## Setting Up the Testbed <a name="setup"></a>
+### Required setup steps
 
 1. Download the zip file containing the data and code.
-
-   The testbed expects ho (holdout) and tt (train-test) datasets to be present. While this is the expectation, please note that all data will be aggregated and then split between the provided clients. This behavior is different than the names suggest; however, it was beneficial due to the original size limitations of the Oil dataset. 
    - If using the provided Oil_binned5 test data, ensure the following files exist in the `data/Oil_binned5` directory (and your data path matches):
       1. `Oil_QTL_ho_pheno.dat`
       2. `Oil_QTL_ho_vcf.dat`
-      3. `Oil_QTL_ohe_map.dat`
-      4. `Oil_QTL_ohe.dat`
-      5. `Oil_QTL_pheno_bins.dat`
-      6. `Oil_QTL_tt_pheno.dat`
-      7. `Oil_QTL_tt_vcf.dat`
-   - Or if using the provided SCC test data and partitions, ensure the following files exist in the `data/gpd_scc` (and your data path and partition paths matches). Only one data partition file will be used (you must specify which one):
+      3. `Oil_QTL_tt_pheno.dat`
+      4. `Oil_QTL_tt_vcf.dat`
+   - Or if using the provided SCC test data and ensure the following files exist in the `data/gpd_scc` (and your data path and partition paths matches):
       1. `SCC_QTL_ho_pheno.dat`
       2. `SCC_QTL_ho_vcf.dat`
-      3. `SCC_QTL_ohe_map.dat`
-      4. `SCC_QTL_ohe.dat`
-      5. `SCC_QTL_pheno_bins.dat`
-      6. `SCC_QTL_tt_pheno.dat`
-      7. `SCC_QTL_tt_vcf.dat`
-      8. `ppfl_SCC_c0c1_5clients_2025_01_14.npz`
-      9. `ppfl_SCC_c4c5_5clients_2025_01_14.npz`
+      3. `SCC_QTL_tt_pheno.dat`
+      4. `SCC_QTL_tt_vcf.dat`
    - If using your own data:
       - Please ensure that all data files are of type `.dat` or `.npy`. It is also expected that the endings of the data files match the provided test data. For example, this testbed assumes the data file endings are:
          1. `_ho_pheno.dat`
          2. `_ho_vcf.dat`
-         3. `_ohe.dat`
-         4. `_tt_pheno.dat`
-         5. `_tt_vcf.dat`
-      - Please also remember to update the `data_dir` variable either through the command line or through the provided configuration file.
+         3. `_tt_pheno.dat`
+         4. `_tt_vcf.dat`
+      - You may also provide your own data partition files. Examples of old (non-usuable) data partition files are can be seen in the `gpd_scc` data at `ppfl_SCC_c0c1_5clients_2025_01_14.npz` and `ppfl_SCC_c4c5_5clients_2025_01_14.npz`. However, if you attempt to use one of these, it will not work. This is because legacy behavior concatenated the tt and ho datasets, whereas the current PETs testbed does not.
+      > Please also remember to update the `data_dir` variable either through the command line or through the provided configuration file.
 2. Transfer the files to the beta machine.
 3. Download or validate a Python 3.10 installation (other versions may result in errors with the `torch` library) via the `python -V` or `python3 -V` commands.
    1. Run the command `python -V` to check the installed version.
    2. If the wrong version of Python is installed, or if Python is not installed, try:
-      1. Running the `setup.sh` bash script, which downloads Python 3.10 from the deadsnakes repository
+      -  Running the `setup.sh` bash script, which downloads Python 3.10 from the deadsnakes repository
    3. Run the command `python3.10 -V` to confirm a successful installation.
 4. `cd` into the directory where the downloaded project is located. You should see folders such as `data`, `dpcnn_opacus`, etc. Create a virtual environment with the command `python3.10 -m venv .venv`.
 5. Confirm that the `.venv` directory was created by running `ls -la`.
@@ -88,12 +106,12 @@ _*Please note that users are expected to have already preprocessed their data pr
 ```bash
 python run.py
 ```
-   - Note that this will use the `config.json` file for input parameters. These inputs are validated through the `configuration-schema.json` file.
+   > Note that this will use the `config.json` file for input parameters. These inputs are validated through the `configuration-schema.json` file.
 
 ## Running the Testbed <a name="running"></a>
 
 ### Hello World for the testbed
-Once you have your environment set up, the most basic way to run the testbed is to navigate into the `dpcnn_opacus` folder and simply run:
+Once you have your environment set up, the most basic way to run the testbed is to navigate into the `PETs_Testbed` folder and simply run:
 ```bash 
 python3.10 run.py
 
@@ -114,6 +132,26 @@ If you want to modify a value for a single run, or see whether a parameter input
 Modifying parameters in this way will not affect the contents of the configuration file.
 
 Please note that some variables are only set through the command line. These variables are `--config` (to tell the testbed to use a configuration file other than `config.json`), `--schema` (to tell the testbed to use a JSON schema file other than `configuration-schema.json`), and `--check_only` (which, when passed, tells the testbed to only check whether the parameter values given are supported).
+
+## Datasets and Data Behavior <a name="data"></a>
+The testbed expects two datasets to be provided: the train-test (tt) dataset and the holdout (ho) dataset. The tt dataset is used to train the client(s). The ho dataset is kept separate during the training rounds and used to evaluate the final model at the end.
+
+When there are `n` number of clients, the tt dataset is split evenly amongst those clients. If no data partition file is provided, the tt dataset is split randomly between the `n` clients. In this case, no assumptions can be made about the label distributions. 
+
+When a data partition file is provided, it is assumed that it partitions just the tt dataset. In other words, when a data partition file is provided, the length of the data partition file must match the length of the tt dataset. When provided, the tt dataset is split in accordance to the partition file.
+
+### Sample Dataset: Soybean Trait Prediction Research
+While users are encoraged to bring and test their own datasets, a small sample dataset on soybeans may be found in the resources below. This was one of the datasets used to build and test this PETs testbed, and can run relatively quickly due to its small size. This makes it ideal for learning how to use the PETs testbed.
+
+Published paper: [Machine learning models outperform deep learning models, provide interpretation and facilitate feature selection for soybean trait prediction](https://bmcplantbiol.biomedcentral.com/articles/10.1186/s12870-022-03559-z)
+
+Jupyter notebooks for the soybean paper (GitHub): [Soybean_Trait_Prediction](https://github.com/mitchgill16/Soybean_Trait_Prediction)
+
+Dataset host site: https://data.pawsey.org.au/projects/
+
+Unfortunately, you cannot share a link that goes directly to the folders containing the dataset CSV files, so you will have to navigate through the UI's folder structure to `/NGS Analysis Results/shortTerm/mgill/DL/holdout_and_equivalent_merged_1pcnt_removed`.
+
+In that folder, you will see the `holdout` and `train_test` datasets named with the feature as a prefix, for example `"FlC_"` for flower color.
 
 ## Modifying the Parameters <a name="params"></a>
 
@@ -140,7 +178,7 @@ Regardless of how the parameter values are input, the values will be validated a
 | `client_id` | Client ID used for the current client | integer | min: 0, max: 100 |
 | `seed` | The seed used to randomize training and testing | integer | min: 1, max: 1000 |
 | `epochs` | The number of model training epochs. An epoch is one full pass through a training dataset. | integer | min: 1, max: 100 |
-| `batch_divisor` | The divisor used to determine the number of batches (`num_batches = dataset_size / batch_divisor`) | integer | min: 1 |
+| `batch_size` | The size of each training batch | integer | min: 8 |
 | `test_fraction` | The fraction of the dataset to set aside for testing | number | exclusive min: 0, exclusive max: 1 |
 | `learning_rate` | Sets the model’s learning rate. This defines how much a model changes at each iteration. | number | exclusive min: 0, exclusive max: 1 |
 | `weight_decay` | Sets the model’s weight decay. This is a regularization method that penalizes high weights. | number | exclusive min: 0, exclusive max: 0.1 |
@@ -172,10 +210,11 @@ Regardless of how the parameter values are input, the values will be validated a
 | `centralised_eval` | Whether centralized evaluation is enabled for XGBoost | boolean | — |
 | `scaled_lr` | Whether scaled learning rate behavior is enabled for XGBoost | boolean | — |
 | `print_warning_logs` | Set to True to have warning logs print to the terminal. Set to False to have them directed to a log file in the output directory | boolean | - |
+| `use_public_data` | Set to True if you have public data you want to be included in the train-test dataset. | boolean | - |
 
 ### Switching Between Regression and Classification
 
-Use `problem_type` to choose the task:
+This testbed allows the user to switch between classification and regression problems. Use the `problem_type` parameter to choose the model task. An example of modifying this through the configuration file is shown below.
 
 ```json
 {
@@ -253,14 +292,6 @@ Example `config.json`:
 ```
 
 Use `model_type: "cnn"` for non-DP CNN training. Use `model_type: "dpcnn"` for the Opacus DP CNN workflow.
-
-## Running Batch Experiments <a name="batch"></a>
-
-The purpose of batch experiments is to allow users to run the PETs Testbed on a series of values for a single parameter with the goal of identifying the effect that comes from incrementally modifying that particular parameter.
-
-To run a batch experiment, run `python run_batch.py` from the dpcnn_opacus directory.
-
-The batch experimentation script will prompt you for the parameter type and parameter values you would like to run the experiment on. All other parameters are taken from the config.json configuration file and are kept constant in each subsequent run. Ensure config.json has all of the other parameters you would like to use. 
 
 ## Understanding the Output <a name="output"></a>
 
@@ -359,116 +390,6 @@ On your local machine:
 1. Move your results files to you local machine by running `scp '{REMOTE_USER}@{REMOTE_IP}:{REMOTE_PETS_TESTBED_DIRECTORY_PATH}/reports/*' {LOCAL_PETS_TESTBED_DIRECTORY_PATH}/reports/`. If your VM does not have password authentication enabled, you may need to specify your SSH key by running `scp -i {SSH_KEY_PATH} '{REMOTE_USER}@{REMOTE_IP}:{REMOTE_PETS_TESTBED_DIRECTORY_PATH}/reports/*' {LOCAL_PETS_TESTBED_DIRECTORY_PATH}/reports/`.
 1. Initiate your SSH tunnel by running `ssh -L {PORT_NUMBER}:localhost:{PORT_NUMBER} {REMOTE_USER}@{REMOTE_IP}`
 1. As long as your SSH tunnel session is active, you should now be able to access and use the results viewer on your local machine's browser at `http://localhost:{PORT_NUMBER}/results_viewer.html`
-
-## Data References <a name="refs"></a>
-
-### Soybean Trait Prediction Research
-
-Published paper: [Machine learning models outperform deep learning models, provide interpretation and facilitate feature selection for soybean trait prediction](https://bmcplantbiol.biomedcentral.com/articles/10.1186/s12870-022-03559-z)
-
-Jupyter notebooks for the soybean paper (GitHub): [Soybean_Trait_Prediction](https://github.com/mitchgill16/Soybean_Trait_Prediction)
-
-#### Datasets
-
-Dataset host site: https://data.pawsey.org.au/projects/
-
-Unfortunately, you cannot share a link that goes directly to the folders containing the dataset CSV files, so you will have to navigate through the UI's folder structure to `/NGS Analysis Results/shortTerm/mgill/DL/holdout_and_equivalent_merged_1pcnt_removed`.
-
-In that folder, you will see the `holdout` and `train_test` datasets named with the feature as a prefix, for example `"FlC_"` for flower color.
-
-## Flower/Ray client, model, and logging behavior <a name="flwr"></a>
-
-This codebase currently follows the standard Flower simulation pattern:
-
-- One data partition corresponds to one Flower client.
-- One Flower client trains one local model update per federated round.
-
-### Parameters that affect how many clients train
-
-- `num_partitions` controls how many simulated client partitions are available when random partitioning is used.
-- `num_clients` determines how many clients are trained when no data partition file is provided.
-- When `data_partitions_file` is provided, the code reads the number of `num_client` entries in that file and uses those as the available clients and client data partitions.
-
-### Parameters that affect concurrency
-
-- `num_cpus` does not directly control how many models are trained.
-- In Ray, `num_cpus` is a per-client resource reservation.
-- Lowering `num_cpus` can allow more Flower clients to run at the same time, so logs from multiple clients may appear interleaved.
-- Increasing `num_cpus` can force more sequential execution by making each client reserve more of the machine.
-
-### Interpreting output
-
-Current output may look like:
-
-```
-Client 0 | Epoch 1/100 | ...
-Client 3 | Epoch 1/100 | ...
-Client 1 | Epoch 1/100 | ...
-```
-
-It means multiple client processes are training concurrently, and Ray prints logs as each process emits them. The order is based on scheduling/runtime progress, not client id order.
-
-### Planned cleanup
-
-To reduce confusion in a future non-hotfix change:
-
-- Document the relationship between partition files, Flower clients, and federated rounds directly in the configuration docs.
-- Keep memory-related changes separate from naming/logging cleanup to avoid expanding the current hotfix scope.
-
-## Memory-mapped data loading <a name="mem"></a>
-
-The Flower simulation path uses memory-mapped `.npy` files for the DPCNN data arrays. This was added to reduce Ray out-of-memory failures caused by each client process loading and copying large genomics arrays.
-
-### Previous behavior
-
-The original Flower/Ray path loaded pickled `.dat` arrays inside each client process. It then built additional NumPy arrays such as:
-
-- `vcf = np.concatenate((tt_vcf, ho_vcf), axis=0)`
-- `pheno = np.concatenate((tt_pheno, ho_pheno), axis=0)`
-- `combined_dataset = np.concatenate((vcf, pheno), axis=1)`
-- client train/test slices such as `combined_dataset[train_indices]`
-
-Those operations create full in-memory copies. With multiple Ray clients, the same large dataset could be loaded and copied several times at once.
-
-### Current behavior
-
-The federated client/server path now uses `load_npy_feature_label_data`, which:
-
-- checks for required `.npy` files matching `_tt_vcf`, `_tt_pheno`, `_ho_vcf`, and `_ho_pheno`
-- automatically converts missing `.npy` files from the matching `.dat` files
-- opens the `.npy` arrays with `np.load(..., mmap_mode="r")`
-- keeps the arrays file-backed instead of eagerly loading each full array into every Ray process
-
-Using `mmap_mode="r"` means NumPy creates an array-like view over the `.npy` file instead of immediately copying the whole file into process memory. The operating system loads pages from the file only as rows are accessed. Since Ray runs clients in separate worker processes, this is important: multiple workers can map the same read-only data files without each worker eagerly owning a separate full private copy of every array.
-
-This does not make the dataset free. Rows that are actively read still occupy memory, and PyTorch/Opacus still allocate tensors, gradients, optimizer state, and batch data during training. The benefit is that baseline dataset storage is file-backed and shared more efficiently by the OS, so memory usage is driven more by active training work and less by repeated full dataset copies in each Ray client.
-
-The large `tt` and `ho` feature/label arrays stay physically separate:
-
-- `tt_vcf`
-- `tt_pheno`
-- `ho_vcf`
-- `ho_pheno`
-
-The `IndexedArrayDataset` class treats those separate arrays as one logical `tt + ho` dataset. Global row indices keep their original meaning: rows `0..len(tt)-1` refer to `tt`, and later rows refer to `ho` after subtracting `len(tt)`.
-
-This preserves the original partition-file behavior without building large concatenated arrays.
-
-### Automatic conversion
-
-If one or more required `.npy` files are missing, `dataset.py` calls `convert_dat_to_npy.convert_dat_to_npy(data_dir)` automatically. Existing `.npy` files are left in place, so conversion should only happen when needed.
-
-The converter only converts `.dat` files that contain NumPy arrays. Non-array pickle files are skipped.
-
-### Expected memory behavior
-
-This change reduces memory by avoiding repeated full dataset copies across Ray client workers. It does not eliminate all memory use. Training can still use several GB of RAM because PyTorch, Opacus, Ray actors, optimizer state, gradients, and active batches all allocate memory.
-
-A moderate RAM peak during training is expected. The important improvement is that memory should no longer scale as badly with repeated dataset copies per client. If running into OOM issues, try increasing the number of cpus allocated for each Ray/Flwr client (increase the num_cpus parameter from the command line or config.json). This will reduce the number of clients running at any given time and therefore reduce the overall RAM usage.
-
-### Legacy path
-
-The legacy `load_pickle_data` function remains available for older scripts such as centralized training. The federated Flower client/server path should use the mmap-backed loader instead.
 
 ## License
 
