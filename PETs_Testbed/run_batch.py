@@ -1,3 +1,6 @@
+# For licensing matters, please refer to the licensing statement at:
+# https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
+
 import json
 import subprocess
 import sys
@@ -211,7 +214,7 @@ def validate_parameters(model_choice: str, parameter_choice: str, parameters: li
         List of valid parameters
     """
     # Validate the default configuration without any CLI override
-    result = subprocess.run(["python3", "run.py", f"--model_type={model_choice}", "--check_only"], capture_output=False, text=False, check=True)
+    result = subprocess.run(["python3", "run.py", f"--model_type={model_choice}", "--check_only"], capture_output=True, text=True, check=True)
     if result.returncode != 0:
         print(
             " Unexpected error occurred during validation of your configuration file. Please check your configuration file and try again. Aborting."
@@ -264,15 +267,15 @@ def run_experiments(parameters: list) -> None:
 
     # Create folder in output_dir to hold 
 
-    current_dir = Path(__file__).resolve().parent
-    config_path = current_dir / "config.json"
+    root_dir = Path(__file__).resolve().parent.parent
+    config_path = root_dir / "configs" / "config.json"
 
     config = load_json_schema(config_path)
 
     try:
         output_dir = config["output_dir"]
     except:
-        schema_path = current_dir / "configuration-schema.json"
+        schema_path = root_dir / "schemas" / "configuration-schema.json"
         schema = load_json_schema(schema_path)
         output_dir = schema["properties"]["output_dir"]["default"]
 
@@ -311,14 +314,14 @@ def run_experiments(parameters: list) -> None:
 
 
 def main() -> None:
-    current_dir = Path(__file__).resolve().parent
+    root_dir = Path(__file__).resolve().parent.parent
 
     # Load the main schema that describes the supported model configurations.
-    schema_path = current_dir / "configuration-schema.json"
+    schema_path = root_dir / "schemas" / "configuration-schema.json"
     schema = load_json_schema(schema_path)
 
     # Load the batch-experimentation settings, including any parameter blacklist.
-    batch_experimentation_path = current_dir / "batch_experimentation.json"
+    batch_experimentation_path = root_dir / "configs" / "batch_experimentation.json"
     batch_experimentation = load_json_schema(batch_experimentation_path)
 
     parameters = get_parameters(schema, batch_experimentation)
