@@ -24,12 +24,11 @@ class DummyBooster:
 
 
 def test_metrics_from_predictions_supports_regression():
-    model = BaseModel(model_id=0, output_dir=None)
+    model = BaseModel(model_id=0, output_dir=None, problem_type="regression")
 
-    metrics = model.metrics_from_predictions(
+    metrics = model.task.metrics(
         labels=np.array([1.0, 2.0, 3.0]),
         predictions=np.array([1.0, 2.2, 4.0]),
-        problem_type="regression",
         accuracy_tolerance=0.25,
     )
 
@@ -39,17 +38,11 @@ def test_metrics_from_predictions_supports_regression():
 
 
 def test_metrics_from_predictions_supports_classification_probabilities():
-    model = BaseModel(model_id=0, output_dir=None)
+    model = BaseModel(model_id=0, output_dir=None, problem_type="classification")
 
-    metrics = model.metrics_from_predictions(
+    metrics = model.task.metrics(
         labels=np.array([0, 1, 1, 0]),
-        predictions=np.array([
-            [0.9, 0.1],
-            [0.2, 0.8],
-            [0.3, 0.7],
-            [0.6, 0.4],
-        ]),
-        problem_type="classification",
+        predictions=np.array([0, 1, 1, 0]),
         accuracy_tolerance=0.0,
     )
 
@@ -104,7 +97,7 @@ def test_xgboost_data_metrics_uses_shared_regression_metrics():
     )
     model.model = DummyBooster([1.0, 2.5])
 
-    metrics = model.data_metrics(DummyData([1.0, 2.0]))
+    metrics, _ = model.dataset_metrics(DummyData([1.0, 2.0]))
 
     assert metrics["accuracy"] == pytest.approx(1.0)
     assert metrics["mse"] == pytest.approx(0.125)
@@ -121,7 +114,7 @@ def test_xgboost_data_metrics_uses_shared_classification_metrics():
     )
     model.model = DummyBooster([[0.8, 0.2], [0.1, 0.9], [0.7, 0.3]])
 
-    metrics = model.data_metrics(DummyData([0, 1, 0]))
+    metrics, _ = model.dataset_metrics(DummyData([0, 1, 0]))
 
     assert metrics["accuracy"] == pytest.approx(1.0)
     assert metrics["precision_macro"] == pytest.approx(1.0)
