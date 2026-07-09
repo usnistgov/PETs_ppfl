@@ -281,15 +281,15 @@ def run_experiments(parameters: list) -> None:
 
     # Create folder in output_dir to hold 
 
-    current_dir = Path(__file__).resolve().parent
-    config_path = current_dir / "config.json"
+    root_dir = Path(__file__).resolve().parent
+    config_path = root_dir / "configs" / "config.json"
 
     config = load_json_schema(config_path)
 
     try:
         output_dir = config["output_dir"]
     except:
-        schema_path = current_dir / "configuration-schema.json"
+        schema_path = root_dir / "schemas" / "configuration-schema.json"
         schema = load_json_schema(schema_path)
         output_dir = schema["properties"]["output_dir"]["default"]
 
@@ -328,14 +328,14 @@ def run_experiments(parameters: list) -> None:
 
 
 def main() -> None:
-    current_dir = Path(__file__).resolve().parent
+    root_dir = Path(__file__).resolve().parent.parent
 
     # Load the main schema that describes the supported model configurations.
-    schema_path = current_dir / "configuration-schema.json"
+    schema_path = root_dir / "configs" / "configuration-schema.json"
     schema = load_json_schema(schema_path)
 
     # Load the batch-experimentation settings, including any parameter blacklist.
-    batch_experimentation_path = current_dir / "batch_experimentation.json"
+    batch_experimentation_path = root_dir / "configs" / "batch_experimentation.json"
     batch_experimentation = load_json_schema(batch_experimentation_path)
 
     parameters = get_parameters(schema, batch_experimentation)
