@@ -297,7 +297,7 @@ Use `model_type: "cnn"` for non-DP CNN training. Use `model_type: "dpcnn"` for t
 
 The purpose of batch experiments is to allow users to run the PETs Testbed on a series of values for a single parameter with the goal of identifying the effect that comes from incrementally modifying that particular parameter.
 
-To run a batch experiment, run `python run_batch.py` from the dpcnn_opacus directory.
+To run a batch experiment, run `python3.10 run_batch.py` from the dpcnn_opacus directory.
 
 The batch experimentation script will prompt you for the parameter type and parameter values you would like to run the experiment on. All other parameters are taken from the config.json configuration file and are kept constant in each subsequent run. Ensure config.json has all of the other parameters you would like to use. 
 
@@ -387,7 +387,7 @@ To make it easier for users to view the results of both singular runs and batch 
 
 To access the results viewer, run the following command from the genomics_ppfl_base directory while replacing {PORT_NUMBER} with a desired port of your choosing. Ensure the port is not already in use by running `lsof -i :{PORT_NUMBER}`.  
 
-`python3 -m http.server {PORT_NUMBER}`
+`python3.10 -m http.server {PORT_NUMBER}`
 
 You can then access the results viewer from your browser at `http://localhost:{PORT_NUMBER}/results_viewer.html`
 
@@ -400,7 +400,7 @@ If the machine that the PETs Testbed and test results are located on does not ha
 
 On your remote VM:
 1. Ensure the port is not already in use by running `lsof -i :{PORT_NUMBER}`
-1. Start your web server by running `pyenv exec python3 -m http.server {PORT_NUMBER}`
+1. Start your web server by running `pyenv exec python3.10 -m http.server {PORT_NUMBER}`
 
 On your local machine:
 1. Ensure you have a local copy of the PETs_Testbed code 
