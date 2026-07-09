@@ -291,7 +291,7 @@ The purpose of batch experiments is to allow users to run the PETs Testbed on a 
 
 To run a batch experiment, run `python3.10 run_batch.py` from the `PETs_Testbed` directory.
 
-The batch experimentation script will prompt you for the parameter type and parameter values you would like to run the experiment on. All other parameters are taken from the configs/config.json configuration file and are kept constant in each subsequent run. Ensure configs/config.json has all of the other parameters you would like to use, or specify the path to the desired configuration file using the `--config` command line argument. 
+The batch experimentation script will prompt you for the parameter type and parameter values you would like to run the experiment on. All other parameters are taken from the configs/config.json configuration file and are kept constant in each subsequent run. Ensure configs/config.json has all of the other parameters you would like to use. 
 
 ## Results Viewer <a name="viewer"></a>
 
