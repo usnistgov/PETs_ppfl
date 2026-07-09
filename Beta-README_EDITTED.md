@@ -1,6 +1,6 @@
 # Privacy-Enhancing Technologies (PETs) Testbed
 
-The NIST Genomics PETs Testbed (beta) aims to provide a framework for evaluating the efficacy of privacy-enhancing technologies (PETs) on genomics machine learning workloads. It supports centralized and federated training using convolutional neural network (CNN), differentially private CNN, and extreme gradient boosting (XGBoost) models and provides tools for users to compare how experiment configurations and privacy settings affects model performance.
+The NIST Genomics PETs Testbed (beta) aims to provide a framework for evaluating the efficacy of privacy-enhancing technologies (PETs) on genomics machine learning workloads. It supports centralized and federated training using convolutional neural network (CNN), differentially private CNN, and extreme gradient boosting (XGBoost) models and provides tools for users to compare how experiment configurations and privacy settings affect model performance.
 
 # Table of Contents
 1. [Main Components](#main_components)
@@ -134,7 +134,7 @@ python3.10 run.py --check_only
 
 This will load the default parameter values from the schema and run a simple federated learning workflow with differential privacy. 
 
-There are serveral ways to adjust the parameter values but regardless of how the parameter values are specified the values will be validated against the types and ranges specified by `configuration-schema.json`. Any provided file paths, such as a data partition file or an output directory, must exist prior to running the testbed to avoid early termination. If parameter errors occur, error messages and suggestions should be printed to the terminal.
+There are several ways to adjust the parameter values but regardless of how the parameter values are specified the values will be validated against the types and ranges specified by `configuration-schema.json`. Any provided file paths, such as a data partition file or an output directory, must exist prior to running the testbed to avoid early termination. If parameter errors occur, error messages and suggestions should be printed to the terminal.
 
 ### Adjusting testbed parameters using the configuration file
 
@@ -231,7 +231,6 @@ Classification assumes the phenotype labels belong to a fixed set of classes. `c
 For XGBoost classification, if the default regression settings are still present, the run updates `objective` from `reg:squarederror` to `multi:softprob` and `eval_metric` from `rmse` to `mlogloss`.
 
 </details>
-
 
 <details>
 <summary><strong> Centralized Training </strong></summary>
@@ -351,6 +350,7 @@ Output files include `.npz` metadata files, `.json` human-readable reports, `.to
 | `hyperparameters.epsilon` | Determines the amount of privacy added to the data. | number |
 | `hyperparameters.delta` | Measures the chance of a data breach. It defines the probability of the noise not adding sufficient privacy | number |
 | `hyperparameters.max grad norm` | Clips the gradients to be under this maximum before adding noise | number |
+
 </details>
 
 <details>
