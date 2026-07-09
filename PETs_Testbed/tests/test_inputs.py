@@ -36,7 +36,7 @@ COMMON_BASE_CONFIG: Dict[str, Any] = {
     "client_id": 0,
     "seed": 1,
     "epochs": 1,
-    "batch_divisor": 32,
+    "batch_size": 32,
     "test_fraction": 0.2,
     "print_warning_logs": False,
     "problem_type": "regression",
@@ -416,8 +416,8 @@ CASES: List[Any] = [
     pytest.param(Case("20a. epochs boundary valid", _base_with(epochs=100)), id="t20a"),
     pytest.param(Case("20b. epochs boundary invalid", _base_with(epochs=101), allowed_exit_codes={1, 2}), id="t20b"),
 
-    pytest.param(Case("21a. batch_divisor min valid", _base_with(batch_divisor=32)), id="t21a"),
-    pytest.param(Case("21b. batch_divisor invalid (31)", _base_with(batch_divisor=31), allowed_exit_codes={1, 2}), id="t21b"),
+    pytest.param(Case("21a. batch_size min valid", _base_with(batch_size=8)), id="t21a"),
+    pytest.param(Case("21b. batch_size invalid (1)", _base_with(batch_size=1), allowed_exit_codes={1, 2}), id="t21b"),
 
     pytest.param(
         Case(
@@ -568,8 +568,8 @@ CASES: List[Any] = [
     ),
     pytest.param(
         Case(
-            "39. batch_divisor vs dataset_size runtime behavior",
-            _base_with(batch_divisor=1_000_000),
+            "39. batch_size vs dataset_size runtime behavior",
+            _base_with(batch_size=1_000_000),
             allowed_exit_codes={1, 2},
         ),
         id="t39"
@@ -647,7 +647,7 @@ CASES: List[Any] = [
                 client_id=100,
                 seed=1000,
                 epochs=100,
-                batch_divisor=32,
+                batch_size=32,
                 test_fraction=0.9999,
                 learning_rate=0.9999,
                 weight_decay=0.09999,
@@ -670,7 +670,7 @@ CASES: List[Any] = [
                 num_clients=5,
                 num_partitions=20,
                 epochs=3,
-                batch_divisor=32,
+                batch_size=32,
                 test_fraction=0.2,
                 learning_rate=0.01,
                 weight_decay=0.0005,

@@ -57,7 +57,7 @@ def validate_data_size(data_path, batch_size):
             file_path = os.path.relpath(os.path.join(data_path, npy_matches[0]))
             num_data_rows = np.load(file_path, mmap_mode="r").shape[0]
             if batch_size > num_data_rows:
-                raise ValueError(f"Batch divisor (batch_divisor={batch_size}) is greater than train/test dataset size (num_rows={num_data_rows})")
+                raise ValueError(f"Batch size (batch_size={batch_size}) is greater than train/test dataset size (num_rows={num_data_rows})")
             continue
 
 

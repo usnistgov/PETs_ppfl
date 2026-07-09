@@ -68,8 +68,15 @@ def create_dataloaders(
     batch_size,
     problem_type,
     class_labels=None,
+    use_public_data=False
 ):
     tt_vcf, tt_pheno, _, _, pub_vcf, pub_pheno = load_npy_feature_label_data(data_directory)
+    if use_public_data:
+        vcf = [tt_vcf, pub_vcf]
+        pheno = [tt_pheno, pub_pheno]
+    else:
+        vcf = [tt_vcf]
+        pheno = [tt_pheno]
     num_data_features = tt_vcf.shape[1]
 
     data_partitions = None
@@ -85,8 +92,8 @@ def create_dataloaders(
     if data_partitions is not None:
         loaders = load_custom_partitions(
             client_id,
-            [tt_vcf],
-            [tt_pheno],
+            vcf,
+            pheno,
             data_partitions,
             batch_size,
             test_fraction,
@@ -98,8 +105,8 @@ def create_dataloaders(
     else:
         loaders = load_random_partitions(
             client_id,
-            [tt_vcf],
-            [tt_pheno],
+            vcf,
+            pheno,
             batch_size,
             test_fraction,
             seed,

@@ -228,10 +228,13 @@ def load_npy_feature_label_data(data_path):
 
     return tt_vcf, tt_pheno.reshape(-1), ho_vcf, ho_pheno.reshape(-1), pub_vcf, pub_pheno.reshape(-1)
 
-def instantiate_partitioner(partitioner_type, num_partitions, data_dir, num_rows=None):
+def instantiate_partitioner(partitioner_type, num_partitions, data_dir, num_rows=None, use_public_data=False):
     if num_rows is None:
         tt_features, _, ho_features, _, pub_features, _ = load_npy_feature_label_data(data_dir)
-        num_rows = len(tt_features) + len(ho_features)
+        if use_public_data:
+            num_rows = len(tt_features) + len(ho_features) + len(pub_features)
+        else:
+            num_rows = len(tt_features) + len(ho_features)
 
     indices = np.arange(num_rows)
     partitioner = CORRELATION_TO_PARTITIONER[partitioner_type](
@@ -241,18 +244,10 @@ def instantiate_partitioner(partitioner_type, num_partitions, data_dir, num_rows
     return partitioner
 
 
-def train_test_partition_split(
-    partition: Dataset, test_fraction: float, seed: int
-):
+def train_test_partition_split(partition: Dataset, test_fraction: float, seed: int):
     """Split the data into train and validation set given split rate."""
     train_test = partition.train_test_split(test_size=test_fraction, seed=seed)
-    partition_train = train_test["train"]
-    partition_test = train_test["test"]
-
-    num_train = len(partition_train)
-    num_test = len(partition_test)
-
-    return partition_train, partition_test, num_train, num_test
+    return train_test["train"], train_test["test"]
 
 
 def train_test_indices_split(dataset: np.ndarray, indices: np.ndarray, test_frac: float, seed: int, problem_type: str) -> Tuple[List[int], List[int]]:
@@ -338,11 +333,7 @@ def load_random_partitions(
         num_rows=sum(len(sublist) for sublist in features),
     )
     partition = partitioner.load_partition(data_partition_id)
-    train_indices, test_indices, num_train, num_test = (
-        train_test_partition_split(
-            partition, test_fraction=test_fraction, seed=seed
-        )
-    )
+    train_indices, test_indices, = train_test_partition_split(partition, test_fraction=test_fraction, seed=seed)
 
     # Instantiating the dataset partition requires Pandas,
     # but Torch loaders expect Numpy
@@ -355,12 +346,8 @@ def load_random_partitions(
         if problem_type == "classification"
         else None
     )
-    train_data = IndexedArrayDataset(
-        features, labels, train_indices, label_to_index
-    )
-    test_data = IndexedArrayDataset(
-        features, labels, test_indices, label_to_index
-    )
+    train_data = IndexedArrayDataset(features, labels, train_indices, label_to_index)
+    test_data = IndexedArrayDataset(features, labels, test_indices, label_to_index)
 
     # count labels in train and test set
     train_labels = get_split_labels(labels, train_indices)
@@ -381,12 +368,8 @@ def load_random_partitions(
         print_binned_counts(test_labels.reshape(-1, 1), np.arange(len(test_labels)))
 
     # create data loaders
-    train_data_loader = DataLoader(
-        train_data, batch_size=batch_size, shuffle=True
-    )
-    test_data_loader = DataLoader(
-        test_data, batch_size=batch_size, shuffle=False
-    )
+    train_data_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    test_data_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
     return train_data_loader, test_data_loader, train_indices, test_indices
 
@@ -431,12 +414,8 @@ def load_custom_partitions(
         if problem_type == "classification"
         else None
     )
-    train_data = IndexedArrayDataset(
-        features, labels, train_indices, label_to_index
-    )
-    test_data = IndexedArrayDataset(
-        features, labels, test_indices, label_to_index
-    )
+    train_data = IndexedArrayDataset(features, labels, train_indices, label_to_index)
+    test_data = IndexedArrayDataset(features, labels, test_indices, label_to_index)
 
     # count labels in train and test set
     train_labels = get_split_labels(labels, train_indices)
@@ -457,11 +436,7 @@ def load_custom_partitions(
         print_binned_counts(test_labels.reshape(-1, 1), np.arange(len(test_labels)))
 
     # create dataloaders
-    train_loader = DataLoader(
-        train_data, batch_size=batch_size, shuffle=True
-    )
-    test_loader = DataLoader(
-        test_data, batch_size=batch_size, shuffle=False
-    )
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
     return train_loader, test_loader, train_indices, test_indices
