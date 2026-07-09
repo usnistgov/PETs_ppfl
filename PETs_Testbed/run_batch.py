@@ -228,7 +228,7 @@ def validate_parameters(model_choice: str, parameter_choice: str, parameters: li
         List of valid parameters
     """
     # Validate the default configuration without any CLI override
-    result = subprocess.run(["python3", "run.py", f"--model_type={model_choice}", "--check_only"], capture_output=False, text=False, check=True)
+    result = subprocess.run(["python3", "run.py", f"--model_type={model_choice}", "--check_only"], capture_output=True, text=True, check=True)
     if result.returncode != 0:
         print(
             " Unexpected error occurred during validation of your configuration file. Please check your configuration file and try again. Aborting."
@@ -281,7 +281,7 @@ def run_experiments(parameters: list) -> None:
 
     # Create folder in output_dir to hold 
 
-    root_dir = Path(__file__).resolve().parent
+    root_dir = Path(__file__).resolve().parent.parent
     config_path = root_dir / "configs" / "config.json"
 
     config = load_json_schema(config_path)
@@ -331,7 +331,7 @@ def main() -> None:
     root_dir = Path(__file__).resolve().parent.parent
 
     # Load the main schema that describes the supported model configurations.
-    schema_path = root_dir / "configs" / "configuration-schema.json"
+    schema_path = root_dir / "schemas" / "configuration-schema.json"
     schema = load_json_schema(schema_path)
 
     # Load the batch-experimentation settings, including any parameter blacklist.
