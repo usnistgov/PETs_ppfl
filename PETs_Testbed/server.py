@@ -34,12 +34,10 @@ def update_global_history(problem_type, loss, accuracy, mse, classification_metr
 
 def save_global_outputs(output_dir: str, prefix: str, problem_type: str, class_labels,
                         accuracy_tolerance: float, save_model_fn):
+    
     metadata = {"created on": str(datetime.now())}
-
     BaseModel.add_task_report_metadata(metadata, problem_type, class_labels, accuracy_tolerance)
-
-    metadata.update({"loss per round": np.array(loss_rounds),
-                     "accuracy per round": np.array(accuracy_rounds),})
+    metadata.update({"loss per round": np.array(loss_rounds), "accuracy per round": np.array(accuracy_rounds)})
 
     if problem_type == "classification":
         BaseModel.add_global_classification_report_metrics(metadata, precision_rounds, recall_rounds)
