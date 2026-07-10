@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, Dict, Tuple, List, Set,  Union
 from xgboost import XGBClassifier, Booster
 import os
-import pickle
 import re
 from report import Report
 
@@ -23,6 +22,7 @@ from jsonschema.validators import validator_for
 #   purpose: Return the default torch device, preferring CUDA when available and falling back to CPU otherwise.
 ###
 def get_device():
+    """Return CUDA when available, otherwise return the CPU device."""
     if torch.cuda.is_available():
         return torch.device("cuda")
     else:
@@ -33,6 +33,7 @@ def get_device():
 #   purpose: Validate that the discovered train/holdout dataset files are large enough for the requested batch divisor.
 ###
 def validate_data_size(data_path, batch_size):
+    """Validate that data files are large enough for the batch size."""
     suffixes = ["_tt_vcf", "_ho_vcf"]
     for suffix in suffixes:
         npy_matches = [f for f in os.listdir(data_path) if f.endswith(f"{suffix}.npy")]
@@ -49,20 +50,7 @@ def validate_data_size(data_path, batch_size):
 
 
 def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, num_bins: int = 10):
-    """
-    Count the occurrences of binned labels for a given indices in the dataset
-    and print the counts with the bin ranges
-
-    Args:
-        dataset: np.ndarray
-            The dataset to use for counting binned labels.
-        indices: List[int] | np.ndarray
-            The indices to use for counting binned labels.
-        num_bins: int
-            The number of bins to use for binning the labels.
-    Returns:
-        None
-    """
+    """Print counts for numeric labels grouped into evenly spaced bins."""
     # Get labels from the dataset for given indices
     labels = dataset[indices, -1]
     # Create bins for the selected labels
@@ -84,6 +72,7 @@ def print_binned_counts(dataset: np.ndarray, indices: List[int] | np.ndarray, nu
 #   purpose: Route Python warnings into a warnings.log file under output_dir instead of printing them to the terminal.
 ###
 def configure_warning_logging(output_dir):
+    """Route warnings and selected stderr lines into PETs_warnings.log."""
     import logging
     import warnings
     import threading
@@ -114,6 +103,7 @@ def configure_warning_logging(output_dir):
     pattern = re.compile(r"\[[^\]]+\s[EW]\s\d+\s\d+\]")
 
     def forward_stderr():
+        """Forward stderr to the terminal while logging selected warning lines."""
         with (
             os.fdopen(read_fd, "r", buffering=1, errors="replace") as src,
             os.fdopen(stderr_copy, "w", buffering=1, errors="replace") as term,
@@ -133,6 +123,7 @@ def configure_warning_logging(output_dir):
 #   purpose: Return True when the given schema behaves like a JSON object schema, based on type or properties.
 ###
 def _is_object_schema(sch: dict) -> bool:
+    """Return whether a schema behaves like an object schema."""
     return isinstance(sch, dict) and (sch.get("type") == "object" or "properties" in sch)
 
 ###
@@ -140,6 +131,7 @@ def _is_object_schema(sch: dict) -> bool:
 #   purpose: Recursively check whether a schema or any nested applicable subschema defines a default value.
 ###
 def _has_any_default(sch: dict) -> bool:
+    """Return whether a schema tree contains any default value."""
     if not isinstance(sch, dict):
         return False
     if "default" in sch:
@@ -159,6 +151,7 @@ def _has_any_default(sch: dict) -> bool:
 #   purpose: Select the matching oneOf branch using model_type as a discriminator from the current instance.
 ###
 def _select_oneof_branch(oneof_list, instance):
+    """Select the oneOf schema branch matching the model_type discriminator."""
     mt = instance.get("model_type")
     for opt in oneof_list:
         const = opt.get("properties", {}).get("model_type", {}).get("const")
@@ -171,6 +164,7 @@ def _select_oneof_branch(oneof_list, instance):
 #   purpose: Recursively apply schema defaults to a config instance, including nested object properties.
 ###
 def apply_defaults(schema: dict, instance):
+    """Apply schema defaults recursively to a config instance."""
     # Layer: allOf
     for sub in schema.get("allOf", []):
         apply_defaults(sub, instance)
@@ -202,6 +196,7 @@ def apply_defaults(schema: dict, instance):
 #   purpose: Build a mapping from leaf property paths to their corresponding schema definitions.
 ###
 def _schema_leaf_map(schema: Dict[str, Any]) -> Dict[Tuple[str, ...], Dict[str, Any]]:
+    """Map schema leaf paths to their schema definitions."""
     leaf_paths = {}
     for path, prop_schema in _iter_schema_leaf_args(schema):
         if path not in leaf_paths:
@@ -213,6 +208,7 @@ def _schema_leaf_map(schema: Dict[str, Any]) -> Dict[Tuple[str, ...], Dict[str, 
 #   purpose: Build lookup tables for resolving schema leaf paths by leaf name or dotted path.
 ###
 def _build_schema_path_index(schema: Dict[str, Any]):
+    """Build lookup tables for schema leaf names and dotted paths."""
     by_name: Dict[str, Tuple[str, ...]] = {}
     by_dot: Dict[str, Tuple[str, ...]] = {}
     name_to_paths: Dict[str, Set[Tuple[str, ...]]] = {}
@@ -232,6 +228,7 @@ def _build_schema_path_index(schema: Dict[str, Any]):
 #   purpose: Collect the model_params keys declared for each model_type branch.
 ###
 def _model_param_keys_by_model_type(schema: Dict[str, Any]) -> Dict[str, Set[str]]:
+    """Collect model_params keys declared for each model type."""
     keys_by_model: Dict[str, Set[str]] = {}
 
     for sub in schema.get("allOf", []) or []:
@@ -250,6 +247,7 @@ def _model_param_keys_by_model_type(schema: Dict[str, Any]) -> Dict[str, Set[str
 #   purpose: Drop known model_params that do not apply to the selected model_type.
 ###
 def _prune_inactive_model_params(cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove model parameters that do not apply to the selected model."""
     if cfg.get("problem_type") != "classification":
         cfg.pop("class_labels", None)
     if cfg.get("problem_type") != "regression":
@@ -279,6 +277,7 @@ def _prune_inactive_model_params(cfg: Dict[str, Any], schema: Dict[str, Any]) ->
 #   purpose: Flatten a nested config dictionary into dotted-path key/value pairs.
 ###
 def _flatten_config_items(data: Dict[str, Any], prefix: Tuple[str, ...] = ()):
+    """Yield dotted-path config keys from a nested dictionary."""
     for key, value in data.items():
         path = prefix + (key,)
         if isinstance(value, dict):
@@ -291,6 +290,7 @@ def _flatten_config_items(data: Dict[str, Any], prefix: Tuple[str, ...] = ()):
 #   purpose: Collect top-level object-valued schema groups that apply to the current config instance.
 ###
 def _top_level_object_schemas(schema: Dict[str, Any], instance: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Collect top-level object schemas applicable to a config."""
     top_objects: Dict[str, Dict[str, Any]] = {}
 
     for sch in _iter_applicable_schemas(schema, instance):
@@ -307,6 +307,7 @@ def _top_level_object_schemas(schema: Dict[str, Any], instance: Dict[str, Any]) 
 #   purpose: Infer or validate group-level *_enabled flags based on the presence of other keys in each group.
 ###
 def _sync_enabled_flags(cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Infer missing group-level enabled flags from populated settings."""
     top_objects = _top_level_object_schemas(schema, cfg)
 
     for group_name, group_schema in top_objects.items():
@@ -342,6 +343,7 @@ def _sync_enabled_flags(cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str
 #   purpose: Convert a flat or partially nested config into a nested structure aligned to schema paths.
 ###
 def _to_layered_config(flat_cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert flat config keys into the nested schema-aligned structure."""
     cfg: Dict[str, Any] = {}
     by_name, by_dot = _build_schema_path_index(schema)
 
@@ -367,6 +369,7 @@ def _to_layered_config(flat_cfg: Dict[str, Any], schema: Dict[str, Any]) -> Dict
 ###
 def _validate_paths(paths, check_func, kind: str) -> None:
 
+    """Validate one or more paths with the supplied predicate."""
     # Normalize to a list of paths
     if not isinstance(paths, list):
         paths = [paths]
@@ -384,6 +387,7 @@ def _validate_paths(paths, check_func, kind: str) -> None:
 #   purpose: to test if a single file path exists. If it does, no noticable action occurs. If it does not, an error is raised.
 ###
 def validate_file_path(test_path: str) -> None:
+    """Raise when a required file path does not exist."""
     _validate_paths(test_path, os.path.exists, "file")
 
 ###
@@ -393,6 +397,7 @@ def validate_file_path(test_path: str) -> None:
 #   purpose: to test if a directory exists. If it does, no noticable action occurs. If it does not, an error is raised.
 ###
 def validate_dir_path(test_path: str) -> None:
+    """Raise when a required directory path does not exist."""
     _validate_paths(test_path, os.path.isdir, "directory")
 
 ###
@@ -400,6 +405,7 @@ def validate_dir_path(test_path: str) -> None:
 #   purpose: Set a value inside a nested dictionary, creating intermediate dictionaries as needed.
 ###
 def _set_nested(cfg: Dict[str, Any], path: Tuple[str, ...], value: Any) -> None:
+    """Set a value in a nested dictionary, creating parents as needed."""
     cur = cfg
     for k in path[:-1]:
         if k not in cur or not isinstance(cur[k], dict):
@@ -412,6 +418,7 @@ def _set_nested(cfg: Dict[str, Any], path: Tuple[str, ...], value: Any) -> None:
 #   purpose: Yield the base schema and any allOf/selected oneOf subschemas that apply to the instance.
 ###
 def _iter_applicable_schemas(schema: Dict[str, Any], instance: Any) -> List[Dict[str, Any]]:
+    """Yield base, allOf, and selected oneOf schemas for an instance."""
     # Base schema applies
     schemas = [schema]
 
@@ -432,6 +439,7 @@ def _iter_applicable_schemas(schema: Dict[str, Any], instance: Any) -> List[Dict
 #   purpose: Iterate through the schema and its allOf layers in declaration order.
 ###
 def _iter_schema_layers(schema: Dict[str, Any]):
+    """Yield a schema and its allOf layers in declaration order."""
     yield schema
     for sub in schema.get("allOf", []) or []:
         yield from _iter_schema_layers(sub)
@@ -441,6 +449,7 @@ def _iter_schema_layers(schema: Dict[str, Any]):
 #   purpose: Derive a stable property-printing order from the schema and its layered definitions.
 ###
 def _schema_key_order(schema: Dict[str, Any]) -> List[str]:
+    """Return a stable property order based on schema declarations."""
     ordered: List[str] = []
     seen: Set[str] = set()
 
@@ -459,6 +468,7 @@ def _schema_key_order(schema: Dict[str, Any]) -> List[str]:
 #   purpose: Gather all schema fragments that define a given property and combine them into one schema view.
 ###
 def _property_schema(schema: Dict[str, Any], key: str) -> Dict[str, Any]:
+    """Combine schema fragments that define one property."""
     prop_schemas = []
 
     for sch in _iter_schema_layers(schema):
@@ -476,6 +486,7 @@ def _property_schema(schema: Dict[str, Any], key: str) -> Dict[str, Any]:
 #   purpose: Print config values in schema-defined key order, recursively formatting nested objects.
 ###
 def _print_config_by_schema(data: Dict[str, Any], schema: Dict[str, Any], indent: int = 0) -> None:
+    """Print config values in schema-defined order."""
     pad = "  " * indent
     ordered_keys = _schema_key_order(schema)
 
@@ -506,6 +517,7 @@ def _print_config_by_schema(data: Dict[str, Any], schema: Dict[str, Any], indent
 #   purpose: Recursively iterate over leaf argument paths and their schemas from a nested JSON schema.
 ###
 def _iter_schema_leaf_args(schema: Dict[str, Any], prefix: Tuple[str, ...] = ()):
+    """Yield leaf CLI argument paths and their schemas."""
     if not isinstance(schema, dict):
         return
 
@@ -529,6 +541,7 @@ def _iter_schema_leaf_args(schema: Dict[str, Any], prefix: Tuple[str, ...] = ())
 #   purpose: Return a copy of a schema with combinator keywords like allOf/oneOf/anyOf removed.
 ###
 def _schema_without_combinators(sch: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a schema copy without combinator keywords."""
     return {k: v for k, v in sch.items() if k not in ("allOf", "oneOf", "anyOf")}
 
 ###
@@ -536,6 +549,7 @@ def _schema_without_combinators(sch: Dict[str, Any]) -> Dict[str, Any]:
 #   purpose: Build the effective validation schema for an instance by combining all applicable schema parts.
 ###
 def _effective_schema(schema: Dict[str, Any], instance: Any) -> Dict[str, Any]:
+    """Build the validation schema that applies to an instance."""
     parts = []
 
     for sch in _iter_applicable_schemas(schema, instance):
@@ -556,6 +570,7 @@ def _effective_schema(schema: Dict[str, Any], instance: Any) -> Dict[str, Any]:
 #   purpose: Create a copy of the config suitable for schema validation by removing non-schema runtime fields.
 ###
 def _validation_instance(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Prepare a config copy for schema validation."""
     instance = deepcopy(cfg)
     instance.pop("check_only", None)
     return instance
@@ -565,6 +580,7 @@ def _validation_instance(cfg: Dict[str, Any]) -> Dict[str, Any]:
 #   purpose: Validate an instance against a schema and return normalized, user-friendly error tuples.
 ###
 def _get_validation_errors(schema: Dict[str, Any], instance: Dict[str, Any]) -> List[Tuple[str, Any, str]]:
+    """Return normalized schema validation errors for display."""
     Validator = validator_for(schema)
     Validator.check_schema(schema)
     validator = Validator(schema)
@@ -601,6 +617,7 @@ def _get_validation_errors(schema: Dict[str, Any], instance: Dict[str, Any]) -> 
 #   purpose: Convert a CLI string value into the schema-expected Python type when possible.
 ###
 def _coerce_cli_value(raw_value: str, sch: Dict[str, Any]) -> Any:
+    """Coerce a CLI string into the schema-expected Python type."""
     if not isinstance(raw_value, str) or not isinstance(sch, dict):
         return raw_value
 
@@ -633,6 +650,7 @@ def save_xgb(
     round_number: int | None = None,
     output_dir: str | Path | None = None,
 ):
+    """Save an XGBoost model and matching metadata reports."""
     out_name = (
         f"{name}_round_{round_number}" if round_number is not None else name
     )
@@ -651,6 +669,7 @@ def save_xgb(
 class UnknownParameterError(ValueError):
     """Exception raised for unknown parameters."""
     def __init__(self, issues, where="config"):
+        """Build an error message for unknown config or CLI parameters."""
         self.issues = issues
         self.parameters = [name for name, _ in issues]
 
@@ -666,15 +685,18 @@ class UnknownParameterError(ValueError):
 
 class ConfigArgs(argparse.Namespace):
     def __init__(self, schema: Dict[str, Any] | None = None, **kwargs):
+        """Initialize parsed args with the schema used for printing."""
         super().__init__(**kwargs)
         self._print_schema = schema or {}
 
     def print(self):
+        """Print parsed arguments in schema order."""
         data = {k: v for k, v in vars(self).items() if not k.startswith("_")}
         _print_config_by_schema(data, self._print_schema)
 
 class ConfigPipeline:
     def __init__(self) -> None:
+        """Create the config parser and register base CLI arguments."""
         self.parser = argparse.ArgumentParser(exit_on_error=False)
         self.args = None
         self._cli_dest_to_path = {}
@@ -694,6 +716,7 @@ class ConfigPipeline:
     #   purpose: Load and return a JSON file from disk as a Python dictionary.
     ###
     def _load_json(self, path: str) -> Dict[str, Any]:
+        """Load a JSON file from disk."""
         with Path(path).open("r", encoding="utf-8") as f:
             return json.load(f)
 
@@ -702,6 +725,7 @@ class ConfigPipeline:
     #   purpose: Dynamically add CLI arguments for schema leaf properties and track their path mappings.
     ###
     def _add_schema_cli_arguments(self, schema: Dict[str, Any]) -> None:
+        """Register CLI arguments derived from schema leaves."""
         if self._schema_args_added:
             return
 
@@ -729,6 +753,7 @@ class ConfigPipeline:
     #   purpose: Apply CLI-provided values onto the nested config, coercing values using schema metadata.
     ###
     def _apply_cli_overrides(self, cfg: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
+        """Apply schema-aware CLI overrides to a config dictionary."""
         d = vars(args)
 
         for dest, path in self._cli_dest_to_path.items():
@@ -741,6 +766,7 @@ class ConfigPipeline:
         return cfg
 
     def parse(self) -> argparse.Namespace:
+        """Parse, default, validate, and return runtime configuration."""
         try:
             # first pass: only meta args (config, schema, check_only) are known yet
             meta_args, _ = self.parser.parse_known_args()

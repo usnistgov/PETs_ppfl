@@ -33,6 +33,7 @@ class IndexedArrayDataset(TorchDataset):
     """
 
     def __init__(self, features_list, labels_list, indices, label_to_index=None):
+        """Store mmap-backed feature and label arrays with logical indices."""
         if len(features_list) != len(labels_list):
             raise ValueError("features_list and labels_list must have the same length")
 
@@ -50,9 +51,11 @@ class IndexedArrayDataset(TorchDataset):
         self.label_to_index = label_to_index
 
     def __len__(self):
+        """Return the number of logical rows in this dataset."""
         return len(self.indices)
 
     def __getitem__(self, idx):
+        """Return one indexed feature row and encoded label."""
         row_idx = int(self.indices[idx])
 
         array_idx = bisect.bisect_right(self.offsets, row_idx)
@@ -63,6 +66,7 @@ class IndexedArrayDataset(TorchDataset):
         return self.features_list[array_idx][local_idx], self.encode_label(label)
 
     def encode_label(self, label):
+        """Map classification labels to integer class indices when needed."""
         if self.label_to_index is None:
             return label
         key = normalize_label(label)
@@ -78,26 +82,31 @@ CORRELATION_TO_PARTITIONER = {
 }
 
 def normalize_label(label):
+    """Convert scalar array values into plain Python label values."""
     return label.item() if hasattr(label, "item") else label
 
 def build_label_to_index(class_labels):
+    """Build a class-label to integer-index mapping."""
     if class_labels is None:
         return None
     return {normalize_label(label): i for i, label in enumerate(class_labels)}
 
 def resolve_data_dir(data_path) -> Path:
+    """Resolve a data path relative to this package when needed."""
     data_dir = Path(data_path)
     if not data_dir.is_absolute():
         data_dir = Path(__file__).parent / data_dir
     return data_dir.resolve()
 
 def find_single_npy(data_dir: Path, suffix: str) -> Path | None:
+    """Find the single .npy file matching a required suffix."""
     matches = list(data_dir.glob(f"*{suffix}.npy"))
     if len(matches) > 1:
         raise ValueError(f"Multiple .npy files found for {suffix}: {matches}")
     return matches[0] if matches else None
 
 def ensure_npy_feature_label_files(data_path) -> Path:
+    """Ensure required .npy feature and label files exist."""
     data_dir = resolve_data_dir(data_path)
     missing = [suffix for suffix in NPY_SUFFIXES if find_single_npy(data_dir, suffix) is None]
 
@@ -124,6 +133,7 @@ This file converts .dat files into .npy files for more efficient loading into sh
 Instead, this will create new .npy files with the same file prefixes as the .dat files. 
 """
 def convert_dat_to_npy(data_dir: Path) -> None:
+    """Convert NumPy arrays stored in .dat files to .npy files."""
     if not data_dir.is_dir():
         raise NotADirectoryError(f"Not a directory: {data_dir}")
 
@@ -154,6 +164,7 @@ def convert_dat_to_npy(data_dir: Path) -> None:
         print(f"Converted: {dat_path.name} -> {out_path.name} {arr.shape} {arr.dtype}")
 
 def get_split_labels(labels, indices):
+    """Return labels for logical indices across one or more backing arrays."""
     indices = np.asarray(indices)
     label_arrays = [np.asarray(label).reshape(-1) for label in labels]
     lengths = [len(label) for label in label_arrays]
@@ -177,6 +188,7 @@ def get_split_labels(labels, indices):
     return out
 
 def train_test_split_backed_indices(labels, indices, test_frac, seed, problem_type):
+    """Split logical indices into stratified train and test sets."""
     selected_labels = get_split_labels(labels, indices)
     local_indices = np.arange(len(selected_labels))
 
@@ -192,10 +204,11 @@ def train_test_split_backed_indices(labels, indices, test_frac, seed, problem_ty
     return indices[local_train].tolist(), indices[local_test].tolist()
 
 def load_npy_feature_label_data(data_path):
-    """Load tt/ho feature and label arrays as read-only mmap-backed arrays."""
+    """Load tt/ho/pub feature and label arrays as mmap-backed arrays."""
     data_dir = resolve_data_dir(data_path)
 
     def load_one(suffix):
+        """Handle load one."""
         path = find_single_npy(data_dir, suffix)
         if path is None:
             warnings.warn(f"No .npy file found in {data_dir} matching *{suffix}.npy")
@@ -212,6 +225,7 @@ def load_npy_feature_label_data(data_path):
     return tt_vcf, tt_pheno.reshape(-1), ho_vcf, ho_pheno.reshape(-1), pub_vcf, pub_pheno.reshape(-1)
 
 def instantiate_partitioner(partitioner_type, num_partitions, data_dir, num_rows=None, use_public_data=False):
+    """Create and attach a Flower dataset partitioner over row indices."""
     if num_rows is None:
         tt_features, _, ho_features, _, pub_features, _ = load_npy_feature_label_data(data_dir)
         if use_public_data:
@@ -228,19 +242,13 @@ def instantiate_partitioner(partitioner_type, num_partitions, data_dir, num_rows
 
 
 def train_test_partition_split(partition: Dataset, test_fraction: float, seed: int):
-    """Split the data into train and validation set given split rate."""
+    """Split a Flower partition into train and validation datasets."""
     train_test = partition.train_test_split(test_size=test_fraction, seed=seed)
     return train_test["train"], train_test["test"]
 
 
 def train_test_indices_split(dataset: np.ndarray, indices: np.ndarray, test_frac: float, seed: int, problem_type: str) -> Tuple[List[int], List[int]]:
-    """
-    Split dataset indices into train and test sets for regression tasks.
-    Continuous labels are split into train and test sets using stratified
-    sampling based on quantile bins. If any bin has less than 2 samples,
-    they are added to the training set, and the sufficient indices are
-    stratified split.
-    """
+    """Split indices into train and test sets with stratification."""
     # Get labels from the dataset
     labels = dataset[indices, -1]
 
@@ -289,11 +297,7 @@ def load_partitions(data_partition_id, features, labels, batch_size, test_fracti
                     num_partitions, partitioner_type, data_directory, problem_type,
                     class_labels=None, data_partitions=None) \
                     -> Tuple[DataLoader, DataLoader, List[int], List[int]]:
-    """
-    Load data using either:
-    - custom data_partitions if provided
-    - Flower dataset partitioner otherwise
-    """
+    """Load one client partition and return train/test loaders and indices."""
 
     if data_partitions is not None:
         client_key = f"client_{data_partition_id}"

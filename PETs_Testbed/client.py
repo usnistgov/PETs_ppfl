@@ -31,6 +31,7 @@ from utils import configure_warning_logging, get_device
 DEVICE = get_device()
 
 def empty_evaluate_res(message="No model parameters available for evaluation.") -> EvaluateRes:
+    """Return an empty successful Flower evaluation response."""
     return EvaluateRes(
         status=Status(code=Code.OK, message=message),
         loss=0.0,
@@ -41,7 +42,7 @@ def empty_evaluate_res(message="No model parameters available for evaluation.") 
 def create_dataloaders(client_id, data_partitions_file, data_directory, num_partitions, partitioner_type,
                        test_fraction, seed, batch_size, problem_type, class_labels=None, 
                        use_public_data=False,using_xgboost=False):
-    
+    """Load client data partitions and return loaders or XGBoost matrices."""
     tt_vcf, tt_pheno, _, _, pub_vcf, pub_pheno = load_npy_feature_label_data(data_directory)
     if use_public_data:
         vcf = [tt_vcf, pub_vcf]
@@ -71,6 +72,7 @@ def create_dataloaders(client_id, data_partitions_file, data_directory, num_part
     return num_data_features, partitions_path, train_loader, test_loader, train_indices, test_indices
 
 def loader_to_dmatrix(loader):
+    """Convert a PyTorch loader into an XGBoost DMatrix."""
     features, labels = [], []
     for batch_features, batch_labels in loader:
         features.append(np.asarray(batch_features))
@@ -79,6 +81,7 @@ def loader_to_dmatrix(loader):
 
 class TorchFlowerClient(fl.client.NumPyClient):
     def __init__(self, context: Context, client_id: int, params: Dict[str, Any]):
+        """Initialize the TorchFlowerClient instance."""
         self.context = context
         self.client_state = context.state
         self.client_id = client_id
@@ -95,6 +98,8 @@ class TorchFlowerClient(fl.client.NumPyClient):
         self.eps_per_epoch = []
 
         torch.manual_seed(p["seed"])
+        if not p.get("print_warning_logs"):
+            configure_warning_logging(self.output_dir)
 
         (
             self.num_data_features,
@@ -158,6 +163,7 @@ class TorchFlowerClient(fl.client.NumPyClient):
         self.losses = []
 
     def hyperparameters_metadata(self):
+        """Build report metadata for the client hyperparameters."""
         p = self.params
         hyperparameters = {
             "learning rate": float(p.get("learning_rate")),
@@ -177,9 +183,11 @@ class TorchFlowerClient(fl.client.NumPyClient):
         return hyperparameters
 
     def epoch_metrics_path(self):
+        """Return the temporary path for this round's epoch metrics."""
         return Path(self.output_dir, f".client_{self.client_id}_round_{self.current_round}_epoch_metrics.npz")
 
     def save_epoch_metrics(self):
+        """Persist per-epoch metrics for later evaluation reporting."""
         path = self.epoch_metrics_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         np.savez(
@@ -197,6 +205,7 @@ class TorchFlowerClient(fl.client.NumPyClient):
         )
 
     def load_epoch_metrics(self):
+        """Load and remove saved per-epoch metrics for the current round."""
         path = self.epoch_metrics_path()
         if not path.exists():
             return {
@@ -216,6 +225,7 @@ class TorchFlowerClient(fl.client.NumPyClient):
         return metrics
 
     def build_metadata(self, train_eval, test_eval, epoch_metrics):
+        """Build the JSON/NPZ report metadata for a Torch client round."""
         train_acc, test_acc, train_loss, test_loss, train_mse, test_mse, train_preds, test_preds, train_metrics, test_metrics = (
             train_eval[0], test_eval[0], train_eval[1], test_eval[1],
             train_eval[2], test_eval[2], train_eval[3], test_eval[3],
@@ -272,12 +282,15 @@ class TorchFlowerClient(fl.client.NumPyClient):
         return metadata
 
     def get_parameters(self, config):
+        """Return model parameters in Flower NumPyClient format."""
         return self.cnn_model.get_parameters(config)
 
     def set_parameters(self, parameters):
+        """Load Flower parameters into the local Torch model."""
         self.cnn_model.set_parameters(parameters)
 
     def fit(self, parameters, config):
+        """Train the local Torch model for one federated round."""
         self.current_round = config.get("server_round", 1) - 1
         if not self.use_dp or self.current_round > 0:
             self.set_parameters(parameters)
@@ -318,6 +331,7 @@ class TorchFlowerClient(fl.client.NumPyClient):
         return self.get_parameters(config), len(self.train_loader.dataset), {}
 
     def evaluate(self, parameters, config):
+        """Evaluate the local Torch model and save round artifacts."""
         self.set_parameters(parameters)
 
         (
@@ -356,6 +370,7 @@ class TorchFlowerClient(fl.client.NumPyClient):
 
 class XGBoostFlowerClient(fl.client.Client):
     def __init__(self, context: Context, client_id: int, params: Dict[str, Any]):
+        """Initialize the XGBoostFlowerClient instance."""
         self.context = context
         self.client_id = client_id
         self.params = params
@@ -411,12 +426,14 @@ class XGBoostFlowerClient(fl.client.Client):
         )
 
     def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:
+        """Return an empty initial parameter payload for XGBoost clients."""
         return GetParametersRes(
             status=Status(code=Code.OK, message="OK"),
             parameters=Parameters(tensor_type="", tensors=[]),
         )
 
     def fit(self, ins: FitIns) -> FitRes:
+        """Train the local XGBoost model for one federated round."""
         global_round = int(ins.config["global_round"])
         local_model_bytes = self.xgb_model.fit_round(
             self.train_data,
@@ -449,6 +466,7 @@ class XGBoostFlowerClient(fl.client.Client):
         )
 
     def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
+        """Evaluate the local XGBoost model for Flower aggregation."""
         if not ins.parameters.tensors:
             return empty_evaluate_res()
 
@@ -473,11 +491,13 @@ class XGBoostFlowerClient(fl.client.Client):
 
 class FlowerClient:
     def __init__(self, context: Context, client_id: int, params: Dict[str, Any]):
+        """Initialize the FlowerClient instance."""
         self.context = context
         self.client_id = client_id
         self.params = params
 
     def to_client(self):
+        """Create the concrete Flower client for the configured model type."""
         client_cls = XGBoostFlowerClient if self.params.get("model_type") == "xgboost" else TorchFlowerClient
         client = client_cls(self.context, self.client_id, self.params)
         return client if client_cls is XGBoostFlowerClient else client.to_client()

@@ -21,9 +21,11 @@ from report import Report
 from utils import get_device, print_binned_counts
 
 def get_torch_model_class(model_type: str):
+    """Return the Torch model class for the configured model type."""
     return DPCNNModel if model_type == "dpcnn" else CNNModel
 
 def update_global_history(problem_type, loss, accuracy, mse, classification_metrics=None):
+    """Append one round of global metrics to in-memory history."""
     loss_rounds.append(float(loss))
     accuracy_rounds.append(float(accuracy))
     mse_rounds.append(float(mse))
@@ -35,6 +37,7 @@ def update_global_history(problem_type, loss, accuracy, mse, classification_metr
 def save_global_outputs(output_dir: str, prefix: str, problem_type: str, class_labels,
                         accuracy_tolerance: float, save_model_fn):
     
+    """Save global model metadata, report files, and model weights."""
     metadata = {"created on": str(datetime.now())}
     BaseModel.add_task_report_metadata(metadata, problem_type, class_labels, accuracy_tolerance)
     metadata.update({"loss per round": np.array(loss_rounds), "accuracy per round": np.array(accuracy_rounds)})
@@ -49,6 +52,7 @@ def save_global_outputs(output_dir: str, prefix: str, problem_type: str, class_l
     save_model_fn(Path(output_dir, f"{prefix}_global"))
 
 def build_test_data(strategy_params):
+    """Build the holdout evaluation data for the server strategy."""
     _, _, ho_vcf, ho_pheno, _, _ = load_npy_feature_label_data(strategy_params["data_dir"])
     all_indices = np.arange(len(ho_vcf))
     num_data_features = ho_vcf.shape[1]
@@ -78,6 +82,7 @@ def build_test_data(strategy_params):
     return num_data_features, test_loader
 
 def weighted_average_metrics(metrics: List[Tuple[int, Metrics]]) -> Metrics:
+    """Aggregate client metrics using example-count weighted averages."""
     metrics = [(num, dict(m)) for num, m in metrics if num > 0 and len(m) > 0]
     total = sum(num for num, _ in metrics)
     if total == 0:
@@ -106,9 +111,10 @@ def get_evaluate_fn(
     num_classes: int = 1,
     accuracy_tolerance: float = 0.1,
 ):
-    """Return a function that can be called to do global evaluation."""
+    """Return the global evaluation callback for Torch strategies."""
 
     def evaluate_fn(server_round: int, parameters, config):
+        """Evaluate the global Torch model for one server round."""
         if server_round == 0:
             update_global_history(problem_type, 0.0, 0.0, 0.0, {
                 "precision_macro": 0.0,
@@ -174,7 +180,7 @@ def get_evaluate_fn(
     return evaluate_fn
 
 def fit_round(server_round: int):
-    """Configure the fit function for each round."""
+    """Configure client fit calls for a server round."""
     return {"server_round": server_round}
 
 def evaluate_and_save_xgboost_global(
@@ -246,10 +252,12 @@ def evaluate_and_save_xgboost_global(
 
 class GlobalOutputFedXgbCyclic(FedXgbCyclic):
     def __init__(self, *args, global_output_config=None, **kwargs):
+        """Initialize the GlobalOutputFedXgbCyclic instance."""
         super().__init__(*args, **kwargs)
         self.global_output_config = global_output_config or {}
 
     def aggregate_fit(self, server_round, results, failures):
+        """Aggregate cyclic XGBoost updates and save global outputs."""
         parameters, metrics = super().aggregate_fit(server_round, results, failures)
         evaluate_and_save_xgboost_global(
             server_round,
@@ -259,13 +267,16 @@ class GlobalOutputFedXgbCyclic(FedXgbCyclic):
         return parameters, metrics
 
 def create_xgboost_strategy(strategy_params):
+    """Create the Flower strategy for XGBoost federation."""
     def xgboost_round_config(server_round: int) -> Dict[str, str]:
+        """Return XGBoost round metadata for clients."""
         return {"global_round": str(server_round)}
     
     def get_xgboost_evaluate_fn(global_output_config):
-        """Return a CNN/DPCNN-style server evaluate function for XGBoost bagging."""
+        """Return the global evaluation callback for XGBoost bagging."""
 
         def evaluate_fn(server_round, parameters, config):
+            """Evaluate the global XGBoost model for one server round."""
             return evaluate_and_save_xgboost_global(
                 server_round,
                 parameters,
@@ -317,6 +328,7 @@ def create_xgboost_strategy(strategy_params):
 
 
 def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
+    """Create the Flower server strategy for the configured model type."""
     num_classes = strategy_params.get("num_classes", 1)
     problem_type = strategy_params.get("problem_type", "regression")
 

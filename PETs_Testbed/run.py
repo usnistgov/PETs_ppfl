@@ -6,7 +6,6 @@ import os
 # Stop de-duplicating logs in Ray
 os.environ["RAY_DEDUP_LOGS"] = "0"
 import re
-from typing import Dict
 from pathlib import Path
 import numpy as np
 from flwr.simulation import run_simulation
@@ -177,13 +176,13 @@ client_params = {
     'num_classes': num_classes,
 }
 def client_fn(context: Context):
-    """Returns a FlowerClient"""
+    """Handle client fn."""
     client_id = context.node_config["partition-id"]
     return FlowerClient(context, client_id, client_params).to_client()
 
 
 def server_fn(context: Context) -> ServerAppComponents:
-    """Construct components that set the ServerApp behaviour."""
+    """Handle server fn."""
     strategy = create_strategy(
         {
             "model_type": model_type,
