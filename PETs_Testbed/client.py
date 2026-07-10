@@ -24,16 +24,11 @@ from flwr.common import (
 from flwr.common.logger import log
 from xgboost.core import DMatrix
 
-from dataset import (
-    load_custom_partitions,
-    load_npy_feature_label_data,
-    load_random_partitions,
-)
+from dataset import load_partitions, load_npy_feature_label_data
 from model import CNNModel, DPCNNModel, XGBoostModel
 from utils import configure_warning_logging, get_device
 
 DEVICE = get_device()
-print("DEVICE:", DEVICE)
 
 def empty_evaluate_res(message="No model parameters available for evaluation.") -> EvaluateRes:
     return EvaluateRes(
@@ -43,19 +38,10 @@ def empty_evaluate_res(message="No model parameters available for evaluation.") 
         metrics={"accuracy": 0.0, "mse": 0.0},
     )
 
-def create_dataloaders(
-    client_id: int,
-    data_partitions_file,
-    data_directory,
-    num_partitions,
-    partitioner_type,
-    test_fraction,
-    seed,
-    batch_size,
-    problem_type,
-    class_labels=None,
-    use_public_data=False
-):
+def create_dataloaders(client_id, data_partitions_file, data_directory, num_partitions, partitioner_type,
+                       test_fraction, seed, batch_size, problem_type, class_labels=None, 
+                       use_public_data=False,using_xgboost=False):
+    
     tt_vcf, tt_pheno, _, _, pub_vcf, pub_pheno = load_npy_feature_label_data(data_directory)
     if use_public_data:
         vcf = [tt_vcf, pub_vcf]
@@ -68,43 +54,20 @@ def create_dataloaders(
     data_partitions = None
     if data_partitions_file and Path(data_partitions_file).exists():
         data_partitions = np.load(data_partitions_file)
+        partitions_path = Path(data_partitions_file).name
         print(f"Loaded data partitions from {data_partitions_file}")
     else:
-        print(
-            f"Data partitions file not found at {data_partitions_file}. "
-            f"Using a random partition for client {client_id}"
-        )
-
-    if data_partitions is not None:
-        loaders = load_custom_partitions(
-            client_id,
-            vcf,
-            pheno,
-            data_partitions,
-            batch_size,
-            test_fraction,
-            seed,
-            problem_type,
-            class_labels,
-        )
-        partitions_path = Path(data_partitions_file).name
-    else:
-        loaders = load_random_partitions(
-            client_id,
-            vcf,
-            pheno,
-            batch_size,
-            test_fraction,
-            seed,
-            num_partitions,
-            partitioner_type,
-            data_directory,
-            problem_type,
-            class_labels,
-        )
         partitions_path = "none"
+        print(f"Data partitions file not found at {data_partitions_file}. "
+              f"Using a random partition for client {client_id}")
 
-    train_loader, test_loader, train_indices, test_indices = loaders
+    train_loader, test_loader, train_indices, test_indices = \
+        load_partitions(client_id, vcf, pheno, batch_size, test_fraction, seed, num_partitions,
+                        partitioner_type, data_directory, problem_type, class_labels, data_partitions)
+
+    if using_xgboost:
+        train_loader = loader_to_dmatrix(train_loader)
+        test_loader = loader_to_dmatrix(test_loader)
     return num_data_features, partitions_path, train_loader, test_loader, train_indices, test_indices
 
 def loader_to_dmatrix(loader):
@@ -113,38 +76,6 @@ def loader_to_dmatrix(loader):
         features.append(np.asarray(batch_features))
         labels.append(np.asarray(batch_labels).reshape(-1))
     return DMatrix(data=np.concatenate(features), label=np.concatenate(labels))
-
-def create_xgboost_data(
-    client_id: int,
-    data_partitions_file,
-    data_directory,
-    num_partitions,
-    partitioner_type,
-    test_fraction,
-    seed,
-    batch_size,
-    problem_type,
-    class_labels=None,
-):
-    _, partitions_file, train_loader, test_loader, train_indices, test_indices = create_dataloaders(
-        client_id,
-        data_partitions_file,
-        data_directory,
-        num_partitions,
-        partitioner_type,
-        test_fraction,
-        seed,
-        batch_size,
-        problem_type,
-        class_labels,
-    )
-    return (
-        loader_to_dmatrix(train_loader),
-        loader_to_dmatrix(test_loader),
-        partitions_file,
-        train_indices,
-        test_indices,
-    )
 
 class TorchFlowerClient(fl.client.NumPyClient):
     def __init__(self, context: Context, client_id: int, params: Dict[str, Any]):
@@ -164,8 +95,6 @@ class TorchFlowerClient(fl.client.NumPyClient):
         self.eps_per_epoch = []
 
         torch.manual_seed(p["seed"])
-        if not p.get("print_warning_logs"):
-            configure_warning_logging(self.output_dir)
 
         (
             self.num_data_features,
@@ -215,11 +144,8 @@ class TorchFlowerClient(fl.client.NumPyClient):
                 "max_grad_norm": p.get("max_grad_norm"),
                 "secure_mode": p.get("opacus_secure_mode"),
             }
-            self.optimizer, self.train_loader, self.privacy_engine = self.cnn_model.attach_privacy_engine(
-                self.optimizer,
-                self.train_loader,
-                opacus_params,
-            )
+            self.optimizer, self.train_loader, self.privacy_engine = \
+                self.cnn_model.attach_privacy_engine(self.optimizer, self.train_loader, opacus_params)
 
         self.train_acc_per_epoch = []
         self.test_acc_per_epoch = []
@@ -251,10 +177,7 @@ class TorchFlowerClient(fl.client.NumPyClient):
         return hyperparameters
 
     def epoch_metrics_path(self):
-        return Path(
-            self.output_dir,
-            f".client_{self.client_id}_round_{self.current_round}_epoch_metrics.npz",
-        )
+        return Path(self.output_dir, f".client_{self.client_id}_round_{self.current_round}_epoch_metrics.npz")
 
     def save_epoch_metrics(self):
         path = self.epoch_metrics_path()
@@ -452,22 +375,24 @@ class XGBoostFlowerClient(fl.client.Client):
             configure_warning_logging(self.output_dir)
 
         (
+            self.num_data_features,
+            self.partitions_file,
             self.train_data,
             self.test_data,
-            self.partitions_file,
             self.train_indices,
             self.test_indices,
-        ) = create_xgboost_data(
-            self.client_id,
-            p.get("data_partitions_file"),
-            p.get("data_dir"),
-            self.num_partitions,
-            p.get("partitions_type"),
-            self.test_fraction,
-            self.seed,
-            p.get("batch_size"),
-            self.problem_type,
-            self.class_labels,
+        ) = create_dataloaders(
+            client_id=self.client_id,
+            data_partitions_file=p.get("data_partitions_file"),
+            data_directory=p.get("data_dir"),
+            num_partitions=p.get("num_partitions"),
+            partitioner_type=p.get("partitions_type"),
+            test_fraction=p.get("test_fraction"),
+            seed=p.get("seed"),
+            batch_size=p.get("batch_size"),
+            problem_type=self.problem_type,
+            class_labels=self.class_labels,
+            using_xgboost=True
         )
 
         self.xgb_model = XGBoostModel(

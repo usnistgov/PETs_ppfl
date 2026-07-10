@@ -32,34 +32,17 @@ def update_global_history(problem_type, loss, accuracy, mse, classification_metr
         precision_rounds.append(float(classification_metrics["precision_macro"]))
         recall_rounds.append(float(classification_metrics["recall_macro"]))
 
-def save_global_outputs(
-    output_dir: str,
-    prefix: str,
-    problem_type: str,
-    class_labels,
-    accuracy_tolerance: float,
-    save_model_fn,
-):
-    metadata = {
-        "created on": str(datetime.now()),
-    }
-    BaseModel.add_task_report_metadata(
-        metadata,
-        problem_type,
-        class_labels,
-        accuracy_tolerance,
-    )
-    metadata.update({
-        "loss per round": np.array(loss_rounds),
-        "accuracy per round": np.array(accuracy_rounds),
-    })
+def save_global_outputs(output_dir: str, prefix: str, problem_type: str, class_labels,
+                        accuracy_tolerance: float, save_model_fn):
+    metadata = {"created on": str(datetime.now())}
+
+    BaseModel.add_task_report_metadata(metadata, problem_type, class_labels, accuracy_tolerance)
+
+    metadata.update({"loss per round": np.array(loss_rounds),
+                     "accuracy per round": np.array(accuracy_rounds),})
 
     if problem_type == "classification":
-        BaseModel.add_global_classification_report_metrics(
-            metadata,
-            precision_rounds,
-            recall_rounds,
-        )
+        BaseModel.add_global_classification_report_metrics(metadata, precision_rounds, recall_rounds)
     else:
         metadata["mse per round"] = np.array(mse_rounds)
 
@@ -348,12 +331,7 @@ def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
         if problem_type == "classification"
         else None
     )
-    test_dataset = IndexedArrayDataset(
-        [ho_vcf],
-        [ho_pheno],
-        all_indices,
-        label_to_index,
-    )
+    test_dataset = IndexedArrayDataset([ho_vcf], [ho_pheno], all_indices, label_to_index)
     test_loader = DataLoader(test_dataset, batch_size=strategy_params['batch_size'], shuffle=False)
 
     # count labels in train and test set
