@@ -8,19 +8,13 @@ class Report:
     """Class to handle report components."""
 
     def __init__(self, data: dict):
-        """
-        Initialize the converter with a dictionary.
-        :param data: A dictionary object to be converted.
-        """
+        """Initialize a report from a metadata dictionary."""
         if not isinstance(data, dict):
             raise TypeError("Input must be a dictionary object.")
         self.data = data
 
     def save_to_file(self, filename: str):
-        """
-        Saves the dictionary to a .json file.
-        :param filename: Name of the file (e.g., 'data.json').
-        """
+        """Write report metadata to a JSON file."""
         try:
             with open(filename, 'w') as json_file:
                 json.dump(self.data, json_file, indent=4, cls=NumpyEncoder)
@@ -31,6 +25,7 @@ class Report:
 # Converts Numpy values into their non-numpy equivalents        
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
+        """Convert NumPy values into JSON-serializable Python values."""
         # Turn numpy array into list
         if isinstance(obj, np.ndarray):
             return obj.tolist()

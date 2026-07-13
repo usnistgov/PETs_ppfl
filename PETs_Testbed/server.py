@@ -21,9 +21,11 @@ from report import Report
 from utils import get_device, print_binned_counts
 
 def get_torch_model_class(model_type: str):
+    """Return the Torch model class for the configured model type."""
     return DPCNNModel if model_type == "dpcnn" else CNNModel
 
 def update_global_history(problem_type, loss, accuracy, mse, classification_metrics=None):
+    """Append one round of global metrics to in-memory history."""
     loss_rounds.append(float(loss))
     accuracy_rounds.append(float(accuracy))
     mse_rounds.append(float(mse))
@@ -32,34 +34,16 @@ def update_global_history(problem_type, loss, accuracy, mse, classification_metr
         precision_rounds.append(float(classification_metrics["precision_macro"]))
         recall_rounds.append(float(classification_metrics["recall_macro"]))
 
-def save_global_outputs(
-    output_dir: str,
-    prefix: str,
-    problem_type: str,
-    class_labels,
-    accuracy_tolerance: float,
-    save_model_fn,
-):
-    metadata = {
-        "created on": str(datetime.now()),
-    }
-    BaseModel.add_task_report_metadata(
-        metadata,
-        problem_type,
-        class_labels,
-        accuracy_tolerance,
-    )
-    metadata.update({
-        "loss per round": np.array(loss_rounds),
-        "accuracy per round": np.array(accuracy_rounds),
-    })
+def save_global_outputs(output_dir: str, prefix: str, problem_type: str, class_labels,
+                        accuracy_tolerance: float, save_model_fn):
+    
+    """Save global model metadata, report files, and model weights."""
+    metadata = {"created on": str(datetime.now())}
+    BaseModel.add_task_report_metadata(metadata, problem_type, class_labels, accuracy_tolerance)
+    metadata.update({"loss per round": np.array(loss_rounds), "accuracy per round": np.array(accuracy_rounds)})
 
     if problem_type == "classification":
-        BaseModel.add_global_classification_report_metrics(
-            metadata,
-            precision_rounds,
-            recall_rounds,
-        )
+        BaseModel.add_global_classification_report_metrics(metadata, precision_rounds, recall_rounds)
     else:
         metadata["mse per round"] = np.array(mse_rounds)
 
@@ -67,20 +51,23 @@ def save_global_outputs(
     Report(metadata).save_to_file(Path(output_dir, f"{prefix}_global_metadata.json"))
     save_model_fn(Path(output_dir, f"{prefix}_global"))
 
-def build_xgboost_test_data(strategy_params):
-    _, _, ho_vcf, ho_pheno, _, _ = load_npy_feature_label_data(
-        strategy_params["data_dir"]
-    )
-    test_features = ho_vcf
-    test_labels = ho_pheno.reshape(-1)
-
+def build_test_data(strategy_params):
+    """Build the holdout evaluation data for the server strategy."""
+    _, _, ho_vcf, ho_pheno, _, _ = load_npy_feature_label_data(strategy_params["data_dir"])
+    all_indices = np.arange(len(ho_vcf))
+    num_data_features = ho_vcf.shape[1]
+    
     if strategy_params.get("problem_type") == "classification":
-        label_to_index = {
-            label: i for i, label in enumerate(strategy_params.get("class_labels"))
-        }
-        test_labels = np.array([label_to_index[label] for label in test_labels])
+        label_to_index = {label: i for i, label in enumerate(strategy_params.get("class_labels"))}
+        ho_pheno = np.array([label_to_index[label] for label in ho_pheno])
 
-        # count labels in train and test set
+    if strategy_params.get("model_type") == "xgboost":
+        test_loader = DMatrix(data=ho_vcf, label=ho_pheno)
+    else:
+        test_dataset = IndexedArrayDataset([ho_vcf], [ho_pheno], all_indices, label_to_index)
+        test_loader = DataLoader(test_dataset, batch_size=strategy_params['batch_size'], shuffle=False)
+
+    # count labels in train and test set
     print("\n\nHOLDOUT DATASET FOR EVALUATION")
     if strategy_params.get("problem_type") == "classification":
         print(f"Holdout dataset label counts")
@@ -92,9 +79,10 @@ def build_xgboost_test_data(strategy_params):
         print_binned_counts(ho_pheno.reshape(-1, 1), np.arange(len(ho_pheno)))
     print("\n\n")
 
-    return DMatrix(data=test_features, label=test_labels)
+    return num_data_features, test_loader
 
 def weighted_average_metrics(metrics: List[Tuple[int, Metrics]]) -> Metrics:
+    """Aggregate client metrics using example-count weighted averages."""
     metrics = [(num, dict(m)) for num, m in metrics if num > 0 and len(m) > 0]
     total = sum(num for num, _ in metrics)
     if total == 0:
@@ -105,6 +93,7 @@ def weighted_average_metrics(metrics: List[Tuple[int, Metrics]]) -> Metrics:
         name: sum(num * m.get(name, 0.0) for num, m in metrics) / total
         for name in names
     }
+
 loss_rounds = []  # loss per global round
 accuracy_rounds = []  # accuracy per global round
 mse_rounds = []  # mse per global round
@@ -122,9 +111,10 @@ def get_evaluate_fn(
     num_classes: int = 1,
     accuracy_tolerance: float = 0.1,
 ):
-    """Return a function that can be called to do global evaluation."""
+    """Return the global evaluation callback for Torch strategies."""
 
     def evaluate_fn(server_round: int, parameters, config):
+        """Evaluate the global Torch model for one server round."""
         if server_round == 0:
             update_global_history(problem_type, 0.0, 0.0, 0.0, {
                 "precision_macro": 0.0,
@@ -190,12 +180,8 @@ def get_evaluate_fn(
     return evaluate_fn
 
 def fit_round(server_round: int):
-    """Configure the fit function for each round."""
+    """Configure client fit calls for a server round."""
     return {"server_round": server_round}
-
-
-def xgboost_round_config(server_round: int) -> Dict[str, str]:
-    return {"global_round": str(server_round)}
 
 def evaluate_and_save_xgboost_global(
     server_round: int,
@@ -264,25 +250,14 @@ def evaluate_and_save_xgboost_global(
         "mse": float(mse),
     }
 
-def get_xgboost_evaluate_fn(global_output_config):
-    """Return a CNN/DPCNN-style server evaluate function for XGBoost bagging."""
-
-    def evaluate_fn(server_round, parameters, config):
-        return evaluate_and_save_xgboost_global(
-            server_round,
-            parameters,
-            **global_output_config,
-        )
-
-    return evaluate_fn
-
-
 class GlobalOutputFedXgbCyclic(FedXgbCyclic):
     def __init__(self, *args, global_output_config=None, **kwargs):
+        """Initialize the GlobalOutputFedXgbCyclic instance."""
         super().__init__(*args, **kwargs)
         self.global_output_config = global_output_config or {}
 
     def aggregate_fit(self, server_round, results, failures):
+        """Aggregate cyclic XGBoost updates and save global outputs."""
         parameters, metrics = super().aggregate_fit(server_round, results, failures)
         evaluate_and_save_xgboost_global(
             server_round,
@@ -292,12 +267,30 @@ class GlobalOutputFedXgbCyclic(FedXgbCyclic):
         return parameters, metrics
 
 def create_xgboost_strategy(strategy_params):
+    """Create the Flower strategy for XGBoost federation."""
+    def xgboost_round_config(server_round: int) -> Dict[str, str]:
+        """Return XGBoost round metadata for clients."""
+        return {"global_round": str(server_round)}
+    
+    def get_xgboost_evaluate_fn(global_output_config):
+        """Return the global evaluation callback for XGBoost bagging."""
+
+        def evaluate_fn(server_round, parameters, config):
+            """Evaluate the global XGBoost model for one server round."""
+            return evaluate_and_save_xgboost_global(
+                server_round,
+                parameters,
+                **global_output_config,
+            )
+
+        return evaluate_fn
+    
     train_method = strategy_params.get("train_method")
     pool_size = strategy_params["num_clients"]
     min_fit_clients = strategy_params["num_clients"]
     min_evaluate_clients = strategy_params["num_clients"]
     centralised_eval = strategy_params.get("centralised_eval")
-    test_data = build_xgboost_test_data(strategy_params)
+    _, test_data = build_test_data(strategy_params)
     global_output_config = {
         "num_rounds": strategy_params["num_rounds"],
         "test_data": test_data,
@@ -335,41 +328,16 @@ def create_xgboost_strategy(strategy_params):
 
 
 def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
+    """Create the Flower server strategy for the configured model type."""
+    num_classes = strategy_params.get("num_classes", 1)
+    problem_type = strategy_params.get("problem_type", "regression")
+
     if strategy_params.get("model_type") == "xgboost":
         return create_xgboost_strategy(strategy_params)
-
-    _, _, ho_vcf, ho_pheno, _, _ = load_npy_feature_label_data(strategy_params['data_dir'])
-    num_data_features = ho_vcf.shape[1]
-    all_indices = np.arange(len(ho_vcf))
-    problem_type = strategy_params.get("problem_type", "regression")
-    num_classes = strategy_params.get("num_classes", 1)
-    label_to_index = (
-        {label: i for i, label in enumerate(strategy_params.get("class_labels"))}
-        if problem_type == "classification"
-        else None
-    )
-    test_dataset = IndexedArrayDataset(
-        [ho_vcf],
-        [ho_pheno],
-        all_indices,
-        label_to_index,
-    )
-    test_loader = DataLoader(test_dataset, batch_size=strategy_params['batch_size'], shuffle=False)
-
-    # count labels in train and test set
-    print("\n\nHOLDOUT DATASET FOR EVALUATION")
-    if problem_type == "classification":
-        print(f"Holdout dataset label counts")
-        test_counts = Counter(int(x) for x in np.asarray(ho_pheno))
-        for cls, count in sorted(test_counts.items()):
-            print(f"class {cls}: {count} records")
-    else:
-        print(f'Holdout dataset binned label counts')
-        print_binned_counts(ho_pheno.reshape(-1, 1), np.arange(len(ho_pheno)))
-    print("\n\n")
+    num_data_features, test_loader = build_test_data(strategy_params)
 
     model_type = strategy_params.get("model_type")
-    model_class = DPCNNModel if model_type == "dpcnn" else CNNModel
+    model_class = get_torch_model_class(model_type)
 
     initial_model = model_class(model_id="initial", output_dir=strategy_params["output_dir"], problem_type=strategy_params["problem_type"])
     output_dim = num_classes if problem_type == "classification" else 1

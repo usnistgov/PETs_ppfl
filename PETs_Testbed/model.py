@@ -22,11 +22,13 @@ from datetime import datetime
 
 class ClassificationTask():
     def predictions(self, outputs):
+        """Convert raw model outputs into task predictions."""
         if isinstance(outputs, torch.Tensor):
             return torch.argmax(outputs, dim=1)
         return np.argmax(outputs, axis=1) if outputs.ndim == 2 else np.rint(outputs)
 
     def loss_and_predictions(self, criterion, outputs, labels):
+        """Compute task loss and predictions for one batch."""
         # raw logits for CE loss
         labels = labels.long()
         predictions = torch.argmax(outputs, dim=1)
@@ -35,6 +37,7 @@ class ClassificationTask():
     
     @classmethod
     def metrics(cls, labels, predictions, accuracy_tolerance=None):
+        """Compute task metrics from labels and predictions."""
         if len(labels) == 0:
             return {"accuracy": 0.0, "precision_macro": 0.0, "recall_macro": 0.0, "f1_macro": 0.0, "mae": 0.0,
                     "mse": 0.0, "rmse": 0.0, "r2": 0.0, "mean": 0.0, "error_mean": 0.0}
@@ -47,24 +50,29 @@ class ClassificationTask():
         return metrics
     
     def add_task_report_metadata(self, metadata, class_labels=None, accuracy_tolerance=None):
+        """Add task-specific metadata fields to a report."""
         metadata["class labels"] = class_labels
 
     def add_report_metrics(self, metadata, train_metrics, test_metrics):
+        """Add task-specific aggregate metrics to report metadata."""
         metadata.update({"train precision macro": float(train_metrics["precision_macro"]),
                          "train recall macro": float(train_metrics["recall_macro"]),
                          "test precision macro": float(test_metrics["precision_macro"]),
                          "test recall macro": float(test_metrics["recall_macro"])})
         
     def format_metrics(self, name, metrics):
+        """Format task metrics for console output."""
         return (f"{name} Macro Precision: {metrics['precision_macro']:.2f}, "
                 f"{name} Macro Recall: {metrics['recall_macro']:.2f}, "
                 f"{name} Macro F1: {metrics['f1_macro']:.2f}")   
 
 class RegressionTask():
     def predictions(self, outputs):
+        """Convert raw model outputs into task predictions."""
         return outputs.squeeze() if isinstance(outputs, torch.Tensor) else outputs
     
     def loss_and_predictions(self, criterion, outputs, labels):
+        """Compute task loss and predictions for one batch."""
         # numeric values for regression loss
         labels = labels.float()
         predictions = outputs.squeeze()
@@ -73,6 +81,7 @@ class RegressionTask():
 
     @classmethod
     def metrics(cls, labels, predictions, accuracy_tolerance):
+        """Compute task metrics from labels and predictions."""
         if len(labels) == 0:
             return {"accuracy": 0.0, "precision_macro": 0.0, "recall_macro": 0.0, "f1_macro": 0.0, "mae": 0.0,
                     "mse": 0.0, "rmse": 0.0, "r2": 0.0, "mean": 0.0, "error_mean": 0.0}
@@ -91,14 +100,17 @@ class RegressionTask():
                 "error_mean": ((rmse / mean) * 100) if mean else 0}
     
     def add_task_report_metadata(self, metadata, class_labels=None, accuracy_tolerance=None):
+        """Add task-specific metadata fields to a report."""
         metadata["accuracy tolerance"] = accuracy_tolerance
 
     @staticmethod
     def add_report_metrics(metadata, train_metrics, test_metrics):
+        """Add task-specific aggregate metrics to report metadata."""
         return #Not added because RMSE, MAE, R2 is not included in the report currently
     
     @staticmethod
     def format_metrics(name, metrics):
+        """Format task metrics for console output."""
         return (f"{name} MAE: {metrics['mae']:.4f}, "
                 f"{name} MSE: {metrics['mse']:.4f}, "
                 f"{name} RMSE: {metrics['rmse']:.4f}, "
@@ -112,6 +124,7 @@ class RegressionTask():
 
 class BaseModel:
     def __init__(self, model_id, output_dir, problem_type):
+        """Initialize the BaseModel instance."""
         self.model_id = model_id
         self.output_dir = output_dir
         self.model = None
@@ -122,28 +135,34 @@ class BaseModel:
             else RegressionTask())
 
     def output_name(self, name, round_number):
+        """Build an output artifact name for an optional round."""
         return f"{name}_round_{round_number}" if round_number is not None else name
 
     def output_path(self, filename, output_dir):
+        """Build an output path and ensure its directory exists."""
         out_dir = Path(output_dir or self.output_dir or Path(__file__).parent).absolute()
         out_dir.mkdir(parents=True, exist_ok=True)
         return out_dir / filename
 
     def save_metadata(self, metadata, name, round_number, output_dir):
+        """Save metadata as a compressed NumPy archive."""
         out_name = self.output_name(name, round_number)
         metadata_path = self.output_path(f"{out_name}_meta.npz", output_dir)
         np.savez(metadata_path, **metadata, allow_pickle=True)
     
     def save_report(self, metadata, name, round_number, output_dir):
+        """Save metadata as a JSON report."""
         out_name = self.output_name(name, round_number)
         report = Report(metadata)
         report.save_to_file(self.output_path(f"{out_name}.json", output_dir))
 
     def model_path(self, name, round_number, output_dir):
+        """Return the output path for a saved model artifact."""
         return self.output_path(f"{self.output_name(name, round_number)}{self.model_extension}",
                                 output_dir)
 
     def save_artifacts(self, metadata, name, round_number, output_dir):
+        """Save metadata and JSON report artifacts."""
         self.save_metadata(metadata, name, round_number, output_dir)
         self.save_report(metadata, name, round_number, output_dir)
 
@@ -151,6 +170,7 @@ class BaseModel:
     def add_epoch_report_metrics(metadata, train_acc, test_acc, losses, problem_type, train_mse=None, 
                                  test_mse=None, train_precision=None, test_precision=None, 
                                  train_recall=None, test_recall=None):
+        """Add per-epoch training metrics to report metadata."""
         metadata.update({"train accuracy per epoch": np.array(train_acc),
                          "test accuracy per epoch": np.array(test_acc),
                          "losses per epoch": np.array(losses)})
@@ -167,6 +187,7 @@ class BaseModel:
     
     @staticmethod
     def add_task_report_metadata(metadata, problem_type, class_labels, accuracy_tolerance):
+        """Add task-specific metadata fields to a report."""
         metadata["problem type"] = problem_type
         if problem_type == "classification":
             metadata["class labels"] = class_labels
@@ -175,6 +196,7 @@ class BaseModel:
 
     @staticmethod
     def add_global_classification_report_metrics(metadata, precision_rounds, recall_rounds):
+        """Add global classification metric histories to metadata."""
         metadata.update({"precision macro per round": np.array(precision_rounds),
                          "recall macro per round": np.array(recall_rounds)})
 
@@ -182,6 +204,7 @@ class BaseModel:
     def print_epoch_metrics(model_id, epoch, epochs, epoch_loss, train_accuracy, test_accuracy,
                             problem_type, train_metrics, test_metrics, mse, epoch_test_mse,
                             epsilon_spent=None):
+        """Print a concise training summary for one epoch."""
         message = (f"Client {model_id} | Epoch {epoch + 1}/{epochs}, "
                    f"Loss: {epoch_loss:.4f}, Train Acc: {train_accuracy:.2f}, "
                    f"Test Acc: {test_accuracy:.2f}")
@@ -202,6 +225,7 @@ class BaseModel:
     def add_epoch_values(self, train_mse, test_mse, train_acc, test_acc, train_precision, test_precision,
                          train_recall, test_recall, train_metrics, test_metrics, epoch_train_mse,
                          epoch_test_mse, train_accuracy, test_accuracy):
+        """Append one epoch of metrics to history lists."""
         train_mse.append(epoch_train_mse)
         test_mse.append(epoch_test_mse)
         train_acc.append(train_accuracy)
@@ -213,30 +237,38 @@ class BaseModel:
             train_recall.append(train_metrics["recall_macro"])
             test_recall.append(test_metrics["recall_macro"])
     def fit(self, *args, **kwargs):
+        """Train the model with the provided data and settings."""
         raise NotImplementedError
 
     def evaluate(self, train_loader, test_loader, criterion, problem_type, accuracy_tolerance):
+        """Evaluate the model on the provided data."""
         raise NotImplementedError
 
     def predict(self, data):
+        """Generate task predictions for model inputs."""
         raise NotImplementedError
 
     def get_parameters(self, *args, **kwargs):
+        """Return serialized model parameters."""
         raise NotImplementedError
 
     def set_parameters(self, parameters):
+        """Load serialized model parameters into the model."""
         raise NotImplementedError
 
     def save_model(self, metadata, name, round_number, output_dir):
+        """Save the model and its report artifacts."""
         raise NotImplementedError
 
     def load_model(self, path):
+        """Load model weights from disk."""
         raise NotImplementedError
     
 class TorchModelBase(BaseModel):
     model_extension = ".torch"
 
     def load_model(self, path, num_features, output_dim, device):
+        """Load model weights from disk."""
         if self.model is None:
             if num_features is None:
                 raise ValueError("num_features is required when loading into an unbuilt model")
@@ -249,14 +281,17 @@ class TorchModelBase(BaseModel):
         return self.model
 
     def save_model(self, metadata, name, round_number, output_dir):
+        """Save the model and its report artifacts."""
         torch.save(self.model.state_dict(), self.model_path(name, round_number, output_dir))
         self.save_artifacts(metadata, name, round_number, output_dir)
 
     def get_parameters(self, config):
+        """Return serialized model parameters."""
         self.model.eval()
         return [val.detach().cpu().numpy() for _, val in self.model.state_dict().items()]
 
     def set_parameters(self, parameters):
+        """Load serialized model parameters into the model."""
         state_dict = {}
 
         for (key, ref_tensor), value in zip(self.model.state_dict().items(), parameters):
@@ -269,6 +304,7 @@ class TorchModelBase(BaseModel):
         self.model.load_state_dict(state_dict, strict=True)
 
     def build_optimizer(self, optimizer_name, learning_rate, weight_decay):
+        """Create the configured Torch optimizer."""
         if self.model is None:
             raise RuntimeError("build_model must be called before build_optimizer")
 
@@ -278,6 +314,7 @@ class TorchModelBase(BaseModel):
             return optim.Adamax(self.model.parameters(), lr=learning_rate, weight_decay=weight_decay)
         
     def predict(self, data, device):
+        """Generate task predictions for model inputs."""
         self.model.eval()
 
         with torch.no_grad():
@@ -291,6 +328,7 @@ class TorchModelBase(BaseModel):
         return outputs.cpu().numpy()
 
     def unpack_batch(self, data, device):
+        """Split a data batch into inputs and labels on the target device."""
         if isinstance(data, (tuple, list)):
             inputs, labels = data
         else:
@@ -307,6 +345,7 @@ class TorchModelBase(BaseModel):
         return inputs, labels
     
     def evaluate(self, train_loader, test_loader, criterion, problem_type, accuracy_tolerance):
+        """Evaluate the model on the provided data."""
         self.model.eval()
         device = next(self.model.parameters()).device
         self.model.to(device)
@@ -328,6 +367,7 @@ class TorchModelBase(BaseModel):
                 test.get("mse", 0), train["predictions"], test["predictions"], train, test)
     
     def evaluate_loader(self, loader, criterion, device, accuracy_tolerance):
+        """Evaluate a Torch data loader and collect metrics."""
         total_loss = 0
         processed_batches = 0
         all_preds, all_labels = [], []
@@ -352,21 +392,26 @@ class TorchModelBase(BaseModel):
         return metrics
 
     def compute_test_metrics(self, test_loader, criterion, device, accuracy_tolerance):
+        """Compute server-side metrics for a test loader."""
         metrics = self.evaluate_loader(test_loader, criterion, device, accuracy_tolerance)
         return (metrics["mse"], metrics["accuracy"], metrics["loss"], 
                 metrics if self.problem_type == "classification" else {})
     
     def _before_fit(self, fit_context):
+        """Prepare optional training context before the epoch loop."""
         return fit_context
 
     def _after_epoch(self, epoch, fit_context):
+        """Collect optional metrics after one training epoch."""
         return {}
     
     def _after_fit(self, fit_context):
+        """Clean up optional training context after fitting."""
         return None
 
     def fit(self, train_loader, test_loader, epochs, optimizer, criterion, device, problem_type,
             accuracy_tolerance, **kwargs):
+        """Train the model with the provided data and settings."""
         fit_context = {"train_loader": train_loader, "test_loader": test_loader, "epochs": epochs,
                        "optimizer": optimizer, "criterion": criterion, "device": device, 
                        "problem_type": problem_type, "accuracy_tolerance": accuracy_tolerance, **kwargs}
@@ -444,21 +489,26 @@ class TorchModelBase(BaseModel):
 
 class CNNModel(TorchModelBase):
     def __init__(self, model_id, output_dir, problem_type):
+        """Initialize the CNNModel instance."""
         super().__init__(model_id=model_id, output_dir=output_dir, problem_type=problem_type)
 
     def build_model(self, num_features, output_dim):
+        """Build and store the underlying model object."""
         self.model = _CNNNet(num_features, output_dim=output_dim)
         return self.model
 
 class DPCNNModel(TorchModelBase):
     def __init__(self, model_id, output_dir, problem_type):
+        """Initialize the DPCNNModel instance."""
         super().__init__(model_id=model_id, output_dir=output_dir, problem_type=problem_type)
 
     def build_model(self, num_features, output_dim):
+        """Build and store the underlying model object."""
         self.model = _CNNNet(num_features, output_dim=output_dim)
         return self.model
 
     def attach_privacy_engine(self, optimizer, train_loader, opacus_params):
+        """Attach Opacus differential privacy to model training."""
         privacy_engine = PrivacyEngine(
             accountant="rdp",
             secure_mode=opacus_params.get("secure_mode"),
@@ -479,6 +529,7 @@ class DPCNNModel(TorchModelBase):
         return private_optimizer, private_train_loader, privacy_engine
     
     def _before_fit(self, fit_context):
+        """Prepare optional training context before the epoch loop."""
         opacus_params = fit_context.get("opacus_params")
         if opacus_params is not None:
             private_optimizer, private_train_loader, privacy_engine = self.attach_privacy_engine(
@@ -504,6 +555,7 @@ class DPCNNModel(TorchModelBase):
         return fit_context
 
     def fit(self, train_loader, test_loader, epochs, optimizer, criterion, *args, **kwargs):
+        """Train the model with the provided data and settings."""
         delta = kwargs.pop("delta", None)
         privacy_engine = kwargs.pop("privacy_engine", None)
 
@@ -517,11 +569,13 @@ class DPCNNModel(TorchModelBase):
         return results
 
     def _after_fit(self, fit_context):
+        """Clean up optional training context after fitting."""
         dp_manager = fit_context.get("dp_batch_memory_manager")
         if dp_manager is not None:
             dp_manager.__exit__(None, None, None)
 
     def _after_epoch(self, epoch, fit_context):
+        """Collect optional metrics after one training epoch."""
         privacy_engine = fit_context.get("privacy_engine")
         delta = fit_context.get("delta")
 
@@ -534,6 +588,7 @@ class DPCNNModel(TorchModelBase):
 class XGBoostModel(BaseModel):
     model_extension = ".ubj"
     def __init__(self, model_id, output_dir, params, problem_type, class_labels, accuracy_tolerance):
+        """Initialize the XGBoostModel instance."""
         super().__init__(model_id=model_id, output_dir=output_dir, problem_type=problem_type)
         self.params = params.copy()
         self.class_labels = class_labels
@@ -545,6 +600,7 @@ class XGBoostModel(BaseModel):
         self._configure_xgb_params()
     
     def _configure_xgb_params(self):
+        """Adjust XGBoost parameters for classification or regression."""
         if self.problem_type == "classification":
             if len(self.class_labels) == 2:
                 self.objective = "binary:logistic"
@@ -565,6 +621,7 @@ class XGBoostModel(BaseModel):
 
     @classmethod
     def client_params(cls, seed, num_partitions, train_method, scaled_lr, base_params):
+        """Build client-specific XGBoost training parameters."""
         params = base_params.copy()
         params["random_state"] = seed
 
@@ -574,16 +631,19 @@ class XGBoostModel(BaseModel):
         return params
 
     def build_model(self, params):
+        """Build and store the underlying model object."""
         self.params = params or self.params
         self.model = xgb.Booster(params=self.params)
         return self.model
 
     def get_parameters(self, config):
+        """Return serialized model parameters."""
         if self.model is None:
             return []
         return [bytes(self.model.save_raw("json"))]
 
     def set_parameters(self, parameters):
+        """Load serialized model parameters into the model."""
         self.build_model(self.params)
         if not parameters:
             return self.model
@@ -591,6 +651,7 @@ class XGBoostModel(BaseModel):
         return self.model
 
     def fit_round(self, train_data, test_data, num_local_round, train_method, global_round, parameters):
+        """Fit one XGBoost federated round and return model bytes."""
         if global_round > 1 and parameters:
             self.set_parameters(parameters)
 
@@ -598,6 +659,7 @@ class XGBoostModel(BaseModel):
         return self.get_parameters(None)[0]
 
     def evaluate_parameters(self, parameters, test_data):
+        """Evaluate serialized XGBoost parameters on test data."""
         if not parameters:
             metric_name = self.params.get("eval_metric", "metric")
             return metric_name, 0.0
@@ -606,6 +668,7 @@ class XGBoostModel(BaseModel):
         return self.evaluate(test_data)
 
     def fit(self, train_data, test_data, num_local_round, train_method):
+        """Train the model with the provided data and settings."""
         self.train_mse_per_epoch = []
         self.test_mse_per_epoch = []
         self.train_acc_per_epoch = []
@@ -676,6 +739,7 @@ class XGBoostModel(BaseModel):
         return self.model
     
     def evaluate(self, test_data):
+        """Evaluate the model on the provided data."""
         if self.model is None:
             raise RuntimeError("build_model or set_parameters must be called before evaluate")
 
@@ -685,6 +749,7 @@ class XGBoostModel(BaseModel):
         return self.eval_metric, metric_value
 
     def dataset_metrics(self, data):
+        """Compute metrics and predictions for an XGBoost DMatrix."""
         labels = data.get_label()
         predictions = self.task.predictions(self.model.predict(data))
         metrics = self.task.metrics(labels, predictions, self.accuracy_tolerance)
@@ -693,6 +758,7 @@ class XGBoostModel(BaseModel):
     def client_metadata(self, train_data, test_data, train_indices, test_indices, partitions_file,
                         seed, test_fraction, global_round):
         
+        """Build saved metadata for one XGBoost client round."""
         train_metrics, train_predictions = self.dataset_metrics(train_data)
         test_metrics, test_predictions = self.dataset_metrics(test_data)
 
@@ -742,6 +808,7 @@ class XGBoostModel(BaseModel):
     def save_client_output(self, train_data, test_data, train_indices, test_indices, partitions_file,
                            seed, test_fraction, global_round, output_dir):
         
+        """Save XGBoost client artifacts and return accuracies."""
         metadata, train_acc, test_acc = self.client_metadata(train_data, test_data, train_indices,
                                                              test_indices, partitions_file, seed,
                                                              test_fraction, global_round)
@@ -750,18 +817,22 @@ class XGBoostModel(BaseModel):
         return train_acc, test_acc
 
     def predict(self, model, data):
+        """Generate task predictions for model inputs."""
         return self.task.predictions(model.predict(data))
 
     def save_model(self, metadata, name, round_number, output_dir):
+        """Save the model and its report artifacts."""
         self.model.save_model(self.model_path(name, round_number, output_dir))
         self.save_artifacts(metadata, name, round_number, output_dir)
 
     def load_model(self, path):
+        """Load model weights from disk."""
         self.build_model(self.params)
         self.model.load_model(path)
         return self.model
 
     def save_raw_parameters(self, path):
+        """Write raw XGBoost model parameters to disk."""
         if self.model is None:
             raise RuntimeError("No model has been built or trained")
         Path(path).write_bytes(bytes(self.model.save_raw("json")))
@@ -774,6 +845,7 @@ class XGBoostModel(BaseModel):
 
 class _CNNNet(nn.Module):
     def __init__(self, features: int, output_dim: int):
+        """Initialize the _CNNNet instance."""
         super().__init__()
         self.conv1 = nn.Conv1d(1, 12, kernel_size=14)
         self.relu1 = nn.ReLU()
@@ -793,6 +865,7 @@ class _CNNNet(nn.Module):
         self.output = nn.Linear(in_features=16, out_features=output_dim)
 
     def _calculate_flatten_size(self, features: int):
+        """Infer the flattened CNN feature size with a dummy input."""
         device = next(self.parameters()).device
         with torch.no_grad():
             x = torch.zeros(1, 1, features).to(device)
@@ -808,6 +881,7 @@ class _CNNNet(nn.Module):
             return x.view(1, -1).size(1)
 
     def forward(self, x):
+        """Run a forward pass through the CNN network."""
         # Convert to tensor if input is an ndarray
         if isinstance(x, np.ndarray):
             x = torch.tensor(x, dtype=torch.float32).to(
