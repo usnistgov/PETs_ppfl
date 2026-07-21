@@ -89,7 +89,7 @@ XGBOOST_BASE_CONFIG: Dict[str, Any] = {
     "reg_lambda": 1.0,
     "scale_pos_weight": 1.0,
     "train_method": "bagging",
-    "centralised_eval": True,
+    "centralized_eval": True,
     "scaled_lr": True,
 }
 

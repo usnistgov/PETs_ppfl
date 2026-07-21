@@ -290,7 +290,7 @@ def create_xgboost_strategy(strategy_params):
     pool_size = strategy_params["num_clients"]
     min_fit_clients = strategy_params["num_clients"]
     min_evaluate_clients = strategy_params["num_clients"]
-    centralised_eval = strategy_params.get("centralised_eval")
+    centralized_eval = strategy_params.get("centralized_eval")
     _, test_data = build_test_data(strategy_params)
     global_output_config = {
         "num_rounds": strategy_params["num_rounds"],
@@ -309,12 +309,12 @@ def create_xgboost_strategy(strategy_params):
             min_fit_clients=min_fit_clients,
             min_available_clients=pool_size,
             min_evaluate_clients=(
-                min_evaluate_clients if not centralised_eval else 0
+                min_evaluate_clients if not centralized_eval else 0
             ),
-            fraction_evaluate=1.0 if not centralised_eval else 0.0,
+            fraction_evaluate=1.0 if not centralized_eval else 0.0,
             on_evaluate_config_fn=xgboost_round_config,
             on_fit_config_fn=xgboost_round_config,
-            evaluate_metrics_aggregation_fn=weighted_average_metrics if not centralised_eval else None
+            evaluate_metrics_aggregation_fn=weighted_average_metrics if not centralized_eval else None
         )
 
     return GlobalOutputFedXgbCyclic(

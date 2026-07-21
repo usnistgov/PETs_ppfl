@@ -52,7 +52,7 @@ test_fraction = args.model_params["test_fraction"]
 
 learning_rate = None; weight_decay = None; optimizer_name = None
 epsilon = None; delta = None; max_grad_norm = None; opacus_secure_mode = None
-train_method = None; centralised_eval = None; scaled_lr = None; xgboost_params=None
+train_method = None; centralized_eval = None; scaled_lr = None; xgboost_params=None
 
 
 #Federated params
@@ -75,7 +75,7 @@ elif model_type == "cnn":
     optimizer_name = args.model_params["optimizer"]
 elif model_type == "xgboost":
     train_method = args.model_params["train_method"]
-    centralised_eval = args.model_params["centralised_eval"]
+    centralized_eval = args.model_params["centralized_eval"]
     scaled_lr = args.model_params["scaled_lr"]
 
     xgboost_params = {
@@ -167,7 +167,7 @@ client_params = {
     'max_grad_norm': max_grad_norm,
     'opacus_secure_mode': opacus_secure_mode,
     'train_method': train_method,
-    'centralised_eval': centralised_eval,
+    'centralized_eval': centralized_eval,
     'scaled_lr': scaled_lr,
     'xgboost_params': xgboost_params,
     'print_warning_logs': args.print_warning_logs,
@@ -193,7 +193,7 @@ def server_fn(context: Context) -> ServerAppComponents:
             'data_dir': data_dir,
             'batch_size': batch_size,
             'train_method': train_method,
-            'centralised_eval': centralised_eval,
+            'centralized_eval': centralized_eval,
             'scaled_lr': scaled_lr,
             'xgboost_params': xgboost_params,
             'problem_type': problem_type,

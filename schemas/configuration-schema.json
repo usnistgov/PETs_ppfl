@@ -144,7 +144,7 @@
                   "scale_pos_weight": {"description": "Balance of positive and negative weights", "type": "number", "exclusiveMinimum": 0, "default": 1},
 
                   "train_method": {"description": "The training method selected", "type": "string", "enum": ["bagging", "cyclic"], "default": "bagging"},
-                  "centralised_eval": { "type": "boolean", "default": false},
+                  "centralized_eval": { "type": "boolean", "default": false},
                   "scaled_lr": { "type": "boolean", "default": true}
                 }
               }

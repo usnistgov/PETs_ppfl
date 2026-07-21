@@ -251,7 +251,7 @@ Please note that some variables are only set through the command line. These var
    | `reg_lambda` | XGBoost L2 regularization term | number | min: 0 |
    | `scale_pos_weight` | XGBoost class-balancing weight | number | exclusive min: 0 |
    | `train_method` | The XGBoost training method | string | `"bagging"`, `"cyclic"` |
-   | `centralised_eval` | Whether centralized evaluation is enabled for XGBoost | boolean | — |
+   | `centralized_eval` | Whether centralized evaluation is enabled for XGBoost | boolean | — |
    | `scaled_lr` | Whether scaled learning rate behavior is enabled for XGBoost | boolean | — |
    | `print_warning_logs` | Set to True to have warning logs print to the terminal. Set to False to have them directed to a log file in the output directory | boolean | - |
    | `use_public_data` | Set to True if you have public data you want to be included in the train-test dataset. | boolean | - |
