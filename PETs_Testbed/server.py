@@ -57,6 +57,7 @@ def build_test_data(strategy_params):
     all_indices = np.arange(len(ho_vcf))
     num_data_features = ho_vcf.shape[1]
     
+    label_to_index=None
     if strategy_params.get("problem_type") == "classification":
         label_to_index = {label: i for i, label in enumerate(strategy_params.get("class_labels"))}
         ho_pheno = np.array([label_to_index[label] for label in ho_pheno])
