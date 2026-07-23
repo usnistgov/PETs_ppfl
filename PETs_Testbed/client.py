@@ -452,7 +452,7 @@ class XGBoostFlowerClient(fl.client.Client):
             self.partitions_file,
             self.seed,
             self.test_fraction,
-            global_round,
+            global_round - 1,
             self.output_dir,
         )
 
