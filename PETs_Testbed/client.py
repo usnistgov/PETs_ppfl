@@ -333,6 +333,7 @@ class TorchFlowerClient(fl.client.NumPyClient):
     def evaluate(self, parameters, config):
         """Evaluate the local Torch model and save round artifacts."""
         self.set_parameters(parameters)
+        self.current_round = config.get("server_round", 1) - 1
 
         (
             train_acc,

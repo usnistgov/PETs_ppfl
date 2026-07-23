@@ -366,5 +366,6 @@ def create_strategy(strategy_params) -> fl.server.strategy.FedAvg:
     min_evaluate_clients=strategy_params['num_clients'],
     min_available_clients=strategy_params['num_clients'],
     on_fit_config_fn=fit_round,
+    on_evaluate_config_fn=fit_round,
     )
     return strategy
