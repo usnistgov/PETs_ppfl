@@ -830,6 +830,8 @@ class ConfigPipeline:
             if cfg.get("federated", {}).get("federated_enabled", False):
                 if cfg["federated"]["num_clients"] > cfg["num_partitions"]:
                     raise ValueError("num_clients must be <= num_partitions.")
+                elif cfg["federated"]["num_clients"] < cfg["num_partitions"]:
+                    cfg["num_partitions"] = cfg["federated"]["num_clients"]
 
             if cfg.get("dp", {}).get("dp_enabled", False) and cfg["dp"].get("opacus_secure_mode", False):
                 cfg["dp"]["opacus_secure_mode"] = False
