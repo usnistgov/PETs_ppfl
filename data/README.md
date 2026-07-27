@@ -1,0 +1,4 @@
+# Test soybean data
+
+This directory contains two soybean ML test datasets we use for testing privacy-preserving machine learning. There are two tasks, seed coat color (SCC) categorical label prediction, and soybean yeild (YLD) continous numperic prediction. Each directory contains 100 samples (features and labels) to serve as compact test data. `*_VCF.dat` are 50k single-nucleotide polymophisms (SNPs) genomic data features and `_phenotype.dat` are the per-task phenotype (physical characteristic) labels. `*_tt_*` indicates tests and training data, `*_pub_*` indicates 'public data' which we assume everyone (such as attacks and developers) have access to, `*_ho_*` indicates 'hold-out', which are data not assumed to be public and not used in training them model to be used as privacy evaluation control data. Most users will only use the `tt` data. 
+
