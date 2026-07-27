@@ -1,0 +1,10 @@
+{
+    "Target_Phenotype": "Yield",
+    "Total_Samples_Matched": 15476,
+    "Total_SNPs_Initial": 41756,
+    "Global_Missingness_Rate": 7.999339465294705e-05,
+    "MAF_Threshold_Applied": 0.05,
+    "SNPs_Dropped_MAF": 6739,
+    "Total_SNPs_Final": 35017,
+    "Imputation_Strategy": "most_frequent"
+}

@@ -1,0 +1,10 @@
+{
+    "Target_Phenotype": "Seed Coat Color",
+    "Total_Samples_Matched": 17816,
+    "Total_SNPs_Initial": 41756,
+    "Global_Missingness_Rate": 9.748430303910679e-05,
+    "MAF_Threshold_Applied": 0.05,
+    "SNPs_Dropped_MAF": 5170,
+    "Total_SNPs_Final": 36586,
+    "Imputation_Strategy": "most_frequent"
+}
