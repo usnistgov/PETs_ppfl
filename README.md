@@ -117,12 +117,7 @@ Throughout the beta development process, these capabilities are expected to expa
 ### Instructions
 
 1. Download the zip file or clone the git repo containing the data and code.
-   - If using the provided Oil_binned5 test data, ensure the following files exist in the `data/Oil_binned5` directory (and your data path matches):
-      1. `Oil_QTL_ho_pheno.dat`
-      2. `Oil_QTL_ho_vcf.dat`
-      3. `Oil_QTL_tt_pheno.dat`
-      4. `Oil_QTL_tt_vcf.dat`
-   - Or if using the provided SCC test data and ensure the following files exist in the `data/SCC` (and your data path and partition paths matches):
+   - If using the provided sample SCC test data and ensure the following files exist in the `data/SCC` (and your data path and partition paths matches):
       1. `SCC_QTL_ho_pheno.dat`
       2. `SCC_QTL_ho_vcf.dat`
       3. `SCC_QTL_tt_pheno.dat`
