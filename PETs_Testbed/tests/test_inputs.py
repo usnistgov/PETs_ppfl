@@ -22,7 +22,7 @@ RUN_PY = Path(
 DEFAULT_SCHEMA = (RUN_PY.parent / "configuration-schema.json").resolve()
 DATA_ROOT = (RUN_PY.parent.parent / "data").resolve()
 OIL_DATA_DIR = DATA_ROOT / "Oil_binned5"
-SCC_DATA_DIR = DATA_ROOT / "gpd_scc"
+SCC_DATA_DIR = DATA_ROOT / "SCC"
 SCC_PARTITIONS_FILE = SCC_DATA_DIR / "ppfl_SCC_c4c5_5clients_2025_01_14.npz"
 
 COMMON_BASE_CONFIG: Dict[str, Any] = {

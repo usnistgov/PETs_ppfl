@@ -15,7 +15,7 @@ from flwr.common import ndarrays_to_parameters
 from pathlib import Path
 from flwr.server.strategy import FedXgbBagging, FedXgbCyclic
 from xgboost.core import DMatrix
-from dataset import IndexedArrayDataset, load_npy_feature_label_data
+from dataset import IndexedArrayDataset, load_npy_feature_label_data, build_label_to_index, normalize_label
 from model import BaseModel, CNNModel, DPCNNModel, XGBoostModel
 from report import Report
 from utils import get_device, print_binned_counts
@@ -57,16 +57,22 @@ def build_test_data(strategy_params):
     all_indices = np.arange(len(ho_vcf))
     num_data_features = ho_vcf.shape[1]
     
-    label_to_index=None
-    if strategy_params.get("problem_type") == "classification":
-        label_to_index = {label: i for i, label in enumerate(strategy_params.get("class_labels"))}
-        ho_pheno = np.array([label_to_index[label] for label in ho_pheno])
+    label_to_index = (
+        build_label_to_index(strategy_params.get("class_labels"))
+        if strategy_params.get("problem_type") == "classification"
+        else None
+    )
 
     if strategy_params.get("model_type") == "xgboost":
-        test_loader = DMatrix(data=ho_vcf, label=ho_pheno)
+        # XGBoost bypasses IndexedArrayDataset, so encode its labels here.
+        xgb_labels = ho_pheno
+        if label_to_index is not None:
+            xgb_labels = np.asarray([label_to_index[normalize_label(label)] for label in ho_pheno])
+        test_loader = DMatrix(data=ho_vcf, label=xgb_labels)
     else:
+        # Keep raw labels: IndexedArrayDataset encodes each label exactly once.
         test_dataset = IndexedArrayDataset([ho_vcf], [ho_pheno], all_indices, label_to_index)
-        test_loader = DataLoader(test_dataset, batch_size=strategy_params['batch_size'], shuffle=False)
+        test_loader = DataLoader(test_dataset, batch_size=strategy_params["batch_size"], shuffle=False)
 
     # count labels in train and test set
     print("\n\nHOLDOUT DATASET FOR EVALUATION")
