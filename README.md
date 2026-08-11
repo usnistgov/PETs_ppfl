@@ -298,6 +298,8 @@ To access the results viewer, run the following command from the genomics_ppfl_b
 
 You can then access the results viewer from your browser at `http://localhost:{PORT_NUMBER}/results_viewer.html`
 
+The viewer uses `fetch()` to load report schemas from `./schemas/`. This means it **must be served via HTTP** (e.g. `python -m http.server` from the repo root). Opening the HTML file directly via `file://` will fail silently due to browser CORS restrictions.
+
 When you are done using the results viewer, you can shutdown your web server by pressing CTRL + C. 
 Sometimes CTRL + C will not completely kill the process. To ensure your process is killed, run `lsof -i :{PORT_NUMBER}`. Locate the process' PID from output and run `kill -9 {PID}`.
 

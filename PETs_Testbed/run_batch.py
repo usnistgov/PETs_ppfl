@@ -250,7 +250,7 @@ def validate_parameters(model_choice: str, parameter_choice: str, parameters: li
     return valid_parameters
 
 
-def run_experiments(parameters: list) -> None:
+def run_experiments(parameters: dict) -> None:
     """ Executes run.py for each validated parameter
 
     Args:
@@ -265,7 +265,7 @@ def run_experiments(parameters: list) -> None:
 
     print("\n Starting experiments...\n")
 
-    # Create folder in output_dir to hold 
+    # Create folder in output_dir to hold experiments
 
     root_dir = Path(__file__).resolve().parent.parent
     config_path = root_dir / "configs" / "config.json"
