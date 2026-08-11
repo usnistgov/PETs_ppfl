@@ -1,6 +1,6 @@
 ## Regression and Unit Testing 
 
-For regression testing, I am using a Python library called `pytest`. This helps automate the testing process. There are various test cases described in the `test_cli_config_regression.py` script. In this regression testing, it is only checking whether the parameter inputs are valid. To run the regression tests, ensure you are in the `PETs_Testbed` folder, and if using a virtual environment, make sure it is active. Also ensure you have `pytest` installed in your environment; it is now listed in `requirements.txt`. Then, run:
+For regression testing, I am using a Python library called `pytest`. This helps automate the testing process. There are various test cases described in the `tests/test_inputs.py` script. In this regression testing, it is only checking whether the parameter inputs are valid. To run the regression tests, ensure you are in the `PETs_Testbed` folder, and if using a virtual environment, make sure it is active. Also ensure you have `pytest` installed in your environment; it is now listed in `requirements.txt`. Then, run:
 ```bash
 python3.10 -m pytest -q
 ``` 
@@ -15,14 +15,14 @@ To manually go through each test case using `pytest`, first gather a list of all
 ```bash
 python3.10 -m pytest --collect-only -q > test_list.txt
 ```
-Then, identify the test you want to run, for example `test_cli_config_regression.py::test_run_py_regressions[t12a]`. To run that individual test, use:
+Then, identify the test you want to run, for example `test_inputs.py::test_run_py_regressions[t12a]`. To run that individual test, use:
 
 ```bash
-python3.10 -m pytest test_cli_config_regression.py::test_run_py_regressions[t12a]
+python3.10 -m pytest test_inputs.py::test_run_py_regressions[t12a]
 ```
 
 ### Adding Additional Regression Tests
-Between the helper definitions near the top of `test_cli_config_regression.py` and the `CASES` list, the different regression test cases are defined. Each test is defined through a `Case()` instance and added to the list via `pytest.param()`. Helper functions at the top of the file make it easier to modify the parameters used in the regression tests and compare expected versus actual output. To modify the DPCNN parameters for a regression test, use the `_base_with()` helper function. To modify the CNN parameters for a regression test, use the `_cnn_base_with()` helper function. To modify the XGBoost parameters for a regression test, use the `_xgb_base_with()` helper function.
+Between the helper definitions near the top of `test_inputs.py` and the `CASES` list, the different regression test cases are defined. Each test is defined through a `Case()` instance and added to the list via `pytest.param()`. Helper functions at the top of the file make it easier to modify the parameters used in the regression tests and compare expected versus actual output. To modify the DPCNN parameters for a regression test, use the `_base_with()` helper function. To modify the CNN parameters for a regression test, use the `_cnn_base_with()` helper function. To modify the XGBoost parameters for a regression test, use the `_xgb_base_with()` helper function.
 
 Here is the class definition of `Case()`:
 

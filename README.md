@@ -122,7 +122,7 @@ Throughout the beta development process, these capabilities are expected to expa
       2. `Oil_QTL_ho_vcf.dat`
       3. `Oil_QTL_tt_pheno.dat`
       4. `Oil_QTL_tt_vcf.dat`
-   - Or if using the provided SCC test data and ensure the following files exist in the `data/gpd_scc` (and your data path and partition paths matches):
+   - Or if using the provided SCC test data and ensure the following files exist in the `data/SCC` (and your data path and partition paths matches):
       1. `SCC_QTL_ho_pheno.dat`
       2. `SCC_QTL_ho_vcf.dat`
       3. `SCC_QTL_tt_pheno.dat`
@@ -133,7 +133,7 @@ Throughout the beta development process, these capabilities are expected to expa
          2. `_ho_vcf.dat`
          3. `_tt_pheno.dat`
          4. `_tt_vcf.dat`
-      - You may also provide your own data partition files. Examples of old (non-usable) data partition files can be seen in the `gpd_scc` data at `ppfl_SCC_c0c1_5clients_2025_01_14.npz` and `ppfl_SCC_c4c5_5clients_2025_01_14.npz`. However, if you attempt to use one of these, it will not work. This is because legacy behavior concatenated the tt and ho datasets, whereas the current PETs testbed does not.
+      - You may also provide your own data partition files. Examples of old (non-usable) data partition files can be seen in the `SCC` data at `ppfl_SCC_c0c1_5clients_2025_01_14.npz` and `ppfl_SCC_c4c5_5clients_2025_01_14.npz`. However, if you attempt to use one of these, it will not work. This is because legacy behavior concatenated the tt and ho datasets, whereas the current PETs testbed does not.
       > Please also remember to update the `data_dir` variable either through the command line or through the provided configuration file.
 2. Download or validate a Python 3.10 installation (other versions may result in errors with the `torch` library) via the `python -V` or `python3 -V` commands.
    1. Run the command `python -V` to check the installed version.
