@@ -3,6 +3,7 @@
 > The NIST Genomics PETs Testbed (beta) aims to provide a framework for evaluating the efficacy of privacy-enhancing technologies (PETs) on genomics machine learning workloads. It supports centralized and federated training using convolutional neural network (CNN), differentially private CNN, and extreme gradient boosting (XGBoost) models and provides tools for users to compare how experiment configurations and privacy settings affect model performance.
 
 # Table of Contents
+1. [System Specifications](#specs)
 1. [Quickstart](#quick)
 1. [Background](#background)
     * [Differential Privacy](#dp)
@@ -20,6 +21,18 @@
     *  [Accessing the Results Viewer located remotely](#local)
 1. [Additional Documentation](#documentation)
 1. [License](#license)
+
+## System Specs <a name="specs"></a>
+
+Tested on:
+- OS: Ubuntu 24.04.4 LTS
+- Kernel: 6.8.0-136-generic
+- Architecture: x86_64
+- Environment: KVM/QEMU virtual machine
+- CPU: 16 vCPUs, Intel Xeon Processor (Cascadelake)
+- Memory: 32 GiB RAM
+- Storage: 164 GB virtual disk
+- GPU: None
 
 ## Quickstart <a name="quick"></a>
 

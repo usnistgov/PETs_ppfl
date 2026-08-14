@@ -10,7 +10,7 @@
   "test_fraction": 0.3, 
   "epochs": 100, 
   "learning_rate": 0.003, 
-  "batch_size": 10, 
+  "batch_size": 8, 
   "weight_decay": 0.0001, 
   "optimizer": "sgd", 
   "opacus_secure_mode": false, 
