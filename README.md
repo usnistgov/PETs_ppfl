@@ -24,7 +24,8 @@
 
 ## System Specs <a name="specs"></a>
 
-Tested on:
+### Linux
+Tested and validated on:
 - OS: Ubuntu 24.04.4 LTS
 - Kernel: 6.8.0-136-generic
 - Architecture: x86_64
@@ -33,6 +34,20 @@ Tested on:
 - Memory: 32 GiB RAM
 - Storage: 164 GB virtual disk
 - GPU: None
+
+### Mac
+Tested and validated on:
+- OS: MacOS 26.6
+- Kernel: Darwin Kernel Version 25.6.0
+- Architecture: arm64
+- Environment: MacBook Pro
+- CPU: Apple M3 Pro - 12 Core
+- Memory: 36 GB
+- Storage: 500 GB
+- GPU: None
+
+### Windows
+This is not been fully tested on Windows. However, initial exploratory runs suggest compatibility with native Windows.
 
 ## Quickstart <a name="quick"></a>
 
