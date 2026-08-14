@@ -96,6 +96,12 @@ The PETs Testbed consists of three primary components that together support the 
 
    The Results Viewer is a web-based user interface for viewing experiment outputs, inspecting metrics and comparing runs.
 
+4. **Parameter Schema**
+A JSON schema that defines the parameters, the parameter types, the parameter ranges, and the default parameter values for the PETs Testbed. This acts as the source of truth for the parameterization work.
+
+5. **Parameter Input JSON**
+A flat JSON file that can be used to supply parameter values to the PETs Testbed in an easily modifiable way.
+
 ### Typical Testbed Workflow <a name="workflow"></a>
 
 A typical workflow looks like:
