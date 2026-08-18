@@ -1,0 +1,54 @@
+cff-version: 1.2.0
+title: "NIST Privacy-Preserving Federated Learning Testbed"
+abstract: "This codebase serves as a platform and model code to test and benchmark the properties of privacy-preseving federated learning."
+message: 
+  If you use this repository or present information about it publicly, please cite us.
+type: software
+version: 1.0
+doi: 10.18434/mds2-3754
+URL: https://github.com/usnistgov/PETs_ppfl
+date-released: 2026-09-01
+contact:
+  - affiliation: "National Institute of Standards and Technology"
+    email: PETs@nist.gov
+    family-names: Gary
+    given-names: Howarth
+
+authors:
+
+- family-names: Wang
+  given-names: Sue
+  affiliation: MITRE
+  ORCID: 0000-0003-4587-429X
+
+- family-names: Mitchell 
+  given-names: Curtis
+  affiliation: U.S. Census Bureau
+  email: curtis.l.mitchell@proton.me
+
+- family-names: Steinberg
+  given-names: Rebecca 
+  affiliation: MITRE 
+
+- family-names: Vitale
+  given-names: Kyle 
+  affiliation: MITRE 
+
+- family-names: Tuo
+  given-names: Anglea 
+  affiliation: MITRE 
+
+- family-names: Bhagat
+  given-names: Karan
+  affiliation: Knexus Research Corporation
+
+- family-names: Wagner
+  given-names: Justin
+  affiliation: National Institute of Standards and Technology
+  ORCID: 0009-0003-8903-0504
+
+- family-names: Howarth
+  given-names: Gary
+  affiliation: National Institute of Standards and Technology
+  email: gary.howarth@nist.gov
+  ORCID:  0000-0002-3587-0546
