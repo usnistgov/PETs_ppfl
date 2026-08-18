@@ -3,6 +3,7 @@
 > The NIST Genomics PETs Testbed (beta) aims to provide a framework for evaluating the efficacy of privacy-enhancing technologies (PETs) on genomics machine learning workloads. It supports centralized and federated training using convolutional neural network (CNN), differentially private CNN, and extreme gradient boosting (XGBoost) models and provides tools for users to compare how experiment configurations and privacy settings affect model performance.
 
 # Table of Contents
+1. [System Specifications](#specs)
 1. [Quickstart](#quick)
 1. [Background](#background)
     * [Differential Privacy](#dp)
@@ -20,6 +21,33 @@
     *  [Accessing the Results Viewer located remotely](#local)
 1. [Additional Documentation](#documentation)
 1. [License](#license)
+
+## System Specs <a name="specs"></a>
+
+### Linux
+Tested and validated on:
+- OS: Ubuntu 24.04.4 LTS
+- Kernel: 6.8.0-136-generic
+- Architecture: x86_64
+- Environment: KVM/QEMU virtual machine
+- CPU: 16 vCPUs, Intel Xeon Processor (Cascadelake)
+- Memory: 32 GiB RAM
+- Storage: 164 GB virtual disk
+- GPU: None
+
+### Mac
+Tested and validated on:
+- OS: MacOS 26.6
+- Kernel: Darwin Kernel Version 25.6.0
+- Architecture: arm64
+- Environment: MacBook Pro
+- CPU: Apple M3 Pro - 12 Core
+- Memory: 36 GB
+- Storage: 500 GB
+- GPU: None
+
+### Windows
+This is not been fully tested on Windows. However, initial exploratory runs suggest compatibility with native Windows.
 
 ## Quickstart <a name="quick"></a>
 
@@ -83,6 +111,12 @@ The PETs Testbed consists of three primary components that together support the 
 
    The Results Viewer is a web-based user interface for viewing experiment outputs, inspecting metrics and comparing runs.
 
+4. **Parameter Schema**
+A JSON schema that defines the parameters, the parameter types, the parameter ranges, and the default parameter values for the PETs Testbed. This acts as the source of truth for the parameterization work.
+
+5. **Parameter Input JSON**
+A flat JSON file that can be used to supply parameter values to the PETs Testbed in an easily modifiable way.
+
 ### Typical Testbed Workflow <a name="workflow"></a>
 
 A typical workflow looks like:
@@ -117,12 +151,7 @@ Throughout the beta development process, these capabilities are expected to expa
 ### Instructions
 
 1. Download the zip file or clone the git repo containing the data and code.
-   - If using the provided Oil_binned5 test data, ensure the following files exist in the `data/Oil_binned5` directory (and your data path matches):
-      1. `Oil_QTL_ho_pheno.dat`
-      2. `Oil_QTL_ho_vcf.dat`
-      3. `Oil_QTL_tt_pheno.dat`
-      4. `Oil_QTL_tt_vcf.dat`
-   - Or if using the provided SCC test data and ensure the following files exist in the `data/gpd_scc` (and your data path and partition paths matches):
+   - If using the provided sample SCC test data and ensure the following files exist in the `data/SCC` (and your data path and partition paths matches):
       1. `SCC_QTL_ho_pheno.dat`
       2. `SCC_QTL_ho_vcf.dat`
       3. `SCC_QTL_tt_pheno.dat`
@@ -133,7 +162,7 @@ Throughout the beta development process, these capabilities are expected to expa
          2. `_ho_vcf.dat`
          3. `_tt_pheno.dat`
          4. `_tt_vcf.dat`
-      - You may also provide your own data partition files. Examples of old (non-usable) data partition files can be seen in the `gpd_scc` data at `ppfl_SCC_c0c1_5clients_2025_01_14.npz` and `ppfl_SCC_c4c5_5clients_2025_01_14.npz`. However, if you attempt to use one of these, it will not work. This is because legacy behavior concatenated the tt and ho datasets, whereas the current PETs testbed does not.
+      - You may also provide your own data partition files. Examples of old (non-usable) data partition files can be seen in the `SCC` data at `ppfl_SCC_c0c1_5clients_2025_01_14.npz` and `ppfl_SCC_c4c5_5clients_2025_01_14.npz`. However, if you attempt to use one of these, it will not work. This is because legacy behavior concatenated the tt and ho datasets, whereas the current PETs testbed does not.
       > Please also remember to update the `data_dir` variable either through the command line or through the provided configuration file.
 2. Download or validate a Python 3.10 installation (other versions may result in errors with the `torch` library) via the `python -V` or `python3 -V` commands.
    1. Run the command `python -V` to check the installed version.
@@ -202,6 +231,7 @@ Modifying parameters in this way will not affect the contents of the configurati
 
 Please note that some variables are only set through the command line. These variables are `--config` (to tell the testbed to use a configuration file other than `configs/config.json`), `--schema` (to tell the testbed to use a JSON schema file other than `schemas/configuration-schema.json`), and `--check_only` (which, when passed, tells the testbed to only check whether the parameter values given are supported).
 
+<a id="parameter-definitions"></a>
 <details>
 <summary><strong> Parameter Definitions </strong></summary>
 
@@ -302,6 +332,8 @@ To access the results viewer, run the following command from the genomics_ppfl_b
 `python3.10 -m http.server {PORT_NUMBER}`
 
 You can then access the results viewer from your browser at `http://localhost:{PORT_NUMBER}/results_viewer.html`
+
+The viewer uses `fetch()` to load report schemas from `./schemas/`. This means it **must be served via HTTP** (e.g. `python -m http.server` from the repo root). Opening the HTML file directly via `file://` will fail silently due to browser CORS restrictions.
 
 When you are done using the results viewer, you can shutdown your web server by pressing CTRL + C. 
 Sometimes CTRL + C will not completely kill the process. To ensure your process is killed, run `lsof -i :{PORT_NUMBER}`. Locate the process' PID from output and run `kill -9 {PID}`.
