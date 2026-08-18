@@ -1,6 +1,6 @@
 ## Regression and Unit Testing 
 
-For regression testing, I am using a Python library called `pytest`. This helps automate the testing process. There are various test cases described in the `tests/test_inputs.py` script. In this regression testing, it is only checking whether the parameter inputs are valid. To run the regression tests, ensure you are in the `PETs_Testbed` folder, and if using a virtual environment, make sure it is active. Also ensure you have `pytest` installed in your environment; it is now listed in `requirements.txt`. Then, run:
+For regression testing, a Python library called `pytest` is used. This helps automate the testing process. There are various test cases described in the `tests/test_inputs.py` script. In this regression testing, it is only checking whether the parameter inputs are valid. To run the regression tests, ensure you are in the `PETs_Testbed` folder, and if using a virtual environment, make sure it is active. Also ensure you have `pytest` installed in your environment; it is now listed in `requirements.txt`. Then, run:
 ```bash
 python3.10 -m pytest -q
 ``` 
