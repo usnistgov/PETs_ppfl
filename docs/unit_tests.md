@@ -11,7 +11,7 @@ These regression tests do have an end-to-end run, but it is skipped by default d
 python3.10 -m pytest -q --run-e2e
 ```
 
-To manually go through each test case using `pytest`, first gather a list of all possible tests. I recommend recording it in a `.txt` file for easy lookup by running 
+To manually go through each test case using `pytest`, first gather a list of all possible tests. It can be recorded it in a `.txt` file for easy lookup by running 
 ```bash
 python3.10 -m pytest --collect-only -q > test_list.txt
 ```
