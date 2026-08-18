@@ -21,7 +21,6 @@ RUN_PY = Path(
 
 DEFAULT_SCHEMA = (RUN_PY.parent / "configuration-schema.json").resolve()
 DATA_ROOT = (RUN_PY.parent.parent / "data").resolve()
-OIL_DATA_DIR = DATA_ROOT / "Oil_binned5"
 SCC_DATA_DIR = DATA_ROOT / "SCC"
 SCC_PARTITIONS_FILE = SCC_DATA_DIR / "ppfl_SCC_c4c5_5clients_2025_01_14.npz"
 
@@ -39,7 +38,7 @@ COMMON_BASE_CONFIG: Dict[str, Any] = {
     "client_id": 0,
     "seed": 1,
     "epochs": 1,
-    "batch_size": 32,
+    "batch_size": 8,
     "test_fraction": 0.2,
     "print_warning_logs": False,
     "problem_type": "regression",
@@ -49,7 +48,7 @@ COMMON_BASE_CONFIG: Dict[str, Any] = {
     "delta": 0.0,
     "max_grad_norm": 1.0,
     "output_dir": "../reports",
-    "data_dir": str(OIL_DATA_DIR),
+    "data_dir": str(SCC_DATA_DIR),
 }
 
 BASE_CONFIG: Dict[str, Any] = {
@@ -650,7 +649,7 @@ CASES: List[Any] = [
                 client_id=100,
                 seed=1000,
                 epochs=100,
-                batch_size=32,
+                batch_size=10,
                 test_fraction=0.9999,
                 learning_rate=0.9999,
                 weight_decay=0.09999,
@@ -673,7 +672,7 @@ CASES: List[Any] = [
                 num_clients=5,
                 num_partitions=20,
                 epochs=3,
-                batch_size=32,
+                batch_size=8,
                 test_fraction=0.2,
                 learning_rate=0.01,
                 weight_decay=0.0005,
