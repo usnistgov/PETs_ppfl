@@ -231,6 +231,7 @@ Modifying parameters in this way will not affect the contents of the configurati
 
 Please note that some variables are only set through the command line. These variables are `--config` (to tell the testbed to use a configuration file other than `configs/config.json`), `--schema` (to tell the testbed to use a JSON schema file other than `schemas/configuration-schema.json`), and `--check_only` (which, when passed, tells the testbed to only check whether the parameter values given are supported).
 
+<a id="parameter-definitions"></a>
 <details>
 <summary><strong> Parameter Definitions </strong></summary>
 
