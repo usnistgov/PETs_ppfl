@@ -11,44 +11,44 @@ date-released: 2026-09-01
 contact:
   - affiliation: "National Institute of Standards and Technology"
     email: PETs@nist.gov
-    family-names: Gary
-    given-names: Howarth
+    family-names: Howarth
+    given-names: Gary
 
 authors:
-
-- family-names: Wang
-  given-names: Sue
-  affiliation: MITRE
-  ORCID: 0000-0003-4587-429X
-
-- family-names: Mitchell 
-  given-names: Curtis
-  affiliation: U.S. Census Bureau
-  email: curtis.l.mitchell@proton.me
-
-- family-names: Steinberg
-  given-names: Rebecca 
-  affiliation: MITRE 
-
-- family-names: Vitale
-  given-names: Kyle 
-  affiliation: MITRE 
-
-- family-names: Tuo
-  given-names: Anglea 
-  affiliation: MITRE 
-
-- family-names: Bhagat
-  given-names: Karan
-  affiliation: Knexus Research Corporation
+- family-names: Howarth
+  given-names: Gary
+  affiliation: National Institute of Standards and Technology
+  email: gary.howarth@nist.gov
+  ORCID:  0000-0002-3587-0546
 
 - family-names: Wagner
   given-names: Justin
   affiliation: National Institute of Standards and Technology
   ORCID: 0009-0003-8903-0504
 
-- family-names: Howarth
-  given-names: Gary
-  affiliation: National Institute of Standards and Technology
-  email: gary.howarth@nist.gov
-  ORCID:  0000-0002-3587-0546
+- family-names: Mitchell 
+  given-names: Curtis
+  affiliation: U.S. Census Bureau
+  email: curtis.l.mitchell@proton.me
+
+- family-names: Bhagat
+  given-names: Karan
+  affiliation: Knexus Research Corporation
+
+- family-names: Steinberg
+  given-names: Rebecca 
+  affiliation: MITRE 
+
+- family-names: Tuo
+  given-names: Angela 
+  affiliation: MITRE 
+
+- family-names: Vitale
+  given-names: Kyle 
+  affiliation: MITRE 
+
+- family-names: Wang
+  given-names: Sue
+  affiliation: MITRE
+  ORCID: 0000-0003-4587-429X
+
