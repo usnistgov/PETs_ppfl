@@ -343,7 +343,9 @@ Sometimes CTRL + C will not completely kill the process. To ensure your process 
 If the machine that the PETs Testbed and test results are located on does not have a desktop interface (ex. CLI-only VM), you will need to copy your results files to your local machine and use SSH tunneling to access the results viewer.
 
 On your remote VM:
+You must identify an open port on which to host the report viewer. We recommend ports 8001-8005.
 1. Ensure the port is not already in use by running `lsof -i :{PORT_NUMBER}`
+1. Change directories to the `PETs_Testbed` directory of this software package
 1. Start your web server by running `pyenv exec python3.10 -m http.server {PORT_NUMBER}`
 
 On your local machine:
