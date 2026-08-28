@@ -1,11 +1,18 @@
 # For licensing matters, please refer to the licensing statement at:
 # https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
+#
+# This file was edited with the assistance of Claude Code (Anthropic, model
+# Claude Opus 4.8). The assistant extended validate_data_size to read row
+# counts from .dat files when .npy files are not yet present, in accordance
+# with the author's instructions. All content has been reviewed and verified by
+# the authors.
 
 import argparse
 import numpy as np
 from collections import Counter
 import torch
 import json
+import pickle
 from copy import deepcopy
 from distutils.util import strtobool
 from pathlib import Path
@@ -32,20 +39,38 @@ def get_device():
 #   validate_data_size(data_path, batch_size)
 #   purpose: Validate that the discovered train/holdout dataset files are large enough for the requested batch divisor.
 ###
+def _feature_row_count(data_path, suffix):
+    """Return the row count for a feature file, preferring .npy over .dat.
+
+    The .npy files are generated from the shipped .dat files on the first run,
+    so on a fresh checkout only the .dat files exist. Falling back to them lets
+    batch-size validation work before conversion has happened. Returns ``None``
+    when no matching file is found.
+    """
+    for extension in (".npy", ".dat"):
+        matches = [f for f in os.listdir(data_path) if f.endswith(f"{suffix}{extension}")]
+        if len(matches) > 1:
+            raise ValueError(f"Multiple files found in {data_path} matching {suffix}{extension}: {matches}")
+        if not matches:
+            continue
+
+        file_path = os.path.join(data_path, matches[0])
+        if extension == ".npy":
+            return np.load(file_path, mmap_mode="r").shape[0]
+        with open(file_path, "rb") as fh:
+            arr = pickle.load(fh)
+        return np.asarray(arr).shape[0]
+
+    return None
+
+
 def validate_data_size(data_path, batch_size):
     """Validate that data files are large enough for the batch size."""
     suffixes = ["_tt_vcf", "_ho_vcf"]
     for suffix in suffixes:
-        npy_matches = [f for f in os.listdir(data_path) if f.endswith(f"{suffix}.npy")]
-        if len(npy_matches) > 1:
-            raise ValueError(f"Multiple files found in {data_path} matching {suffix}.npy: {npy_matches}")
-
-        if npy_matches:
-            file_path = os.path.relpath(os.path.join(data_path, npy_matches[0]))
-            num_data_rows = np.load(file_path, mmap_mode="r").shape[0]
-            if batch_size > num_data_rows:
-                raise ValueError(f"Batch size (batch_size={batch_size}) is greater than train/test dataset size (num_rows={num_data_rows})")
-            continue
+        num_data_rows = _feature_row_count(data_path, suffix)
+        if num_data_rows is not None and batch_size > num_data_rows:
+            raise ValueError(f"Batch size (batch_size={batch_size}) is greater than train/test dataset size (num_rows={num_data_rows})")
 
 
 

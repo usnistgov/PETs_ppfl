@@ -1,5 +1,10 @@
 # For licensing matters, please refer to the licensing statement at:
 # https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
+#
+# This file was edited with the assistance of Claude Code (Anthropic, model
+# Claude Opus 4.8). The assistant added characterization tests for the
+# NumpyEncoder fallback path in accordance with the author's instructions. All
+# content has been reviewed and verified by the authors.
 
 import json
 
@@ -45,3 +50,27 @@ def test_report_serializes_numpy_scalars_and_arrays(tmp_path):
         "losses per epoch": [3.0, 2.0, 1.0],
         "confusion": [[1, 2], [3, 4]],
     }
+
+
+def test_report_unserializable_value_becomes_null_without_raising(tmp_path):
+    # Characterization: NumpyEncoder.default swallows the TypeError for an
+    # unencodable object and returns None, so the value is written as JSON null
+    # rather than propagating an error. Documents current behavior.
+    report_path = tmp_path / "weird.json"
+
+    Report({"weird": object()}).save_to_file(report_path)
+
+    saved = json.loads(report_path.read_text(encoding="utf-8"))
+    assert saved == {"weird": None}
+
+
+def test_report_numpy_bool_is_not_encoded(tmp_path):
+    # Characterization / known gap: np.bool_ is neither np.integer nor
+    # np.floating, so it falls through to the error path and serializes as null
+    # instead of a JSON boolean.
+    report_path = tmp_path / "bool.json"
+
+    Report({"flag": np.bool_(True)}).save_to_file(report_path)
+
+    saved = json.loads(report_path.read_text(encoding="utf-8"))
+    assert saved == {"flag": None}
