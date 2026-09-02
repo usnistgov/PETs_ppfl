@@ -16,10 +16,11 @@ that models **phenotype from genotype**. It serves the following purposes:
 
 1. A **reference architecture** for differentially private (DP) federated learning.
 2. A **platform for rapid experimentation** on the privacy/utility trade-offs in such systems.
-3. A **educational tool** to help would-be developers of FL systems to understand the nuiances of privacy-preserving machine learning.
+3. An **educational tool** to help would-be developers of FL systems understand the nuances of privacy-preserving machine learning.
 
-Every change should protect both roles: keep the architecture clean and readable as a
-reference, and keep the experiment path easy to extend.
+Every change should protect all three roles: keep the architecture clean and readable as a
+reference, keep the experiment path easy to extend, and keep the code and its documentation
+approachable to newcomers.
 
 ---
 
@@ -125,7 +126,7 @@ preserve clear extension points so new experiments don't require touching core c
 ---
 ## Write documentation as you go
 
-As you change code, update documetion. This should include description of scripts and explaination of functions. Documention should be concise and aim to help uninitiated users understand apsects of the code and underpinning this codebase as an educational tool.  
+As you change code, update documentation. This should include descriptions of scripts and explanations of functions. Documentation should be concise and aim to help uninitiated users understand the code and the concepts underpinning it, supporting this codebase as an educational tool.
 
 ---
 
