@@ -1,5 +1,12 @@
 # For licensing matters, please refer to the licensing statement at:
 # https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
+#
+# This file was edited with the assistance of Claude Code (Anthropic, model
+# Claude Opus 4.8). The assistant investigated the Opacus RDP accountant's alpha
+# handling and removed a no-op instance-attribute assignment on the accountant,
+# leaving noise calibration and (epsilon, delta) accounting unchanged. All
+# content, scientific claims, and conclusions have been reviewed and verified by
+# the authors to ensure accuracy and originality.
 
 from report import Report
 import torch
@@ -523,8 +530,13 @@ class DPCNNModel(TorchModelBase):
                 target_epsilon=opacus_params.get("epsilon"),
                 target_delta=opacus_params.get("delta"),
                 max_grad_norm=opacus_params.get("max_grad_norm")))
-        
-        privacy_engine.accountant.alphas = [1 + x / 10.0 for x in range(1000)]
+
+        # The RDP accountant composes and reports (epsilon, delta) over its
+        # built-in order grid (RDPAccountant.DEFAULT_ALPHAS, orders 1.1-63). The
+        # noise multiplier above was calibrated against that same grid, so we
+        # leave it untouched: calibration and accounting stay consistent. (Do
+        # not set accountant.alphas here -- Opacus >=1.0 ignores that instance
+        # attribute, and a grid including order alpha=1.0 is invalid for RDP.)
         self.model = private_model
         return private_optimizer, private_train_loader, privacy_engine
     

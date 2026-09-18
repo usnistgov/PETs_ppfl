@@ -1,5 +1,10 @@
 # For licensing matters, please refer to the licensing statement at:
 # https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
+#
+# This file was edited with the assistance of Claude Code (Anthropic, model
+# Claude Opus 4.8). The assistant hardened get_split_labels against empty/
+# loosely-typed index inputs in accordance with the author's instructions. All
+# content has been reviewed and verified by the authors.
 
 from typing import List, Tuple
 import sys
@@ -165,7 +170,9 @@ def convert_dat_to_npy(data_dir: Path) -> None:
 
 def get_split_labels(labels, indices):
     """Return labels for logical indices across one or more backing arrays."""
-    indices = np.asarray(indices)
+    # Coerce to an integer index array so an empty or loosely-typed list (which
+    # NumPy would otherwise infer as float64) can still be used for indexing.
+    indices = np.asarray(indices, dtype=np.intp)
     label_arrays = [np.asarray(label).reshape(-1) for label in labels]
     lengths = [len(label) for label in label_arrays]
     total_len = sum(len(label) for label in labels)
