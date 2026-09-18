@@ -1,11 +1,12 @@
 # For licensing matters, please refer to the licensing statement at:
 # https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
 #
-# This file was edited with the assistance of Claude Code (Anthropic, model
-# Claude Opus 4.8). The assistant extended validate_data_size to read row
-# counts from .dat files when .npy files are not yet present, in accordance
-# with the author's instructions. All content has been reviewed and verified by
-# the authors.
+# This file was edited with the assistance of Claude Code (Anthropic, models
+# Claude Opus 4.8 and Claude Opus 5). The assistant extended validate_data_size
+# to read row counts from .dat files when .npy files are not yet present, and
+# replaced the removed distutils.util.strtobool with a local equivalent as part
+# of the Python 3.12 migration, in accordance with the author's instructions.
+# All content has been reviewed and verified by the authors.
 
 import argparse
 import numpy as np
@@ -14,7 +15,6 @@ import torch
 import json
 import pickle
 from copy import deepcopy
-from distutils.util import strtobool
 from pathlib import Path
 from typing import Any, Dict, Tuple, List, Set,  Union
 from xgboost import XGBClassifier, Booster
@@ -638,6 +638,30 @@ def _get_validation_errors(schema: Dict[str, Any], instance: Dict[str, Any]) -> 
     return errors
 
 ###
+#   _strtobool(value)
+#   purpose: Convert a truthy/falsy CLI string into a bool, raising ValueError when it is neither.
+###
+_TRUE_STRINGS = {"y", "yes", "t", "true", "on", "1"}
+_FALSE_STRINGS = {"n", "no", "f", "false", "off", "0"}
+
+
+def _strtobool(value: str) -> bool:
+    """Convert a string such as "yes" or "0" into a bool.
+
+    Replaces ``distutils.util.strtobool``, which was removed from the standard
+    library in Python 3.12. The accepted vocabulary and the ValueError raised on
+    anything else are kept identical, because ``_coerce_cli_value`` relies on
+    that error to fall back to the raw string for non-boolean input.
+    """
+    normalized = value.lower()
+    if normalized in _TRUE_STRINGS:
+        return True
+    if normalized in _FALSE_STRINGS:
+        return False
+    raise ValueError(f"invalid truth value: {value!r}")
+
+
+###
 #   _coerce_cli_value(raw_value, sch)
 #   purpose: Convert a CLI string value into the schema-expected Python type when possible.
 ###
@@ -650,7 +674,7 @@ def _coerce_cli_value(raw_value: str, sch: Dict[str, Any]) -> Any:
 
     try:
         if t == "boolean":
-            return bool(strtobool(raw_value))
+            return _strtobool(raw_value)
         if t == "integer":
             return int(raw_value)
         if t == "number":
