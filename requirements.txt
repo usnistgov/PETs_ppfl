@@ -1,15 +1,42 @@
-argcomplete>=3.3.0
-datasets>=2.18.0
-flwr>=1.16.0
-flwr[simulation]>=1.16.0
+# Requires Python 3.12.
+#
+# The versions below are pinned to the combination the test suite was last run
+# against in full (184 passed, 3 skipped). Previously the runtime packages
+# carried lower bounds with no upper bounds, so a fresh install resolved to
+# whatever was newest that day -- a combination nobody had tested. Pinning keeps
+# a new checkout reproducible and keeps the regression baselines in
+# PETs_Testbed/tests/test_inputs.py meaningful.
+#
+# To move a pin: bump it deliberately, re-run the full suite, and re-baseline if
+# results shift.
+#
+# This file was edited with the assistance of Claude Code (Anthropic, model
+# Claude Opus 5). The assistant pinned the previously unbounded dependencies to
+# the versions it verified on Python 3.12 in accordance with the author's
+# instructions. All content has been reviewed and verified by the authors.
+
+argcomplete==3.7.2
+datasets==3.1.0
+flwr==1.30.0
+flwr[simulation]==1.30.0
 flwr-datasets==0.5.0
-numpy>=1.26.4
+numpy==2.2.6
 opacus==1.4.1
-pandas>=2.2.1
-scikit-learn ==1.5.0
+pandas==2.3.3
+scikit-learn==1.5.0
 scikit-optimize==0.10.2
-torch>=1.13.1
+torch==2.13.0
 xgboost==2.1.0
+
+# scipy is a transitive dependency (via scikit-learn, scikit-optimize and
+# xgboost), declared here only to enforce a floor. Releases before 1.16 ship
+# Fortran extensions that macOS 27 refuses to load:
+#   "section '__DATA/__thread_bss' has a zero-fill section type, but offset
+#    field is not zero"
+# scipy 1.15.3 is the last release supporting Python 3.10 and is affected, which
+# is what forced the move to 3.12. Do not lower this floor.
+scipy>=1.18.1
+
 pytest==9.0.3
 pytest-benchmark>=4.0.0
 pytest-cov>=5.0.0

@@ -46,12 +46,21 @@ Tested and validated on:
 - Storage: 500 GB
 - GPU: None
 
+Test suite (unit and regression) additionally verified on:
+- OS: MacOS 27.0
+- Kernel: Darwin Kernel Version 27.0.0
+- Architecture: arm64
+- Environment: MacBook Pro
+- CPU: Apple M3 Pro - 12 Core
+- Memory: 18 GB
+- GPU: None
+
 ### Windows
 This is not been fully tested on Windows. However, initial exploratory runs suggest compatibility with native Windows.
 
 ## Quickstart <a name="quick"></a>
 
-1. Confirm that Python 3.10 is installed:
+1. Confirm that Python 3.12 is installed:
    ```bash
    python -V
    # or
@@ -59,7 +68,7 @@ This is not been fully tested on Windows. However, initial exploratory runs sugg
    ```
 2. Create and activate a virtual environment:
    ```bash
-   python3.10 -m venv .venv
+   python3.12 -m venv .venv
    source .venv/bin/activate
    ```
 3. Install dependencies:
@@ -143,8 +152,15 @@ Throughout the beta development process, these capabilities are expected to expa
 
 ## Installation and Setup <a name="setup"></a>
 
-> The testbed expects Python 3.10. Other versions may cause errors with the `torch` library.
-> If Python 3.10 is not installed, try running the `setup.sh` bash script, which downloads Python 3.10 from the deadsnakes repository.
+> The testbed expects Python 3.12.
+> If Python 3.12 is not installed, try running the `setup.sh` bash script, which downloads Python 3.12 from the deadsnakes repository.
+
+> **Why 3.12 and not 3.10?** The testbed previously targeted Python 3.10. On MacOS 27
+> the system loader rejects the Fortran extensions shipped in `scipy` 1.15.3 — the last
+> release that supports Python 3.10 — which in turn makes `scikit-learn`, `xgboost` and
+> `opacus` fail to import. `scipy` 1.16 and later are built with a newer toolchain and
+> load correctly, but they require Python 3.11+. Python 3.13 is not used because the
+> pinned `scikit-learn` 1.5.0 has no prebuilt wheel for it and would need a compiler.
 
 > Please note that this codebase is designed for Mac/Linux distributions. Windows distributions may behave differently.
 
@@ -164,12 +180,12 @@ Throughout the beta development process, these capabilities are expected to expa
          4. `_tt_vcf.dat`
       - You may also provide your own data partition files. Examples of old (non-usable) data partition files can be seen in the `SCC` data at `ppfl_SCC_c0c1_5clients_2025_01_14.npz` and `ppfl_SCC_c4c5_5clients_2025_01_14.npz`. However, if you attempt to use one of these, it will not work. This is because legacy behavior concatenated the tt and ho datasets, whereas the current PETs testbed does not.
       > Please also remember to update the `data_dir` variable either through the command line or through the provided configuration file.
-2. Download or validate a Python 3.10 installation (other versions may result in errors with the `torch` library) via the `python -V` or `python3 -V` commands.
+2. Download or validate a Python 3.12 installation via the `python -V` or `python3 -V` commands.
    1. Run the command `python -V` to check the installed version.
    2. If the wrong version of Python is installed, or if Python is not installed, try:
-      -  Running the `setup.sh` bash script, which downloads Python 3.10 from the deadsnakes repository
-   3. Run the command `python3.10 -V` to confirm a successful installation.
-3. `cd` into the directory where the downloaded project is located. You should see folders such as `data`, `PETs_Testbed`, etc. Create a virtual environment with the command `python3.10 -m venv .venv`.
+      -  Running the `setup.sh` bash script, which downloads Python 3.12 from the deadsnakes repository
+   3. Run the command `python3.12 -V` to confirm a successful installation.
+3. `cd` into the directory where the downloaded project is located. You should see folders such as `data`, `PETs_Testbed`, etc. Create a virtual environment with the command `python3.12 -m venv .venv`.
 4. Confirm that the `.venv` directory was created by running `ls -la`.
 5. Activate the virtual environment. On success, `(.venv)` should be prepended to your shell prompt.
    1. On Mac/Linux: `source ./.venv/bin/activate`
@@ -207,10 +223,10 @@ In that folder, you will see the `holdout` and `train_test` datasets named with 
 To run the testbed, navigate to the PETs_Testbed folder and run:
 
 ```bash 
-python3.10 run.py
+python3.12 run.py
 
 # Or to just validate parameters:
-python3.10 run.py --check_only
+python3.12 run.py --check_only
 ```
 
 This will load the default parameter values from the schema and run a simple federated learning workflow with differential privacy. 
@@ -319,7 +335,7 @@ For XGBoost models, the backend `objective` and `eval_metric` will be automatica
 
 The purpose of batch experiments is to allow users to run the PETs Testbed on a series of values for a single parameter with the goal of identifying the effect that comes from incrementally modifying that particular parameter.
 
-To run a batch experiment, run `python3.10 run_batch.py` from the `PETs_Testbed` directory.
+To run a batch experiment, run `python3.12 run_batch.py` from the `PETs_Testbed` directory.
 
 The batch experimentation script will prompt you for the parameter type and parameter values you would like to run the experiment on. All other parameters are taken from the configs/config.json configuration file and are kept constant in each subsequent run. Ensure configs/config.json has all of the other parameters you would like to use. 
 
@@ -329,7 +345,7 @@ To make it easier for users to view the results of both singular runs and batch 
 
 To access the results viewer, run the following command from the genomics_ppfl_base directory while replacing {PORT_NUMBER} with a desired port of your choosing. Ensure the port is not already in use by running `lsof -i :{PORT_NUMBER}`.  
 
-`python3.10 -m http.server {PORT_NUMBER}`
+`python3.12 -m http.server {PORT_NUMBER}`
 
 You can then access the results viewer from your browser at `http://localhost:{PORT_NUMBER}/results_viewer.html`
 
@@ -346,7 +362,7 @@ On your remote VM:
 You must identify an open port on which to host the report viewer. We recommend ports 8001-8005.
 1. Ensure the port is not already in use by running `lsof -i :{PORT_NUMBER}`
 1. Change directories to the `PETs_Testbed` directory of this software package
-1. Start your web server by running `pyenv exec python3.10 -m http.server {PORT_NUMBER}`
+1. Start your web server by running `pyenv exec python3.12 -m http.server {PORT_NUMBER}`
 
 On your local machine:
 1. Ensure you have a local copy of the PETs_Testbed code 
@@ -366,3 +382,10 @@ Below you will find links to additional technical information for the `PETs_Test
 ## License <a name="license"></a>
 
 Please refer to the licensing statement [here](https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software).
+
+## Use of Generative AI
+
+This document was edited with the assistance of Claude Code (Anthropic, model Claude Opus 5).
+The assistant updated the Python version references from 3.10 to 3.12 and documented the reason
+for that change, in accordance with the authors' instructions. All content, scientific claims,
+and conclusions have been reviewed and verified by the authors to ensure accuracy and originality.

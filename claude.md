@@ -63,7 +63,7 @@ Always run tests, lint, and type-check before considering a change complete.
 ## Coding conventions
 
 <!-- FILL IN / adjust -->
-- Python version: `3.10`
+- Python version: `3.12`
 - Style: follow existing patterns in the module you're editing; match surrounding code.
 - Type hints on all new/edited public functions.
 - Dependencies: `./requirements.txt`. Do not add a new dependency

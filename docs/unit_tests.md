@@ -15,23 +15,23 @@ tests are documented in [Unit, characterization, and performance tests](#unit-ch
 
 For regression testing, a Python library called `pytest` is used. This helps automate the testing process. There are various test cases described in the `tests/test_inputs.py` script. In this regression testing, it is only checking whether the parameter inputs are valid. To run the regression tests, ensure you are in the `PETs_Testbed` folder, and if using a virtual environment, make sure it is active. Also ensure you have `pytest` installed in your environment; it is now listed in `requirements.txt`. Then, run:
 ```bash
-python3.10 -m pytest -q
+python3.12 -m pytest -q
 ``` 
 This will loop through every single test case with a progress tracker at the bottom. Any failed tests will be printed at the end.
 
 These regression tests do have an end-to-end run, but it is skipped by default due to the time it takes. If you want to include the end-to-end run in the regression testing, run:
 ```bash
-python3.10 -m pytest -q --run-e2e
+python3.12 -m pytest -q --run-e2e
 ```
 
 To manually go through each test case using `pytest`, first gather a list of all possible tests. It can be recorded it in a `.txt` file for easy lookup by running 
 ```bash
-python3.10 -m pytest --collect-only -q > test_list.txt
+python3.12 -m pytest --collect-only -q > test_list.txt
 ```
 Then, identify the test you want to run, for example `test_inputs.py::test_run_py_regressions[t12a]`. To run that individual test, use:
 
 ```bash
-python3.10 -m pytest test_inputs.py::test_run_py_regressions[t12a]
+python3.12 -m pytest test_inputs.py::test_run_py_regressions[t12a]
 ```
 
 #### Adding Additional Regression Tests
@@ -121,22 +121,22 @@ environment active.
 
 ```bash
 # Default run: unit + regression tests, benchmarks excluded.
-python3.10 -m pytest -q
+python3.12 -m pytest -q
 
 # One file.
-python3.10 -m pytest tests/test_dataset.py
+python3.12 -m pytest tests/test_dataset.py
 
 # One test.
-python3.10 -m pytest tests/test_dataset.py::test_get_split_labels_out_of_range_raises
+python3.12 -m pytest tests/test_dataset.py::test_get_split_labels_out_of_range_raises
 
 # Performance benchmarks only (overrides the default deselection).
-python3.10 -m pytest -m perf
+python3.12 -m pytest -m perf
 
 # Everything, including benchmarks.
-python3.10 -m pytest -m ""
+python3.12 -m pytest -m ""
 
 # Coverage for a module you are working on.
-python3.10 -m pytest --cov=dataset --cov-report=term-missing
+python3.12 -m pytest --cov=dataset --cov-report=term-missing
 ```
 
 The expected default result on a clean checkout is `184 passed, 3 skipped,
@@ -321,9 +321,9 @@ use them for before/after comparison on one machine rather than as a portable
 target. To compare two runs:
 
 ```bash
-python3.10 -m pytest -m perf --benchmark-autosave       # baseline
+python3.12 -m pytest -m perf --benchmark-autosave       # baseline
 # ...make your change...
-python3.10 -m pytest -m perf --benchmark-compare
+python3.12 -m pytest -m perf --benchmark-compare
 ```
 
 ### Adding unit tests
@@ -357,6 +357,8 @@ python3.10 -m pytest -m perf --benchmark-compare
 ---
 
 *This documentation was written with the assistance of Claude Code (Anthropic,
-model Claude Opus 5), which read the test suite and drafted these descriptions
-in accordance with the author's instructions. All content has been reviewed and
-verified by the authors to ensure accuracy and originality.*
+model Claude Opus 5), which read the test suite and drafted these descriptions,
+and later updated the example commands from `python3.10` to `python3.12` as part
+of the Python 3.12 migration, in accordance with the author's instructions. All
+content has been reviewed and verified by the authors to ensure accuracy and
+originality.*
