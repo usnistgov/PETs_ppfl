@@ -8,7 +8,7 @@
 #
 # These benchmarks are deselected from the default test run (see pytest.ini's
 # `-m "not perf"`). Run them explicitly with:
-#     python3.10 -m pytest -m perf
+#     python3.12 -m pytest -m perf
 
 import numpy as np
 import pytest

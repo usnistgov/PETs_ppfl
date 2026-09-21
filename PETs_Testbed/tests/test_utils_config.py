@@ -1,17 +1,19 @@
 # For licensing matters, please refer to the licensing statement at:
 # https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
 #
-# This file was edited with the assistance of Claude Code (Anthropic, model
-# Claude Opus 4.8). The assistant proposed and wrote direct unit tests for the
-# schema-driven configuration engine in utils.py in accordance with the
-# author's instructions. All content has been reviewed and verified by the
-# authors.
+# This file was edited with the assistance of Claude Code (Anthropic, models
+# Claude Opus 4.8 and Claude Opus 5). The assistant proposed and wrote direct
+# unit tests for the schema-driven configuration engine in utils.py, and added
+# characterization tests pinning the _strtobool replacement to the behavior of
+# the removed distutils.util.strtobool, in accordance with the author's
+# instructions. All content has been reviewed and verified by the authors.
 
 import pytest
 
 from utils import (
     UnknownParameterError,
     _coerce_cli_value,
+    _strtobool,
     _get_validation_errors,
     _prune_inactive_model_params,
     _sync_enabled_flags,
@@ -55,6 +57,39 @@ def test_coerce_cli_value_non_string_passthrough():
 def test_coerce_cli_value_resolves_type_through_combinators():
     schema = {"oneOf": [{"type": "integer"}]}
     assert _coerce_cli_value("7", schema) == 7
+
+
+# --------------------------------------------------------------------------- #
+# _strtobool                                                                  #
+# --------------------------------------------------------------------------- #
+# Characterization: _strtobool replaced distutils.util.strtobool, which was
+# removed from the standard library in Python 3.12. These cases were captured
+# from the behavior of the original function and must not drift -- the rejected
+# values in particular, because _coerce_cli_value depends on the ValueError to
+# fall back to the raw string.
+@pytest.mark.parametrize(
+    "raw", ["y", "yes", "t", "true", "on", "1", "True", "TRUE", "Yes"]
+)
+def test_strtobool_accepts_truthy_vocabulary(raw):
+    assert _strtobool(raw) is True
+
+
+@pytest.mark.parametrize(
+    "raw", ["n", "no", "f", "false", "off", "0", "False", "FALSE", "Off"]
+)
+def test_strtobool_accepts_falsy_vocabulary(raw):
+    assert _strtobool(raw) is False
+
+
+@pytest.mark.parametrize("raw", ["maybe", "", "2", "-1", " true", "true "])
+def test_strtobool_rejects_everything_else(raw):
+    # Note that surrounding whitespace is *not* stripped, matching the original.
+    with pytest.raises(ValueError):
+        _strtobool(raw)
+
+
+def test_strtobool_rejection_makes_coerce_fall_back_to_raw():
+    assert _coerce_cli_value("maybe", {"type": "boolean"}) == "maybe"
 
 
 # --------------------------------------------------------------------------- #
