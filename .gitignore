@@ -9,8 +9,12 @@ OIL_QTL_ho_pheno.dat
 .venv
 
 *.npy
+# Generated experiment output under reports/ stays untracked, but written-up
+# findings reports (Markdown) are checked in. The negation only works because
+# the directory itself is not excluded -- do not re-add a bare `reports` entry.
+# (Edited with Claude Code, Anthropic model Claude Opus 5.)
 reports/*
-reports
+!reports/*.md
 inputs.py
 .pytest_cache
 DataAnalysis
