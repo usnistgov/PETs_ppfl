@@ -270,7 +270,7 @@ private helpers:
 The last two tests document current behavior, not desired behavior. If the
 encoder is fixed, update these tests as part of that change.
 
-#### `test_dp_privacy.py` — privacy mechanics (4 tests)
+#### `test_dp_privacy.py` — privacy mechanics (8 tests)
 
 Per the testing philosophy in `CLAUDE.md`, these assert on privacy mechanics
 rather than on model outputs. They guard the Opacus RDP accountant contract that
@@ -294,6 +294,31 @@ report (ε, δ) over its built-in `DEFAULT_ALPHAS`.
 If a future change reintroduces a custom alpha grid, these tests fail. That is
 their purpose — treat a failure here as a privacy review item, not a test to
 adjust.
+
+A second group bounds how much tightness the default grid gives up. At the
+shipped configuration Opacus warns that the optimal Rényi order is the largest
+alpha, meaning the optimum sits on the top edge of `DEFAULT_ALPHAS` and a better
+order may lie beyond it. That is a tightness question, not a soundness one — the
+RDP-to-DP conversion minimizes over the grid, so a narrow grid can only overstate
+epsilon. These tests pin the size of that effect:
+
+- At the shipped regime the optimal order is `max(DEFAULT_ALPHAS) == 63` and the
+  `UserWarning` fires. The warning is asserted with `pytest.warns` rather than
+  suppressed, so the day it stops happening is a visible event.
+- Widening the grid to `alpha = 128` must never report a *looser* bound, must
+  place the optimum strictly inside the widened grid, and must not reduce epsilon
+  by more than 5%. Measured slack today is 0.83% at the shipped configuration and
+  1.08% at a lower sample rate. **This is the alarm:** if a future change to the
+  DP parameters makes the default grid genuinely inadequate, it fails.
+- The calibrated noise multiplier is identical with and without the widened grid
+  (σ = 130.0), because the slack is far inside `get_noise_multiplier`'s default
+  `epsilon_tolerance` of 0.01. This is why the looseness costs no model accuracy.
+- At a moderate budget the optimum is interior (α = 10.7) and no warning fires,
+  showing the boundary condition is specific to very strong privacy settings.
+
+Background and full measurements are in
+[Privacy accounting and the RDP order grid](privacy_accounting.md) and
+`reports/2026-09-21-rdp-alpha-grid-tightness.md`.
 
 #### `test_model_metrics.py` — metric computation (5 tests)
 
@@ -358,7 +383,7 @@ python3.12 -m pytest -m perf --benchmark-compare
 
 *This documentation was written with the assistance of Claude Code (Anthropic,
 model Claude Opus 5), which read the test suite and drafted these descriptions,
-and later updated the example commands from `python3.10` to `python3.12` as part
-of the Python 3.12 migration, in accordance with the author's instructions. All
-content has been reviewed and verified by the authors to ensure accuracy and
-originality.*
+later updated the example commands from `python3.10` to `python3.12` as part of
+the Python 3.12 migration, and later still documented the RDP order-grid
+tightness tests, in accordance with the author's instructions. All content has
+been reviewed and verified by the authors to ensure accuracy and originality.*

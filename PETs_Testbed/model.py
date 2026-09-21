@@ -1,10 +1,13 @@
 # For licensing matters, please refer to the licensing statement at:
 # https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
 #
-# This file was edited with the assistance of Claude Code (Anthropic, model
-# Claude Opus 4.8). The assistant investigated the Opacus RDP accountant's alpha
-# handling and removed a no-op instance-attribute assignment on the accountant,
-# leaving noise calibration and (epsilon, delta) accounting unchanged. All
+# This file was edited with the assistance of Claude Code (Anthropic, models
+# Claude Opus 4.8 and Claude Opus 5). The assistant investigated the Opacus RDP
+# accountant's alpha handling and removed a no-op instance-attribute assignment
+# on the accountant, leaving noise calibration and (epsilon, delta) accounting
+# unchanged. It later measured the tightness of the default RDP order grid and
+# documented the result in the comment block of attach_privacy_engine; that
+# later edit added explanatory comments only and changed no executable code. All
 # content, scientific claims, and conclusions have been reviewed and verified by
 # the authors to ensure accuracy and originality.
 
@@ -537,6 +540,33 @@ class DPCNNModel(TorchModelBase):
         # leave it untouched: calibration and accounting stay consistent. (Do
         # not set accountant.alphas here -- Opacus >=1.0 ignores that instance
         # attribute, and a grid including order alpha=1.0 is invalid for RDP.)
+        #
+        # At the shipped configuration Opacus warns that "Optimal order is the
+        # largest alpha", because the best Renyi order lands on the top edge of
+        # that grid (alpha=63). The warning is expected here and is deliberately
+        # left in place rather than silenced or worked around:
+        #
+        #   * The reported epsilon stays a valid upper bound. The RDP-to-DP
+        #     conversion takes the MINIMUM over the grid, and a minimum over a
+        #     subset of orders can only overstate epsilon, never understate it.
+        #     A narrow grid is conservative, not optimistic.
+        #   * The slack is small. Extending the grid to alpha=128 moves the
+        #     optimum to alpha=71 and lowers reported epsilon by ~0.8% (0.196149
+        #     -> 0.194530); extending further to 8192 changes nothing at all.
+        #   * It costs no utility. get_noise_multiplier binary-searches sigma
+        #     with epsilon_tolerance=0.01, and that ~0.0016 epsilon gap is well
+        #     inside the tolerance, so the calibrated sigma is identical either
+        #     way. No extra noise is being added on account of the narrow grid.
+        #
+        # Widening the grid would therefore buy a fourth decimal place in the
+        # reported number and nothing else, at the cost of a behavior change in
+        # privacy-critical code. If it is ever revisited, the same grid MUST be
+        # passed to BOTH make_private_with_epsilon(alphas=...) (calibration) and
+        # accountant.get_privacy_spent(delta=..., alphas=...) (reporting) from a
+        # single shared constant; calibrating on one grid and reporting on
+        # another yields a number that is not the guarantee actually enforced.
+        # See docs/privacy_accounting.md, and test_dp_privacy.py, which fails if
+        # the slack ever grows large enough to matter.
         self.model = private_model
         return private_optimizer, private_train_loader, privacy_engine
     
