@@ -5,6 +5,31 @@
 # Claude Opus 4.8). The assistant proposed pytest fixtures for synthetic,
 # file-backed test data in accordance with the author's instructions. All
 # content has been reviewed and verified by the authors.
+#
+# The module docstring describing each test was added with the assistance of
+# Claude Code (Anthropic, model Claude Fable 5.1) in accordance with the
+# author's instructions and reviewed by the authors.
+
+"""Shared pytest configuration and fixtures for the PETs testbed test suite.
+
+Pytest imports this file before any test module. It provides:
+
+* An ``OMP_NUM_THREADS=1`` guard that prevents a macOS crash when ``torch`` and
+  ``xgboost`` both load their own OpenMP runtime in one process.
+* The ``--run-e2e`` command-line option, which enables the slow end-to-end
+  training case ``t46`` in ``test_inputs.py``.
+* Three fixtures that build small, seeded, synthetic datasets:
+
+  - ``synthetic_split``: two in-memory feature/label array pairs of different
+    lengths (3 and 2 rows), so tests can exercise the boundary between backing
+    arrays in ``IndexedArrayDataset``.
+  - ``npy_data_dir``: a temporary directory holding the six ``*_vcf.npy`` and
+    ``*_pheno.npy`` files the loaders expect to discover.
+  - ``dat_data_dir``: a temporary directory of pickled ``.dat`` arrays plus one
+    non-array pickle, for the ``.dat`` to ``.npy`` conversion tests.
+
+No fixture uses real genotype or phenotype data.
+"""
 
 import os
 

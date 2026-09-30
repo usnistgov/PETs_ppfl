@@ -8,6 +8,9 @@ The suite lives in `PETs_Testbed/tests/` and is split into three kinds of test:
 | Unit / characterization | `test_dataset.py`, `test_utils_config.py`, `test_server_helpers.py`, `test_client_helpers.py`, `test_reports.py`, `test_model_metrics.py`, `test_dp_privacy.py` | Individual functions in isolation, with no subprocess or full run. |
 | Performance | `test_dataset_perf.py` | Benchmarks of the memory-mapped data access path. Deselected by default. |
 
+A per-file guide, `PETs_Testbed/tests/README.md`, describes every test script, and each
+script now opens with a module docstring listing its individual tests.
+
 The regression tests are documented immediately below; the unit and performance
 tests are documented in [Unit, characterization, and performance tests](#unit-characterization-and-performance-tests).
 
@@ -387,3 +390,9 @@ later updated the example commands from `python3.10` to `python3.12` as part of
 the Python 3.12 migration, and later still documented the RDP order-grid
 tightness tests, in accordance with the author's instructions. All content has
 been reviewed and verified by the authors to ensure accuracy and originality.*
+
+---
+
+This document was edited with the assistance of Claude Code (Anthropic, model Claude
+Fable 5.1). The assistant added the pointer to the per-file test README in accordance with
+the author's instructions. All content has been reviewed and verified by the authors.

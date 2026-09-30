@@ -13,6 +13,59 @@
 # DEFAULT_ALPHAS. These tests pin that contract so a future change cannot
 # silently reintroduce a mismatched or degenerate alpha grid, and they bound how
 # much tightness that choice gives up. See docs/privacy_accounting.md.
+#
+# The module docstring describing each test was added with the assistance of
+# Claude Code (Anthropic, model Claude Fable 5.1) in accordance with the
+# author's instructions and reviewed by the authors.
+
+"""Privacy-mechanics tests for the Opacus RDP accountant contract in ``model.py``.
+
+The DP-CNN training path deliberately does not customize the Renyi order
+(alpha) grid. It lets the Opacus ``RDPAccountant`` calibrate the noise
+multiplier and report (epsilon, delta) over its built-in ``DEFAULT_ALPHAS``.
+These tests pin that contract so a future change cannot silently introduce a
+mismatched or degenerate grid, and they bound how much tightness the default
+grid gives up. Read with ``docs/privacy_accounting.md``.
+
+All tests use a synthetic accountant history matching the shipped
+configuration (noise multiplier 130, sample rate 0.5, 200 steps, delta 1e-5),
+so they need no real data and run in seconds.
+
+Tests
+-----
+No degenerate orders
+    ``test_default_rdp_alphas_exclude_degenerate_orders``: every default alpha
+    is greater than 1, because RDP-to-DP conversion divides by ``alpha - 1``.
+    ``test_degenerate_alpha_grid_would_break_accounting``: a grid starting at
+    alpha 1.0 (the grid a removed ``model.py`` override once built) raises
+    ``ZeroDivisionError`` rather than reporting a budget.
+
+Instance attributes are ignored
+    ``test_reported_epsilon_ignores_instance_alphas_attribute``: setting an
+    ``alphas`` attribute on the accountant does not change the reported
+    epsilon or best order. This is why removing the old override was
+    behavior-preserving.
+
+The production path
+    ``test_attach_privacy_engine_does_not_customize_alpha_grid``: after
+    ``DPCNNModel.attach_privacy_engine`` the accountant has no ``alphas``
+    attribute and uses the ``rdp`` mechanism.
+
+How tight is the default grid
+    ``test_shipped_config_regime_pins_optimum_to_grid_upper_bound``: at the
+    shipped configuration the optimal order is the largest default alpha
+    (63), and Opacus warns about it. The warning is asserted, not suppressed.
+    ``test_widening_alpha_grid_leaves_epsilon_bound_nearly_unchanged``:
+    widening the grid to 128 can only lower epsilon; the drop must stay under
+    ``MAX_ACCEPTABLE_SLACK`` (measured slack is about 1 percent) and the new
+    optimum must be interior to the widened grid.
+    ``test_widening_alpha_grid_does_not_change_calibrated_noise``: the same
+    noise multiplier is calibrated with either grid, so the slack costs no
+    utility.
+    ``test_moderate_privacy_regime_has_interior_optimum``: at a moderate
+    budget the optimum sits inside the default grid and nothing is warned,
+    showing the boundary effect is specific to very strong privacy settings.
+"""
 
 import warnings
 

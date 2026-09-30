@@ -5,6 +5,38 @@
 # Claude Opus 4.8). The assistant proposed and wrote unit tests for the server
 # aggregation and history helpers in accordance with the author's instructions.
 # All content has been reviewed and verified by the authors.
+#
+# The module docstring describing each test was added with the assistance of
+# Claude Code (Anthropic, model Claude Fable 5.1) in accordance with the
+# author's instructions and reviewed by the authors.
+
+"""Unit tests for the aggregation and history helpers in ``server.py``.
+
+Tests
+-----
+weighted_average_metrics
+    ``test_weighted_average_weights_by_example_count``: each client's metrics
+    are weighted by its number of examples.
+    ``test_weighted_average_zero_total_returns_empty``: clients with zero
+    examples are dropped; if nothing remains the result is empty.
+    ``test_weighted_average_drops_empty_metric_dicts``: a client reporting no
+    metrics contributes nothing.
+    ``test_weighted_average_handles_missing_keys_as_zero``: a metric absent
+    from one client counts as zero for that client but still divides by the
+    total example count.
+
+get_torch_model_class
+    ``test_get_torch_model_class_dispatch``: ``"dpcnn"`` maps to
+    ``DPCNNModel``; ``"cnn"`` and any unrecognized string map to ``CNNModel``.
+
+update_global_history
+    ``test_update_global_history_regression``: loss, accuracy, and MSE are
+    appended each round; precision and recall lists stay empty.
+    ``test_update_global_history_classification``: precision and recall are
+    also appended when classification metrics are supplied.
+    The ``reset_history`` fixture snapshots, clears, and restores the
+    module-level history lists so these tests do not leak state.
+"""
 
 import pytest
 

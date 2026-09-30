@@ -6,6 +6,84 @@
 # handling logic in dataset.py in accordance with the author's instructions.
 # All content, scientific claims, and conclusions have been reviewed and
 # verified by the authors to ensure accuracy and originality.
+#
+# The module docstring describing each test was added with the assistance of
+# Claude Code (Anthropic, model Claude Fable 5.1) in accordance with the
+# author's instructions and reviewed by the authors.
+
+"""Unit tests for the memory-mapped data layer in ``dataset.py``.
+
+The data layer loads genotype features and phenotype labels from ``.npy``
+files as memory maps and presents several backing arrays as one logical
+table. See ``docs/memory_mapped_data_loading.md`` for the design.
+
+Tests
+-----
+normalize_label / build_label_to_index
+    ``test_normalize_label_unwraps_numpy_scalars``: NumPy scalars become plain
+    Python values; plain values pass through.
+    ``test_build_label_to_index_none_returns_none``: no class labels means no
+    mapping.
+    ``test_build_label_to_index_maps_labels_to_positions``: labels map to
+    contiguous integer positions.
+    ``test_build_label_to_index_normalizes_numpy_keys``: NumPy-typed labels
+    produce plain-int keys.
+
+IndexedArrayDataset
+    ``test_indexed_dataset_len_matches_indices``: length equals the number of
+    selected indices, not the backing size.
+    ``test_indexed_dataset_getitem_resolves_across_backing_arrays``: a global
+    row index resolves to the right array and offset.
+    ``test_indexed_dataset_respects_index_order``: items are served in the
+    order of the index list.
+    ``test_indexed_dataset_reshapes_2d_labels``: ``(n, 1)`` labels become
+    scalars.
+    ``test_indexed_dataset_encodes_classification_labels``: class labels are
+    encoded through the label-to-index map.
+    ``test_indexed_dataset_unknown_label_raises``: a label outside the map is
+    an error.
+    ``test_indexed_dataset_mismatched_list_lengths_raise`` and
+    ``test_indexed_dataset_feature_label_length_mismatch_raises``: feature and
+    label lists must align in count and in row length.
+
+get_split_labels
+    ``test_get_split_labels_gathers_across_arrays``: labels are gathered for
+    global indices spanning several arrays.
+    ``test_get_split_labels_empty_indices_returns_empty``: empty index inputs
+    of several dtypes return an empty array (parametrized).
+    ``test_get_split_labels_out_of_range_raises``: an index past the end is an
+    error.
+
+train_test_indices_split / train_test_split_backed_indices
+    ``test_train_test_split_is_disjoint_and_complete``: train and test cover
+    every row exactly once.
+    ``test_train_test_split_is_deterministic_under_seed``: the same seed gives
+    the same split.
+    ``test_train_test_split_puts_singleton_class_in_train``: a class with one
+    example goes to the training set rather than breaking stratification.
+    ``test_train_test_split_regression_bins_and_splits``: continuous targets
+    are binned before stratifying.
+    ``test_train_test_split_backed_indices_returns_global_indices``: the
+    backed variant returns indices into the concatenated table.
+
+find_single_npy / convert_dat_to_npy / load_npy_feature_label_data
+    ``test_find_single_npy_returns_match``,
+    ``test_find_single_npy_returns_none_when_absent``,
+    ``test_find_single_npy_multiple_matches_raise``: exactly one file per
+    suffix is expected.
+    ``test_convert_dat_to_npy_creates_files_and_downcasts``: pickled float64
+    arrays are written as float32 ``.npy`` files.
+    ``test_convert_dat_to_npy_skips_non_array_pickles``: non-array pickles are
+    ignored.
+    ``test_convert_dat_to_npy_does_not_overwrite_existing``: an existing
+    ``.npy`` is left untouched.
+    ``test_convert_dat_to_npy_bad_directory_raises``: a missing directory is
+    an error.
+    ``test_load_npy_feature_label_data_returns_mmap_and_flat_labels``:
+    features come back memory-mapped and labels flattened to 1-D.
+    ``test_resolve_data_dir_keeps_absolute_paths``: absolute paths are not
+    re-rooted.
+"""
 
 import numpy as np
 import pytest
