@@ -9,6 +9,30 @@
 # These benchmarks are deselected from the default test run (see pytest.ini's
 # `-m "not perf"`). Run them explicitly with:
 #     python3.12 -m pytest -m perf
+#
+# The module docstring describing each test was added with the assistance of
+# Claude Code (Anthropic, model Claude Fable 5.1) in accordance with the
+# author's instructions and reviewed by the authors.
+
+"""Performance benchmarks for the memory-mapped data access path.
+
+Both tests are marked ``perf`` and deselected by default (see ``pytest.ini``).
+They use ``pytest-benchmark`` and two seeded 20,000 x 200 float32 arrays. Run
+them when changing ``dataset.py`` to get before/after numbers::
+
+    python3.12 -m pytest -m perf
+
+Tests
+-----
+``test_indexed_dataset_random_access_throughput``
+    Times 2,000 random ``__getitem__`` calls on an ``IndexedArrayDataset``
+    whose indices span both backing arrays, so cross-array index resolution
+    is included in the measurement.
+
+``test_get_split_labels_gather_throughput``
+    Times a bulk label gather over a full permutation of both arrays, the
+    operation performed once per split at start-up.
+"""
 
 import numpy as np
 import pytest

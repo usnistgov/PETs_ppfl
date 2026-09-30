@@ -1,7 +1,67 @@
 # For licensing matters, please refer to the licensing statement at:
 # https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
+#
+# This file was edited with the assistance of Claude Code (Anthropic, model
+# Claude Fable 5.1). The assistant added the module docstring describing each
+# test in accordance with the author's instructions. All content has been
+# reviewed and verified by the authors.
+
+"""Regression tests for the ``run.py`` configuration and command-line front end.
+
+Each case writes a JSON config to a temporary directory, launches ``run.py``
+in a subprocess with ``--check_only`` plus any CLI overrides, and asserts on
+the exit code and on regular expressions that must or must not appear in
+stdout. Only the validation stage runs, so the suite is fast. The one
+exception is case ``t46``, a real end-to-end training run that is skipped
+unless pytest is given ``--run-e2e``.
+
+Tests
+-----
+``test_run_py_regressions[<id>]``
+    Parametrized over the ``CASES`` list (102 cases). Each ``Case`` names the
+    behavior under test, supplies a config (usually via ``_base_with``,
+    ``_cnn_base_with``, or ``_xgb_base_with``), optional CLI arguments, the
+    exit codes that count as success, and stdout patterns. Cases are grouped:
+
+    A. Config/CLI precedence and parsing (t01-t11): config-only load, single
+       and multiple CLI overrides, repeated flags, unknown CLI arguments and
+       config keys, missing/malformed/empty config files, type coercion, and
+       path quoting.
+    B. Per-parameter validation (t12-t33, t51-t53): for each schema field a
+       case at a valid boundary and one just past it, covering rounds, clients,
+       partitions, seed, epochs, batch size, test fraction, learning rate,
+       weight decay, epsilon, delta, max gradient norm, accuracy tolerance,
+       CPU/GPU counts, XGBoost parameters, and enumerated strings.
+    C. Cross-parameter interactions (t34-t41): class label count and
+       uniqueness, partition_id versus num_partitions, partitions file versus
+       partitioner type, batch size versus dataset size, DP gating, and
+       optimizer selection.
+    D. Error-message regression (t42-t45): messages include parameter,
+       expected form, and received value; non-zero exit on failure; multiple
+       errors aggregated; determinism under a fixed seed.
+    E. End-to-end scenarios (t46-t50): the E2E smoke run, maximal valid
+       bounds, a representative FL config, and runs with and without a
+       partitions file.
+    F. Schema and effective-schema behavior (t54-t56): model_type is required
+       and validated, XGBoost train_method enum, and config-only loads for the
+       cnn and xgboost model types.
+    G. Targeted regressions (t57-t68): unknown ``--flag=value`` reporting,
+       boolean validation of print_warning_logs, bad CLI integers/booleans/
+       enums reported by schema validation rather than argparse, field-level
+       errors instead of a full oneOf dump, and branch-specific parameters for
+       one model type being ignored when another model type is selected.
+
+``test_check_only_print_order_follows_effective_schema_top_level``
+    Runs a valid config through ``--check_only`` and checks that the scalar
+    and dictionary parameters echoed to stdout appear in the order defined by
+    the effective (branch-resolved) schema.
+
+See ``README.md`` in this directory and ``docs/unit_tests.md`` for how to add
+a new case.
+"""
 
 # test_cli_config_regression.py
+
 import copy
 import json
 import os

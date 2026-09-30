@@ -5,6 +5,37 @@
 # Claude Opus 4.8). The assistant added characterization tests for the
 # NumpyEncoder fallback path in accordance with the author's instructions. All
 # content has been reviewed and verified by the authors.
+#
+# The module docstring describing each test was added with the assistance of
+# Claude Code (Anthropic, model Claude Fable 5.1) in accordance with the
+# author's instructions and reviewed by the authors.
+
+"""Unit and characterization tests for ``report.Report`` JSON output.
+
+``Report`` wraps the run-summary dictionary and writes it to disk with a
+custom encoder that converts NumPy values to native JSON types.
+
+Tests
+-----
+``test_report_requires_dictionary_input``
+    Constructing a ``Report`` from anything but a dict raises ``TypeError``.
+
+``test_report_saves_plain_dictionary_as_json``
+    A plain nested dictionary round-trips through ``save_to_file`` unchanged.
+
+``test_report_serializes_numpy_scalars_and_arrays``
+    ``np.int64``, ``np.float64``, and 1-D/2-D arrays become JSON numbers and
+    nested lists.
+
+``test_report_unserializable_value_becomes_null_without_raising``
+    Characterization of current behavior: an object the encoder cannot handle
+    is written as JSON ``null`` instead of raising.
+
+``test_report_numpy_bool_is_not_encoded``
+    Characterization of a known gap: ``np.bool_`` is neither an integer nor a
+    float to the encoder, so it is also written as ``null`` rather than a JSON
+    boolean. Update this test deliberately if the encoder is fixed.
+"""
 
 import json
 

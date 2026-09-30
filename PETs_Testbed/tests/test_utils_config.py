@@ -7,6 +7,78 @@
 # characterization tests pinning the _strtobool replacement to the behavior of
 # the removed distutils.util.strtobool, in accordance with the author's
 # instructions. All content has been reviewed and verified by the authors.
+#
+# The module docstring describing each test was added with the assistance of
+# Claude Code (Anthropic, model Claude Fable 5.1) in accordance with the
+# author's instructions and reviewed by the authors.
+
+"""Unit tests for the schema-driven configuration engine in ``utils.py``.
+
+These call the helpers directly, without the subprocess used by
+``test_inputs.py``, so failures point at a specific function.
+
+Tests
+-----
+_coerce_cli_value
+    ``test_coerce_cli_value_by_type``: strings are coerced to int, float, bool,
+    and string according to the schema type (parametrized).
+    ``test_coerce_cli_value_bad_number_falls_back_to_raw``: an unparsable
+    number is left as the raw string so schema validation reports it.
+    ``test_coerce_cli_value_non_string_passthrough``: already-typed values are
+    returned unchanged.
+    ``test_coerce_cli_value_resolves_type_through_combinators``: the type is
+    found even when the schema wraps it in anyOf/oneOf.
+
+_strtobool
+    ``test_strtobool_accepts_truthy_vocabulary`` and
+    ``test_strtobool_accepts_falsy_vocabulary``: the accepted words match the
+    removed ``distutils.util.strtobool`` (parametrized).
+    ``test_strtobool_rejects_everything_else``: any other string raises.
+    ``test_strtobool_rejection_makes_coerce_fall_back_to_raw``: a rejected
+    boolean string is passed through raw for the schema to flag.
+
+apply_defaults
+    ``test_apply_defaults_fills_scalar_and_nested_defaults``: missing scalar
+    and nested keys receive schema defaults.
+    ``test_apply_defaults_does_not_override_supplied_values``: user values win.
+    ``test_apply_defaults_selects_oneof_branch_by_discriminator``: defaults
+    come from the oneOf branch matching ``model_type``.
+
+_to_layered_config
+    ``test_to_layered_config_nests_flat_keys_by_schema``: flat keys are nested
+    into the federated, dp, and model_params groups.
+
+_prune_inactive_model_params
+    ``test_prune_drops_other_models_params_but_keeps_unknown``: parameters for
+    a different model type are removed, unknown keys are kept for reporting.
+    ``test_prune_removes_task_specific_keys``: keys tied to the other problem
+    type are removed.
+
+_sync_enabled_flags
+    ``test_sync_enabled_flag_inferred_true_when_group_populated``,
+    ``test_sync_enabled_flag_inferred_false_when_group_empty``,
+    ``test_sync_enabled_flag_respects_explicit_value``: the ``*_enabled``
+    flags are inferred from group contents unless set explicitly.
+
+_get_validation_errors / UnknownParameterError
+    ``test_validation_errors_normalizes_missing_required``,
+    ``test_validation_errors_normalizes_unknown_property``,
+    ``test_validation_errors_reports_type_mismatch``: jsonschema errors are
+    rewritten into short, field-level messages.
+    ``test_unknown_parameter_error_includes_suggestion`` and
+    ``test_unknown_parameter_error_without_suggestion``: the did-you-mean hint
+    appears only when a close match exists.
+
+Filesystem validators
+    ``test_validate_file_path_ok_and_missing`` and
+    ``test_validate_dir_path_ok_and_missing``: existing paths pass, missing
+    paths raise.
+    ``test_validate_data_size_rejects_oversized_batch_npy``,
+    ``test_validate_data_size_accepts_fitting_batch_npy``,
+    ``test_validate_data_size_falls_back_to_dat``: batch size must not exceed
+    the number of rows found in the ``.npy`` files, falling back to ``.dat``
+    files when no ``.npy`` is present.
+"""
 
 import pytest
 

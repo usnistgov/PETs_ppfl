@@ -5,6 +5,29 @@
 # Claude Opus 4.8). The assistant proposed and wrote unit tests for the client
 # data-conversion helpers in accordance with the author's instructions. All
 # content has been reviewed and verified by the authors.
+#
+# The module docstring describing each test was added with the assistance of
+# Claude Code (Anthropic, model Claude Fable 5.1) in accordance with the
+# author's instructions and reviewed by the authors.
+
+"""Unit tests for the data-conversion helpers in ``client.py``.
+
+Tests
+-----
+``test_empty_evaluate_res_shape``
+    ``empty_evaluate_res`` returns a Flower evaluation result with zero loss,
+    zero examples, and zeroed accuracy and MSE. The client sends this when it
+    has nothing to evaluate.
+
+``test_loader_to_dmatrix_concatenates_batches``
+    ``loader_to_dmatrix`` stacks batches of different sizes from a data loader
+    into one XGBoost ``DMatrix`` with the right row count, column count, and
+    label order.
+
+``test_loader_to_dmatrix_flattens_2d_labels``
+    Labels arriving as ``(n, 1)`` arrays are flattened to one dimension before
+    being attached to the ``DMatrix``.
+"""
 
 import numpy as np
 

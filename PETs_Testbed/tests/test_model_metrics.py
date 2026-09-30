@@ -1,5 +1,39 @@
 # For licensing matters, please refer to the licensing statement at:
 # https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
+#
+# This file was edited with the assistance of Claude Code (Anthropic, model
+# Claude Fable 5.1). The assistant added the module docstring describing each
+# test in accordance with the author's instructions. All content has been
+# reviewed and verified by the authors.
+
+"""Unit tests for the metric computation shared by all models in ``model.py``.
+
+The Torch models and the XGBoost model report the same metric names, computed
+by common code on ``BaseModel``. These tests check that code directly and,
+for XGBoost, through a stub booster so no training is needed.
+
+Tests
+-----
+``test_metrics_from_predictions_supports_regression``
+    For a regression task ``task.metrics`` returns accuracy (fraction of
+    predictions within ``accuracy_tolerance`` of the label), MSE, and MAE.
+
+``test_metrics_from_predictions_supports_classification_probabilities``
+    For a classification task it returns accuracy plus macro-averaged
+    precision and recall.
+
+``test_epoch_report_metrics_are_problem_specific``
+    ``add_epoch_report_metrics`` writes MSE series only for regression and
+    precision/recall series only for classification.
+
+``test_xgboost_data_metrics_uses_shared_regression_metrics``
+    ``XGBoostModel.dataset_metrics`` with a stub booster produces the shared
+    regression metrics from raw predictions.
+
+``test_xgboost_data_metrics_uses_shared_classification_metrics``
+    The same method turns per-class probability rows into class predictions
+    and produces the shared classification metrics.
+"""
 
 import numpy as np
 import pytest
