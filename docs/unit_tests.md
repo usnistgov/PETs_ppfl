@@ -2,23 +2,23 @@
 
 For regression testing, a Python library called `pytest` is used. This helps automate the testing process. There are various test cases described in the `tests/test_inputs.py` script. In this regression testing, it is only checking whether the parameter inputs are valid. To run the regression tests, ensure you are in the `PETs_Testbed` folder, and if using a virtual environment, make sure it is active. Also ensure you have `pytest` installed in your environment; it is now listed in `requirements.txt`. Then, run:
 ```bash
-python3.10 -m pytest -q
+python3.12 -m pytest -q
 ``` 
 This will loop through every single test case with a progress tracker at the bottom. Any failed tests will be printed at the end.
 
 These regression tests do have an end-to-end run, but it is skipped by default due to the time it takes. If you want to include the end-to-end run in the regression testing, run:
 ```bash
-python3.10 -m pytest -q --run-e2e
+python3.12 -m pytest -q --run-e2e
 ```
 
 To manually go through each test case using `pytest`, first gather a list of all possible tests. It can be recorded it in a `.txt` file for easy lookup by running 
 ```bash
-python3.10 -m pytest --collect-only -q > test_list.txt
+python3.12 -m pytest --collect-only -q > test_list.txt
 ```
 Then, identify the test you want to run, for example `test_inputs.py::test_run_py_regressions[t12a]`. To run that individual test, use:
 
 ```bash
-python3.10 -m pytest test_inputs.py::test_run_py_regressions[t12a]
+python3.12 -m pytest test_cli_config_regression.py::test_run_py_regressions[t12a]
 ```
 
 ### Adding Additional Regression Tests

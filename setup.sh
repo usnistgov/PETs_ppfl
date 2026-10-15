@@ -7,6 +7,6 @@ add-apt-repository ppa:deadsnakes/ppa
 
 apt update
 
-apt install python3.10
+apt install python3.12
 
-echo | python3.10 --version
+echo | python3.12 --version
