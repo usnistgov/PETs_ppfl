@@ -1,0 +1,2 @@
+# For licensing matters, please refer to the licensing statement at:
+# https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
