@@ -1,6 +1,8 @@
 # Privacy-Enhancing Technologies (PETs) Testbed
 
-> The NIST Genomics PETs Testbed (beta) aims to provide a framework for evaluating the efficacy of privacy-enhancing technologies (PETs) on genomics machine learning workloads. It supports centralized and federated training using convolutional neural network (CNN), differentially private CNN, and extreme gradient boosting (XGBoost) models and provides tools for users to compare how experiment configurations and privacy settings affect model performance.
+> The NIST Privacy-Preserving Federated Learning (PPFL) Testbed is a component of the NIST Privacy-Enhancing Technologies (PETs) Testbeds. It provides a framework for evaluating how PETs affect machine learning on sensitive data. The first use case is genomics: the testbed runs on the soybean benchmark as released, and the processing scripts in the companion data repository show how to prepare other genomic data. The code also works with many tabular datasets with little configuration.
+
+Organizations often cannot pool sensitive data because of privacy, regulatory, or security requirements. Federated learning lets each site keep its data, and differential privacy limits what a trained model reveals about any individual record. The PPFL Testbed lets users measure what those protections cost in model performance, on a shared benchmark, so that results are comparable across configurations and teams.
 
 # Table of Contents
 1. [System Specifications](#specs)
@@ -139,7 +141,7 @@ This testbed supports:
 
 > Users are expected to preprocess their data before uploading it to the `data/` folder.
 
-Throughout the beta development process, these capabilities are expected to expand. Feedback on additional features and discovered issues is welcome and encouraged.
+These capabilities are expected to expand, with privacy evaluation tools coming soon. 
 
 ## Installation and Setup <a name="setup"></a>
 
