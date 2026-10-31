@@ -1,5 +1,6 @@
 # For licensing matters, please refer to the licensing statement at:
 # https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
+# Modified 2026-10-31: validate batch sizes for legacy .dat feature arrays.
 
 import argparse
 import numpy as np
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, Tuple, List, Set,  Union
 from xgboost import XGBClassifier, Booster
 import os
+import pickle
 import re
 from report import Report
 
@@ -32,19 +34,24 @@ def get_device():
 #   purpose: Validate that the discovered train/holdout dataset files are large enough for the requested batch divisor.
 ###
 def validate_data_size(data_path, batch_size):
-    """Validate that data files are large enough for the batch size."""
+    """Validate feature rows, preferring converted .npy files over legacy .dat."""
     suffixes = ["_tt_vcf", "_ho_vcf"]
     for suffix in suffixes:
-        npy_matches = [f for f in os.listdir(data_path) if f.endswith(f"{suffix}.npy")]
-        if len(npy_matches) > 1:
-            raise ValueError(f"Multiple files found in {data_path} matching {suffix}.npy: {npy_matches}")
+        for extension in [".npy", ".dat"]:
+            matches = sorted(Path(data_path).glob(f"*{suffix}{extension}"))
+            if len(matches) > 1:
+                raise ValueError(f"Multiple files found in {data_path} matching {suffix}{extension}: {matches}")
+            if not matches:
+                continue
 
-        if npy_matches:
-            file_path = os.path.relpath(os.path.join(data_path, npy_matches[0]))
-            num_data_rows = np.load(file_path, mmap_mode="r").shape[0]
+            if extension == ".npy":
+                num_data_rows = np.load(matches[0], mmap_mode="r").shape[0]
+            else:
+                with matches[0].open("rb") as stream:
+                    num_data_rows = pickle.load(stream).shape[0]
             if batch_size > num_data_rows:
                 raise ValueError(f"Batch size (batch_size={batch_size}) is greater than train/test dataset size (num_rows={num_data_rows})")
-            continue
+            break
 
 
 
