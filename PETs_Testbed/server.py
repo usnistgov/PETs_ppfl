@@ -1,5 +1,6 @@
 # For licensing matters, please refer to the licensing statement at:
 # https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
+# Modified 2026-10-31: preserve raw classification labels in holdout counts.
 
 from typing import List, Tuple
 from typing import Dict
@@ -78,7 +79,7 @@ def build_test_data(strategy_params):
     print("\n\nHOLDOUT DATASET FOR EVALUATION")
     if strategy_params.get("problem_type") == "classification":
         print(f"Holdout dataset label counts")
-        test_counts = Counter(int(x) for x in np.asarray(ho_pheno))
+        test_counts = Counter(normalize_label(label) for label in ho_pheno)
         for cls, count in sorted(test_counts.items()):
             print(f"class {cls}: {count} records")
     else:

@@ -1,5 +1,6 @@
 # For licensing matters, please refer to the licensing statement at:
 # https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications#software
+# Modified 2026-10-31: preserve classification label identities in splits and counts.
 
 from typing import List, Tuple
 import sys
@@ -253,7 +254,7 @@ def train_test_indices_split(dataset: np.ndarray, indices: np.ndarray, test_frac
     labels = dataset[indices, -1]
 
     if problem_type == "classification":
-        binned_labels = [int(x) for x in np.asarray(labels)]
+        binned_labels = [normalize_label(label) for label in labels]
     else:
         # Create quantile bins for stratification
         num_bins = min(10, len(np.unique(labels)))  # Adjust number of bins
@@ -345,12 +346,12 @@ def load_partitions(data_partition_id, features, labels, batch_size, test_fracti
 
     if problem_type == "classification":
         print(f"Client {data_partition_id}: Train dataset label counts")
-        train_counts = Counter(int(x) for x in np.asarray(train_labels))
+        train_counts = Counter(normalize_label(label) for label in train_labels)
         for cls, count in sorted(train_counts.items()):
             print(f"class {cls}: {count} records")
 
         print(f"Client {data_partition_id}: Test dataset label counts")
-        test_counts = Counter(int(x) for x in np.asarray(test_labels))
+        test_counts = Counter(normalize_label(label) for label in test_labels)
         for cls, count in sorted(test_counts.items()):
             print(f"class {cls}: {count} records")
     else:
